@@ -81,6 +81,90 @@ function getFilteredAndSortedAssets() {
     if (state.brandedAssetsSort === 'dimension') return a.dimension.localeCompare(b.dimension);
     return new Date(b.createdAt) - new Date(a.createdAt);
   });
+
+  return filtered.sort((a, b) => {
+    if (state.brandedAssetsSort === 'name-asc') return a.name.localeCompare(b.name);
+    if (state.brandedAssetsSort === 'name-desc') return b.name.localeCompare(a.name);
+    if (state.brandedAssetsSort === 'oldest') return new Date(a.createdAt) - new Date(b.createdAt);
+    if (state.brandedAssetsSort === 'dimension') return a.dimension.localeCompare(b.dimension);
+    return new Date(b.createdAt) - new Date(a.createdAt);
+  });
+}
+
+function brandedAssetsRows(assets) {
+  return assets.map((asset) => `
+    <button class="brand-list-row" data-asset-id="${asset.id}">
+      <span class="cell name">${asset.name}</span>
+      <span class="cell folder">${asset.folder}</span>
+      <span class="cell dim">${asset.dimension}</span>
+      <span class="cell date">${new Date(asset.createdAt).toLocaleDateString()}</span>
+    </button>`).join('');
+}
+
+function brandedAssetsGrid(assets) {
+  return assets.map((asset) => `
+    <article class="brand-asset-card" data-asset-id="${asset.id}">
+      <img src="${asset.src}" alt="${asset.name}" />
+      <div>
+        <strong>${asset.name}</strong>
+        <p class="muted">${asset.folder} · ${asset.dimension}</p>
+      </div>
+    </article>`).join('');
+}
+
+function brandedAssetsManager() {
+  const assets = getFilteredAndSortedAssets();
+
+  return `
+    <div class="brand-manager ${state.brandedAssetsOpen ? 'open' : ''}">
+      <div class="brand-manager-header">
+        <h4>Branded Assets Locker</h4>
+        <p class="muted">Upload PNG files, organize by folder/dimension, and move fast in list view.</p>
+      </div>
+      <div class="brand-controls">
+        <label class="control-group">Upload PNG<input id="brandAssetUpload" type="file" accept="image/png" multiple /></label>
+        <label class="control-group">Folder
+          <select id="brandFolderFilter">
+            <option value="All folders" ${state.brandedAssetsFolderFilter === 'All folders' ? 'selected' : ''}>All folders</option>
+            ${state.brandedFolders.map((folder) => `<option value="${folder}" ${state.brandedAssetsFolderFilter === folder ? 'selected' : ''}>${folder}</option>`).join('')}
+          </select>
+        </label>
+        <label class="control-group">Dimension
+          <select id="brandDimensionFilter">
+            <option value="All dimensions" ${state.brandedAssetsDimensionFilter === 'All dimensions' ? 'selected' : ''}>All dimensions</option>
+            ${supportedDimensions.map((dimension) => `<option value="${dimension}" ${state.brandedAssetsDimensionFilter === dimension ? 'selected' : ''}>${dimension}</option>`).join('')}
+          </select>
+        </label>
+        <label class="control-group">Sort
+          <select id="brandAssetSort">
+            <option value="newest" ${state.brandedAssetsSort === 'newest' ? 'selected' : ''}>Newest first</option>
+            <option value="oldest" ${state.brandedAssetsSort === 'oldest' ? 'selected' : ''}>Oldest first</option>
+            <option value="name-asc" ${state.brandedAssetsSort === 'name-asc' ? 'selected' : ''}>Name A-Z</option>
+            <option value="name-desc" ${state.brandedAssetsSort === 'name-desc' ? 'selected' : ''}>Name Z-A</option>
+            <option value="dimension" ${state.brandedAssetsSort === 'dimension' ? 'selected' : ''}>Dimension</option>
+          </select>
+        </label>
+        <label class="control-group">Upload Dimension
+          <select id="brandUploadDimension">${supportedDimensions.map((dimension) => `<option value="${dimension}">${dimension}</option>`).join('')}</select>
+        </label>
+        <form id="brandFolderForm" class="folder-form">
+          <input id="brandFolderInput" placeholder="New folder name" maxlength="24" />
+          <button id="brandCreateFolder" type="button">Create Folder</button>
+        </form>
+      </div>
+      <div class="view-mode-row">
+        <button id="brandListView" class="pill-btn ${state.brandedAssetsView === 'list' ? 'active' : ''}">List View</button>
+        <button id="brandGridView" class="pill-btn ${state.brandedAssetsView === 'grid' ? 'active' : ''}">Grid View</button>
+      </div>
+      <div class="brand-assets-wrap ${state.brandedAssetsView}">
+        ${assets.length
+          ? (state.brandedAssetsView === 'list'
+              ? `<div class="brand-list-header"><span>Name</span><span>Folder</span><span>Dimension</span><span>Date Added</span></div>${brandedAssetsRows(assets)}`
+              : brandedAssetsGrid(assets))
+          : '<p class="muted">No assets found for this filter.</p>'}
+      </div>
+    </div>
+  `;
 }
 
 function brandedAssetsRows(assets) {
@@ -150,7 +234,10 @@ function dashboardView() {
       </div>
     </section>
     <section class="panel">
-      <h3>Global Asset Library</h3>
+      <div class="asset-header">
+        <h3>Global Asset Library</h3>
+        <button id="toggleBrandedAssets" class="utility-btn">Branded Assets</button>
+      </div>
       <div class="asset-icons">
         <button id="toggleBrandedAssets" class="asset asset-btn ${state.brandedAssetsOpen ? 'active' : ''}">${icons.branded}<span>Branded Assets</span></button>
         <div class="asset">${icons.logos}<span>Logos</span></div>
@@ -304,12 +391,18 @@ function outputView() {
 
 function renderView() {
   switch (state.activeTab) {
-    case 'Dashboard': return dashboardView();
-    case 'Design': return designView();
-    case 'Data Engine': return dataEngineView();
-    case 'Control Room': return controlRoomView();
-    case 'Output': return outputView();
-    default: return dashboardView();
+    case 'Dashboard':
+      return dashboardView();
+    case 'Design':
+      return designView();
+    case 'Data Engine':
+      return dataEngineView();
+    case 'Control Room':
+      return controlRoomView();
+    case 'Output':
+      return outputView();
+    default:
+      return dashboardView();
   }
 }
 
