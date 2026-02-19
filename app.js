@@ -1,36 +1,100 @@
 const tabs = ['Dashboard', 'Design', 'Data Engine', 'Control Room', 'Output'];
 
+const supportedDimensions = ['1920x1080', '1080x1920', '1080x1080', '1080x1350'];
+
+const mlbSimulationFeed = [
+  { inning: 'Top 1', battingTeam: 'NYY', runsScored: 2, scoreAfter: 'BOS 0 - NYY 2', summary: 'Leadoff double sparks a quick two-run rally.' },
+  { inning: 'Bottom 1', battingTeam: 'BOS', runsScored: 3, scoreAfter: 'BOS 3 - NYY 2', summary: 'Devers clears the bases with a three-run blast.' },
+  { inning: 'Top 2', battingTeam: 'NYY', runsScored: 1, scoreAfter: 'BOS 3 - NYY 3', summary: 'Soto ropes an RBI single to tie it.' },
+  { inning: 'Bottom 2', battingTeam: 'BOS', runsScored: 2, scoreAfter: 'BOS 5 - NYY 3', summary: 'Back-to-back doubles put Boston back in front.' },
+  { inning: 'Top 3', battingTeam: 'NYY', runsScored: 3, scoreAfter: 'BOS 5 - NYY 6', summary: 'Judge launches a no-doubt three-run homer.' },
+  { inning: 'Bottom 3', battingTeam: 'BOS', runsScored: 4, scoreAfter: 'BOS 9 - NYY 6', summary: 'Boston answers with a four-spot and loud Fenway crowd.' },
+  { inning: 'Top 4', battingTeam: 'NYY', runsScored: 1, scoreAfter: 'BOS 9 - NYY 7', summary: 'Ground-rule double plates one for New York.' },
+  { inning: 'Bottom 4', battingTeam: 'BOS', runsScored: 0, scoreAfter: 'BOS 9 - NYY 7', summary: 'Quick 1-2-3 inning from the Yankees bullpen.' },
+  { inning: 'Top 5', battingTeam: 'NYY', runsScored: 2, scoreAfter: 'BOS 9 - NYY 9', summary: 'Rizzo lines a two-run single to tie game again.' },
+  { inning: 'Bottom 5', battingTeam: 'BOS', runsScored: 1, scoreAfter: 'BOS 10 - NYY 9', summary: 'Sac fly gives Boston the edge.' },
+  { inning: 'Top 6', battingTeam: 'NYY', runsScored: 0, scoreAfter: 'BOS 10 - NYY 9', summary: 'Boston reliever strands two runners.' },
+  { inning: 'Bottom 6', battingTeam: 'BOS', runsScored: 2, scoreAfter: 'BOS 12 - NYY 9', summary: 'Two-run single extends Sox lead to three.' },
+  { inning: 'Top 7', battingTeam: 'NYY', runsScored: 2, scoreAfter: 'BOS 12 - NYY 11', summary: 'Torres homers to left and closes the gap.' },
+  { inning: 'Bottom 7', battingTeam: 'BOS', runsScored: 1, scoreAfter: 'BOS 13 - NYY 11', summary: 'Duran scores on an infield chopper.' },
+  { inning: 'Top 8', battingTeam: 'NYY', runsScored: 1, scoreAfter: 'BOS 13 - NYY 12', summary: 'Volpe RBI single makes it a one-run game.' },
+  { inning: 'Bottom 8', battingTeam: 'BOS', runsScored: 2, scoreAfter: 'BOS 15 - NYY 12', summary: 'Two insurance runs on a gapper and a sac fly.' },
+  { inning: 'Top 9', battingTeam: 'NYY', runsScored: 0, scoreAfter: 'BOS 15 - NYY 12', summary: 'Boston closer fans two to end a wild classic.' },
+  { inning: 'Bottom 9', battingTeam: 'BOS', runsScored: 0, scoreAfter: 'BOS 15 - NYY 12', summary: 'Ballgame final: Red Sox 15, Yankees 12.' },
+];
+
 const state = {
   activeTab: 'Dashboard',
-  liveScore: 'Home 2 - Away 1',
+  liveScore: 'BOS 0 - NYY 0',
   isStreaming: false,
-  brandedAssetsOpen: false,
+  brandedAssetsOpen: true,
   brandedAssetsFolderFilter: 'All folders',
+  brandedAssetsDimensionFilter: 'All dimensions',
   brandedAssetsSort: 'newest',
+  brandedAssetsView: 'list',
   brandedAssets: [
     {
       id: 1,
-      name: 'sponsor-lockup.png',
-      folder: 'Sponsors',
-      createdAt: new Date('2025-01-09T09:10:00').toISOString(),
-      src: 'https://dummyimage.com/300x180/0f172a/93c5fd.png&text=Sponsor+Lockup',
+      name: 'red-sox-scorebug-1920x1080.png',
+      folder: 'Scorebugs',
+      dimension: '1920x1080',
+      createdAt: new Date('2026-01-10T09:10:00').toISOString(),
+      src: 'https://dummyimage.com/320x180/0f172a/93c5fd.png&text=Scorebug+16:9',
     },
     {
       id: 2,
-      name: 'league-badge.png',
-      folder: 'League',
-      createdAt: new Date('2025-02-12T12:45:00').toISOString(),
-      src: 'https://dummyimage.com/300x180/111827/86efac.png&text=League+Badge',
+      name: 'yankees-story-1080x1920.png',
+      folder: 'Social Stories',
+      dimension: '1080x1920',
+      createdAt: new Date('2026-01-14T12:45:00').toISOString(),
+      src: 'https://dummyimage.com/200x360/111827/86efac.png&text=Story+9:16',
+    },
+    {
+      id: 3,
+      name: 'postgame-square-1080x1080.png',
+      folder: 'Social Square',
+      dimension: '1080x1080',
+      createdAt: new Date('2026-01-16T18:25:00').toISOString(),
+      src: 'https://dummyimage.com/300x300/1e293b/fca5a5.png&text=Square+1:1',
+    },
+    {
+      id: 4,
+      name: 'lineup-feed-1080x1350.png',
+      folder: 'Social Feed',
+      dimension: '1080x1350',
+      createdAt: new Date('2026-01-18T08:00:00').toISOString(),
+      src: 'https://dummyimage.com/280x350/172554/bae6fd.png&text=Feed+4:5',
     },
   ],
-  brandedFolders: ['General', 'Sponsors', 'League'],
+  brandedFolders: ['General', 'Scorebugs', 'Social Stories', 'Social Square', 'Social Feed'],
+  designSelectedAssetId: 1,
+  designTextLayers: [
+    { id: 1, name: 'Headline', text: 'Final Score Update', x: 16, y: 16, size: 42, color: '#ffffff', bindKey: 'none' },
+    { id: 2, name: 'Subhead', text: 'Fenway Thriller', x: 16, y: 72, size: 24, color: '#bfdbfe', bindKey: 'lastEvent' },
+  ],
+  simulationRunning: false,
+  simulationSpeedMs: 1300,
+  simulationIndex: -1,
+  gameState: {
+    matchup: 'Red Sox vs Yankees',
+    inning: 'Pregame',
+    outs: 0,
+    baseState: 'Bases Empty',
+    score: { BOS: 0, NYY: 0 },
+    hits: { BOS: 0, NYY: 0 },
+    errors: { BOS: 0, NYY: 0 },
+    lastEvent: 'Waiting to start MLB simulation.',
+  },
 };
+
+let simulationTimer = null;
 
 const icons = {
   logos: '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>',
   fonts: '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20 10 4l6 16"/><path d="M6 14h8"/></svg>',
   palette: '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="8" cy="10" r="1"/><circle cx="12" cy="8" r="1"/><circle cx="16" cy="10" r="1"/><path d="M12 16h.01"/></svg>',
   animation: '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v20M2 12h20"/><path d="m5 5 14 14M19 5 5 19"/></svg>',
+  branded: '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h10M7 13h7"/></svg>',
 };
 
 const streamButton = document.getElementById('streamButton');
@@ -52,30 +116,55 @@ function renderTabs() {
   });
 }
 
+function getAssetById(id) {
+  return state.brandedAssets.find((asset) => asset.id === Number(id));
+}
+
 function getFilteredAndSortedAssets() {
   const filtered = state.brandedAssets.filter((asset) => {
-    if (state.brandedAssetsFolderFilter === 'All folders') {
-      return true;
-    }
-
-    return asset.folder === state.brandedAssetsFolderFilter;
+    const folderMatch = state.brandedAssetsFolderFilter === 'All folders' || asset.folder === state.brandedAssetsFolderFilter;
+    const dimensionMatch = state.brandedAssetsDimensionFilter === 'All dimensions' || asset.dimension === state.brandedAssetsDimensionFilter;
+    return folderMatch && dimensionMatch;
   });
 
   return filtered.sort((a, b) => {
-    if (state.brandedAssetsSort === 'name-asc') {
-      return a.name.localeCompare(b.name);
-    }
-
-    if (state.brandedAssetsSort === 'name-desc') {
-      return b.name.localeCompare(a.name);
-    }
-
-    if (state.brandedAssetsSort === 'oldest') {
-      return new Date(a.createdAt) - new Date(b.createdAt);
-    }
-
+    if (state.brandedAssetsSort === 'name-asc') return a.name.localeCompare(b.name);
+    if (state.brandedAssetsSort === 'name-desc') return b.name.localeCompare(a.name);
+    if (state.brandedAssetsSort === 'oldest') return new Date(a.createdAt) - new Date(b.createdAt);
+    if (state.brandedAssetsSort === 'dimension') return a.dimension.localeCompare(b.dimension);
     return new Date(b.createdAt) - new Date(a.createdAt);
   });
+}
+
+function brandedAssetsRows(assets) {
+  return assets
+    .map(
+      (asset) => `
+        <button class="brand-list-row" data-asset-id="${asset.id}">
+          <span class="cell name">${asset.name}</span>
+          <span class="cell folder">${asset.folder}</span>
+          <span class="cell dim">${asset.dimension}</span>
+          <span class="cell date">${new Date(asset.createdAt).toLocaleDateString()}</span>
+        </button>
+      `,
+    )
+    .join('');
+}
+
+function brandedAssetsGrid(assets) {
+  return assets
+    .map(
+      (asset) => `
+      <article class="brand-asset-card" data-asset-id="${asset.id}">
+        <img src="${asset.src}" alt="${asset.name}" />
+        <div>
+          <strong>${asset.name}</strong>
+          <p class="muted">${asset.folder} · ${asset.dimension}</p>
+        </div>
+      </article>
+    `,
+    )
+    .join('');
 }
 
 function brandedAssetsManager() {
@@ -84,8 +173,8 @@ function brandedAssetsManager() {
   return `
     <div class="brand-manager ${state.brandedAssetsOpen ? 'open' : ''}">
       <div class="brand-manager-header">
-        <h4>Branded Assets</h4>
-        <p class="muted">Upload PNG files, organize folders, and sort assets by name/date.</p>
+        <h4>Branded Assets Locker</h4>
+        <p class="muted">PNG upload, dimension-aware organization, fast list view, and one-click insertion into Design.</p>
       </div>
       <div class="brand-controls">
         <label class="control-group">Upload PNG
@@ -97,35 +186,41 @@ function brandedAssetsManager() {
             ${state.brandedFolders.map((folder) => `<option value="${folder}" ${state.brandedAssetsFolderFilter === folder ? 'selected' : ''}>${folder}</option>`).join('')}
           </select>
         </label>
+        <label class="control-group">Dimension
+          <select id="brandDimensionFilter">
+            <option value="All dimensions" ${state.brandedAssetsDimensionFilter === 'All dimensions' ? 'selected' : ''}>All dimensions</option>
+            ${supportedDimensions.map((dimension) => `<option value="${dimension}" ${state.brandedAssetsDimensionFilter === dimension ? 'selected' : ''}>${dimension}</option>`).join('')}
+          </select>
+        </label>
         <label class="control-group">Sort
           <select id="brandAssetSort">
             <option value="newest" ${state.brandedAssetsSort === 'newest' ? 'selected' : ''}>Newest first</option>
             <option value="oldest" ${state.brandedAssetsSort === 'oldest' ? 'selected' : ''}>Oldest first</option>
             <option value="name-asc" ${state.brandedAssetsSort === 'name-asc' ? 'selected' : ''}>Name A-Z</option>
             <option value="name-desc" ${state.brandedAssetsSort === 'name-desc' ? 'selected' : ''}>Name Z-A</option>
+            <option value="dimension" ${state.brandedAssetsSort === 'dimension' ? 'selected' : ''}>Dimension</option>
           </select>
         </label>
         <form id="brandFolderForm" class="folder-form">
           <input id="brandFolderInput" placeholder="New folder name" maxlength="24" />
           <button type="submit">Create Folder</button>
         </form>
+        <label class="control-group">Upload Dimension
+          <select id="brandUploadDimension">
+            ${supportedDimensions.map((dimension) => `<option value="${dimension}">${dimension}</option>`).join('')}
+          </select>
+        </label>
       </div>
-      <div class="brand-assets-grid">
+      <div class="view-mode-row">
+        <button id="brandListView" class="pill-btn ${state.brandedAssetsView === 'list' ? 'active' : ''}">List View</button>
+        <button id="brandGridView" class="pill-btn ${state.brandedAssetsView === 'grid' ? 'active' : ''}">Grid View</button>
+      </div>
+      <div class="brand-assets-wrap ${state.brandedAssetsView}">
         ${assets.length
-          ? assets
-              .map(
-                (asset) => `
-                  <article class="brand-asset-card">
-                    <img src="${asset.src}" alt="${asset.name}" />
-                    <div>
-                      <strong>${asset.name}</strong>
-                      <p class="muted">${asset.folder} · ${new Date(asset.createdAt).toLocaleDateString()}</p>
-                    </div>
-                  </article>
-                `,
-              )
-              .join('')
-          : '<p class="muted">No assets found for this folder yet.</p>'}
+          ? state.brandedAssetsView === 'list'
+            ? `<div class="brand-list-header"><span>Name</span><span>Folder</span><span>Dimension</span><span>Date Added</span></div>${brandedAssetsRows(assets)}`
+            : brandedAssetsGrid(assets)
+          : '<p class="muted">No assets found for this filter.</p>'}
       </div>
     </div>
   `;
@@ -147,6 +242,7 @@ function dashboardView() {
         <button id="toggleBrandedAssets" class="utility-btn">Branded Assets</button>
       </div>
       <div class="asset-icons">
+        <button id="toggleBrandedAssets" class="asset asset-btn ${state.brandedAssetsOpen ? 'active' : ''}">${icons.branded}<span>Branded Assets</span></button>
         <div class="asset">${icons.logos}<span>Logos</span></div>
         <div class="asset">${icons.fonts}<span>Fonts</span></div>
         <div class="asset">${icons.palette}<span>Palette</span></div>
@@ -159,19 +255,69 @@ function dashboardView() {
   `;
 }
 
+function getBoundText(layer) {
+  if (layer.bindKey === 'none') return layer.text;
+  if (layer.bindKey === 'score') return `Score: BOS ${state.gameState.score.BOS} - NYY ${state.gameState.score.NYY}`;
+  if (layer.bindKey === 'inning') return `Inning: ${state.gameState.inning}`;
+  if (layer.bindKey === 'lastEvent') return state.gameState.lastEvent;
+  return layer.text;
+}
+
 function designView() {
+  const selectedAsset = getAssetById(state.designSelectedAssetId) || state.brandedAssets[0];
+
   return `
-    <section class="panel">
-      <h3>Design Canvas · 16:9</h3>
-      <div class="canvas"><div class="score-chip">${state.liveScore}</div></div>
-    </section>
-    <section class="panel">
-      <h3>Graph Editor</h3>
-      <div class="node-row">
-        <div class="node">Score API</div>
-        <div class="node">Logic Gate</div>
-        <div class="node">Text Renderer</div>
+    <section class="panel design-layout">
+      <div>
+        <h3>Design Canvas · Linked Branded Asset</h3>
+        <div class="canvas design-canvas">
+          ${selectedAsset ? `<img src="${selectedAsset.src}" alt="${selectedAsset.name}" class="canvas-bg" />` : ''}
+          ${state.designTextLayers
+            .map(
+              (layer) => `<span class="text-layer" style="left:${layer.x}px;top:${layer.y}px;font-size:${layer.size}px;color:${layer.color};">${getBoundText(layer)}</span>`,
+            )
+            .join('')}
+        </div>
       </div>
+      <aside class="design-sidebar">
+        <div class="panel mini-panel">
+          <h3>Branded Assets Locker</h3>
+          <div class="design-asset-list">
+            ${state.brandedAssets
+              .map(
+                (asset) => `<button class="design-asset-item ${state.designSelectedAssetId === asset.id ? 'active' : ''}" data-design-asset-id="${asset.id}">${asset.name}<span>${asset.dimension}</span></button>`,
+              )
+              .join('')}
+          </div>
+        </div>
+        <div class="panel mini-panel">
+          <h3>Text Layers & Data Bind</h3>
+          <div class="layer-controls">
+            ${state.designTextLayers
+              .map(
+                (layer) => `
+                  <div class="layer-card">
+                    <strong>${layer.name}</strong>
+                    <input data-layer-id="${layer.id}" data-prop="text" value="${layer.text}" />
+                    <div class="layer-row">
+                      <input type="number" data-layer-id="${layer.id}" data-prop="x" value="${layer.x}" />
+                      <input type="number" data-layer-id="${layer.id}" data-prop="y" value="${layer.y}" />
+                      <input type="number" data-layer-id="${layer.id}" data-prop="size" value="${layer.size}" />
+                      <input type="color" data-layer-id="${layer.id}" data-prop="color" value="${layer.color}" />
+                    </div>
+                    <select data-layer-id="${layer.id}" data-prop="bindKey">
+                      <option value="none" ${layer.bindKey === 'none' ? 'selected' : ''}>Manual</option>
+                      <option value="score" ${layer.bindKey === 'score' ? 'selected' : ''}>Bind Score</option>
+                      <option value="inning" ${layer.bindKey === 'inning' ? 'selected' : ''}>Bind Inning</option>
+                      <option value="lastEvent" ${layer.bindKey === 'lastEvent' ? 'selected' : ''}>Bind Last Event</option>
+                    </select>
+                  </div>
+                `,
+              )
+              .join('')}
+          </div>
+        </div>
+      </aside>
     </section>
   `;
 }
@@ -179,19 +325,38 @@ function designView() {
 function dataEngineView() {
   return `
     <section class="panel">
-      <h3>Data Engine · Live Spreadsheet</h3>
+      <h3>Data Simulation Engine · MLB Live Feed</h3>
+      <div class="sim-toolbar">
+        <button id="toggleSimulation" class="utility-btn ${state.simulationRunning ? 'sim-on' : ''}">${state.simulationRunning ? 'Stop Simulation' : 'Start Simulation'}</button>
+        <label class="control-group">Speed
+          <select id="simulationSpeed">
+            <option value="1800" ${state.simulationSpeedMs === 1800 ? 'selected' : ''}>Slow</option>
+            <option value="1300" ${state.simulationSpeedMs === 1300 ? 'selected' : ''}>Normal</option>
+            <option value="700" ${state.simulationSpeedMs === 700 ? 'selected' : ''}>Fast</option>
+          </select>
+        </label>
+        <button id="resetSimulation" class="pill-btn">Reset Game</button>
+      </div>
       <table class="table">
         <thead><tr><th>KEY</th><th>SOURCE</th><th>VALUE</th></tr></thead>
         <tbody>
-          <tr>
-            <td>liveScore</td>
-            <td>Google Sheet: Matchday</td>
-            <td><input id="scoreInput" class="score-input" value="${state.liveScore}" /></td>
-          </tr>
-          <tr><td>clock</td><td>Score API</td><td>72:44</td></tr>
-          <tr><td>period</td><td>Logic Node</td><td>2nd Half</td></tr>
+          <tr><td>matchup</td><td>MLB Simulator</td><td>${state.gameState.matchup}</td></tr>
+          <tr><td>inning</td><td>MLB Simulator</td><td>${state.gameState.inning}</td></tr>
+          <tr><td>score</td><td>MLB Simulator</td><td>BOS ${state.gameState.score.BOS} - NYY ${state.gameState.score.NYY}</td></tr>
+          <tr><td>hits</td><td>MLB Simulator</td><td>BOS ${state.gameState.hits.BOS} / NYY ${state.gameState.hits.NYY}</td></tr>
+          <tr><td>lastEvent</td><td>MLB Simulator</td><td>${state.gameState.lastEvent}</td></tr>
         </tbody>
       </table>
+    </section>
+    <section class="panel">
+      <h3>Full 9-Inning Game Feed (15-12 Red Sox)</h3>
+      <div class="sim-feed">
+        ${mlbSimulationFeed
+          .map(
+            (play, index) => `<div class="feed-row ${index === state.simulationIndex ? 'active' : ''}"><strong>${play.inning}</strong><span>${play.summary}</span><em>${play.scoreAfter}</em></div>`,
+          )
+          .join('')}
+      </div>
     </section>
   `;
 }
@@ -251,27 +416,116 @@ function renderView() {
   }
 }
 
+function deriveHits(feedIndex) {
+  const bosHits = 7 + Math.floor(feedIndex * 0.7);
+  const nyyHits = 6 + Math.floor(feedIndex * 0.65);
+  return { BOS: bosHits, NYY: nyyHits };
+}
+
+function runSimulationStep() {
+  const nextIndex = state.simulationIndex + 1;
+  if (nextIndex >= mlbSimulationFeed.length) {
+    stopSimulation();
+    return;
+  }
+
+  const play = mlbSimulationFeed[nextIndex];
+  const [, bosScoreRaw, nyyScoreRaw] = play.scoreAfter.match(/BOS\s(\d+)\s-\sNYY\s(\d+)/) || [];
+  const bosScore = Number(bosScoreRaw || 0);
+  const nyyScore = Number(nyyScoreRaw || 0);
+
+  setState({
+    simulationIndex: nextIndex,
+    liveScore: `BOS ${bosScore} - NYY ${nyyScore}`,
+    gameState: {
+      ...state.gameState,
+      inning: play.inning,
+      score: { BOS: bosScore, NYY: nyyScore },
+      hits: deriveHits(nextIndex),
+      lastEvent: play.summary,
+      outs: nextIndex % 3,
+      baseState: play.runsScored ? 'Runners advanced' : 'Bases Empty',
+    },
+  });
+}
+
+function startSimulation() {
+  if (simulationTimer) return;
+
+  setState({ simulationRunning: true });
+  simulationTimer = setInterval(runSimulationStep, state.simulationSpeedMs);
+}
+
+function stopSimulation() {
+  if (simulationTimer) {
+    clearInterval(simulationTimer);
+    simulationTimer = null;
+  }
+
+  if (state.simulationRunning) {
+    setState({ simulationRunning: false });
+  }
+}
+
+function resetSimulation() {
+  stopSimulation();
+  setState({
+    simulationIndex: -1,
+    liveScore: 'BOS 0 - NYY 0',
+    gameState: {
+      ...state.gameState,
+      inning: 'Pregame',
+      score: { BOS: 0, NYY: 0 },
+      hits: { BOS: 0, NYY: 0 },
+      lastEvent: 'Simulation reset. Ready to start.',
+      outs: 0,
+      baseState: 'Bases Empty',
+    },
+  });
+}
+
+function updateLayer(layerId, prop, value) {
+  const castValue = prop === 'x' || prop === 'y' || prop === 'size' ? Number(value) : value;
+  const layers = state.designTextLayers.map((layer) => (layer.id === Number(layerId) ? { ...layer, [prop]: castValue } : layer));
+  setState({ designTextLayers: layers });
+}
+
+function guessDimensionFromFileName(name) {
+  const lowerName = name.toLowerCase();
+  const matched = supportedDimensions.find((dimension) => lowerName.includes(dimension));
+  return matched || '1920x1080';
+}
+
 function wireBrandedAssetInteractions() {
   const toggleButton = document.getElementById('toggleBrandedAssets');
   if (toggleButton) {
     toggleButton.addEventListener('click', () => setState({ brandedAssetsOpen: !state.brandedAssetsOpen }));
   }
 
+  const listViewButton = document.getElementById('brandListView');
+  if (listViewButton) {
+    listViewButton.addEventListener('click', () => setState({ brandedAssetsView: 'list' }));
+  }
+
+  const gridViewButton = document.getElementById('brandGridView');
+  if (gridViewButton) {
+    gridViewButton.addEventListener('click', () => setState({ brandedAssetsView: 'grid' }));
+  }
+
   const uploadInput = document.getElementById('brandAssetUpload');
   if (uploadInput) {
     uploadInput.addEventListener('change', (event) => {
       const files = Array.from(event.target.files || []).filter((file) => file.type === 'image/png');
-      if (!files.length) {
-        return;
-      }
+      if (!files.length) return;
 
-      const targetFolder =
-        state.brandedAssetsFolderFilter === 'All folders' ? 'General' : state.brandedAssetsFolderFilter;
+      const targetFolder = state.brandedAssetsFolderFilter === 'All folders' ? 'General' : state.brandedAssetsFolderFilter;
+      const uploadDimension = document.getElementById('brandUploadDimension')?.value;
 
       const newAssets = files.map((file, index) => ({
         id: Date.now() + index,
         name: file.name,
         folder: targetFolder,
+        dimension: uploadDimension || guessDimensionFromFileName(file.name),
         createdAt: new Date().toISOString(),
         src: URL.createObjectURL(file),
       }));
@@ -284,6 +538,13 @@ function wireBrandedAssetInteractions() {
   if (folderFilter) {
     folderFilter.addEventListener('change', (event) => {
       setState({ brandedAssetsFolderFilter: event.target.value });
+    });
+  }
+
+  const dimensionFilter = document.getElementById('brandDimensionFilter');
+  if (dimensionFilter) {
+    dimensionFilter.addEventListener('change', (event) => {
+      setState({ brandedAssetsDimensionFilter: event.target.value });
     });
   }
 
@@ -300,10 +561,7 @@ function wireBrandedAssetInteractions() {
       event.preventDefault();
       const folderInput = document.getElementById('brandFolderInput');
       const folderName = folderInput.value.trim();
-
-      if (!folderName || state.brandedFolders.includes(folderName)) {
-        return;
-      }
+      if (!folderName || state.brandedFolders.includes(folderName)) return;
 
       setState({
         brandedFolders: [...state.brandedFolders, folderName],
@@ -311,15 +569,60 @@ function wireBrandedAssetInteractions() {
       });
     });
   }
+
+  document.querySelectorAll('[data-asset-id]').forEach((row) => {
+    row.addEventListener('click', () => {
+      setState({ designSelectedAssetId: Number(row.dataset.assetId), activeTab: 'Design' });
+    });
+  });
+}
+
+function wireDesignInteractions() {
+  document.querySelectorAll('[data-design-asset-id]').forEach((button) => {
+    button.addEventListener('click', () => setState({ designSelectedAssetId: Number(button.dataset.designAssetId) }));
+  });
+
+  document.querySelectorAll('[data-layer-id]').forEach((control) => {
+    control.addEventListener('input', () => updateLayer(control.dataset.layerId, control.dataset.prop, control.value));
+    control.addEventListener('change', () => updateLayer(control.dataset.layerId, control.dataset.prop, control.value));
+  });
+}
+
+function wireDataEngineInteractions() {
+  const toggleSimulationButton = document.getElementById('toggleSimulation');
+  if (toggleSimulationButton) {
+    toggleSimulationButton.addEventListener('click', () => {
+      if (state.simulationRunning) {
+        stopSimulation();
+      } else {
+        startSimulation();
+      }
+    });
+  }
+
+  const speedSelect = document.getElementById('simulationSpeed');
+  if (speedSelect) {
+    speedSelect.addEventListener('change', (event) => {
+      const nextSpeed = Number(event.target.value);
+      const wasRunning = state.simulationRunning;
+      stopSimulation();
+      setState({ simulationSpeedMs: nextSpeed });
+      if (wasRunning) {
+        startSimulation();
+      }
+    });
+  }
+
+  const resetButton = document.getElementById('resetSimulation');
+  if (resetButton) {
+    resetButton.addEventListener('click', resetSimulation);
+  }
 }
 
 function wireInteractions() {
-  const input = document.getElementById('scoreInput');
-  if (input) {
-    input.addEventListener('input', (e) => setState({ liveScore: e.target.value }));
-  }
-
   wireBrandedAssetInteractions();
+  wireDesignInteractions();
+  wireDataEngineInteractions();
 }
 
 function render() {
