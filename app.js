@@ -4,6 +4,26 @@ const state = {
   activeTab: 'Dashboard',
   liveScore: 'Home 2 - Away 1',
   isStreaming: false,
+  brandedAssetsOpen: false,
+  brandedAssetsFolderFilter: 'All folders',
+  brandedAssetsSort: 'newest',
+  brandedAssets: [
+    {
+      id: 1,
+      name: 'sponsor-lockup.png',
+      folder: 'Sponsors',
+      createdAt: new Date('2025-01-09T09:10:00').toISOString(),
+      src: 'https://dummyimage.com/300x180/0f172a/93c5fd.png&text=Sponsor+Lockup',
+    },
+    {
+      id: 2,
+      name: 'league-badge.png',
+      folder: 'League',
+      createdAt: new Date('2025-02-12T12:45:00').toISOString(),
+      src: 'https://dummyimage.com/300x180/111827/86efac.png&text=League+Badge',
+    },
+  ],
+  brandedFolders: ['General', 'Sponsors', 'League'],
 };
 
 const icons = {
@@ -32,6 +52,85 @@ function renderTabs() {
   });
 }
 
+function getFilteredAndSortedAssets() {
+  const filtered = state.brandedAssets.filter((asset) => {
+    if (state.brandedAssetsFolderFilter === 'All folders') {
+      return true;
+    }
+
+    return asset.folder === state.brandedAssetsFolderFilter;
+  });
+
+  return filtered.sort((a, b) => {
+    if (state.brandedAssetsSort === 'name-asc') {
+      return a.name.localeCompare(b.name);
+    }
+
+    if (state.brandedAssetsSort === 'name-desc') {
+      return b.name.localeCompare(a.name);
+    }
+
+    if (state.brandedAssetsSort === 'oldest') {
+      return new Date(a.createdAt) - new Date(b.createdAt);
+    }
+
+    return new Date(b.createdAt) - new Date(a.createdAt);
+  });
+}
+
+function brandedAssetsManager() {
+  const assets = getFilteredAndSortedAssets();
+
+  return `
+    <div class="brand-manager ${state.brandedAssetsOpen ? 'open' : ''}">
+      <div class="brand-manager-header">
+        <h4>Branded Assets</h4>
+        <p class="muted">Upload PNG files, organize folders, and sort assets by name/date.</p>
+      </div>
+      <div class="brand-controls">
+        <label class="control-group">Upload PNG
+          <input id="brandAssetUpload" type="file" accept="image/png" multiple />
+        </label>
+        <label class="control-group">Folder
+          <select id="brandFolderFilter">
+            <option value="All folders" ${state.brandedAssetsFolderFilter === 'All folders' ? 'selected' : ''}>All folders</option>
+            ${state.brandedFolders.map((folder) => `<option value="${folder}" ${state.brandedAssetsFolderFilter === folder ? 'selected' : ''}>${folder}</option>`).join('')}
+          </select>
+        </label>
+        <label class="control-group">Sort
+          <select id="brandAssetSort">
+            <option value="newest" ${state.brandedAssetsSort === 'newest' ? 'selected' : ''}>Newest first</option>
+            <option value="oldest" ${state.brandedAssetsSort === 'oldest' ? 'selected' : ''}>Oldest first</option>
+            <option value="name-asc" ${state.brandedAssetsSort === 'name-asc' ? 'selected' : ''}>Name A-Z</option>
+            <option value="name-desc" ${state.brandedAssetsSort === 'name-desc' ? 'selected' : ''}>Name Z-A</option>
+          </select>
+        </label>
+        <form id="brandFolderForm" class="folder-form">
+          <input id="brandFolderInput" placeholder="New folder name" maxlength="24" />
+          <button type="submit">Create Folder</button>
+        </form>
+      </div>
+      <div class="brand-assets-grid">
+        ${assets.length
+          ? assets
+              .map(
+                (asset) => `
+                  <article class="brand-asset-card">
+                    <img src="${asset.src}" alt="${asset.name}" />
+                    <div>
+                      <strong>${asset.name}</strong>
+                      <p class="muted">${asset.folder} · ${new Date(asset.createdAt).toLocaleDateString()}</p>
+                    </div>
+                  </article>
+                `,
+              )
+              .join('')
+          : '<p class="muted">No assets found for this folder yet.</p>'}
+      </div>
+    </div>
+  `;
+}
+
 function dashboardView() {
   return `
     <section class="panel">
@@ -43,7 +142,10 @@ function dashboardView() {
       </div>
     </section>
     <section class="panel">
-      <h3>Global Asset Library</h3>
+      <div class="asset-header">
+        <h3>Global Asset Library</h3>
+        <button id="toggleBrandedAssets" class="utility-btn">Branded Assets</button>
+      </div>
       <div class="asset-icons">
         <div class="asset">${icons.logos}<span>Logos</span></div>
         <div class="asset">${icons.fonts}<span>Fonts</span></div>
@@ -52,6 +154,7 @@ function dashboardView() {
         <div class="asset">${icons.logos}<span>Bug</span></div>
         <div class="asset">${icons.fonts}<span>Templates</span></div>
       </div>
+      ${brandedAssetsManager()}
     </section>
   `;
 }
@@ -94,7 +197,7 @@ function dataEngineView() {
 }
 
 function controlRoomView() {
-  const shots = ['Home Goal','Away Goal','Yellow Card','Red Card','Sub Home','Sub Away','Full Screen Stats','Lower Third','Corner Kick','VAR Check','Final Whistle','Replay Transition'];
+  const shots = ['Home Goal', 'Away Goal', 'Yellow Card', 'Red Card', 'Sub Home', 'Sub Away', 'Full Screen Stats', 'Lower Third', 'Corner Kick', 'VAR Check', 'Final Whistle', 'Replay Transition'];
   return `
     <section class="panel control-layout">
       <div>
@@ -133,12 +236,80 @@ function outputView() {
 
 function renderView() {
   switch (state.activeTab) {
-    case 'Dashboard': return dashboardView();
-    case 'Design': return designView();
-    case 'Data Engine': return dataEngineView();
-    case 'Control Room': return controlRoomView();
-    case 'Output': return outputView();
-    default: return dashboardView();
+    case 'Dashboard':
+      return dashboardView();
+    case 'Design':
+      return designView();
+    case 'Data Engine':
+      return dataEngineView();
+    case 'Control Room':
+      return controlRoomView();
+    case 'Output':
+      return outputView();
+    default:
+      return dashboardView();
+  }
+}
+
+function wireBrandedAssetInteractions() {
+  const toggleButton = document.getElementById('toggleBrandedAssets');
+  if (toggleButton) {
+    toggleButton.addEventListener('click', () => setState({ brandedAssetsOpen: !state.brandedAssetsOpen }));
+  }
+
+  const uploadInput = document.getElementById('brandAssetUpload');
+  if (uploadInput) {
+    uploadInput.addEventListener('change', (event) => {
+      const files = Array.from(event.target.files || []).filter((file) => file.type === 'image/png');
+      if (!files.length) {
+        return;
+      }
+
+      const targetFolder =
+        state.brandedAssetsFolderFilter === 'All folders' ? 'General' : state.brandedAssetsFolderFilter;
+
+      const newAssets = files.map((file, index) => ({
+        id: Date.now() + index,
+        name: file.name,
+        folder: targetFolder,
+        createdAt: new Date().toISOString(),
+        src: URL.createObjectURL(file),
+      }));
+
+      setState({ brandedAssets: [...newAssets, ...state.brandedAssets] });
+    });
+  }
+
+  const folderFilter = document.getElementById('brandFolderFilter');
+  if (folderFilter) {
+    folderFilter.addEventListener('change', (event) => {
+      setState({ brandedAssetsFolderFilter: event.target.value });
+    });
+  }
+
+  const sortSelect = document.getElementById('brandAssetSort');
+  if (sortSelect) {
+    sortSelect.addEventListener('change', (event) => {
+      setState({ brandedAssetsSort: event.target.value });
+    });
+  }
+
+  const folderForm = document.getElementById('brandFolderForm');
+  if (folderForm) {
+    folderForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const folderInput = document.getElementById('brandFolderInput');
+      const folderName = folderInput.value.trim();
+
+      if (!folderName || state.brandedFolders.includes(folderName)) {
+        return;
+      }
+
+      setState({
+        brandedFolders: [...state.brandedFolders, folderName],
+        brandedAssetsFolderFilter: folderName,
+      });
+    });
   }
 }
 
@@ -147,6 +318,8 @@ function wireInteractions() {
   if (input) {
     input.addEventListener('input', (e) => setState({ liveScore: e.target.value }));
   }
+
+  wireBrandedAssetInteractions();
 }
 
 function render() {
