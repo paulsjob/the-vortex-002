@@ -1,16 +1,47 @@
 const tabs = ['Dashboard', 'Design', 'Data Engine', 'Control Room', 'Output'];
 
+const bootstrap = window.RENDERLESS_BOOTSTRAP || {};
+const supportedDimensions = bootstrap.supportedDimensions || ['1920x1080', '1080x1920', '1080x1080', '1080x1350'];
+const mlbSimulationFeed = bootstrap.mlbSimulationFeed || [];
+
+function cloneValue(value) {
+  if (typeof structuredClone === 'function') return structuredClone(value);
+  return JSON.parse(JSON.stringify(value));
+}
+
+const seedAssets = cloneValue(bootstrap.brandedAssets || []);
+const inferredFolders = Array.from(new Set(seedAssets.map((asset) => asset.folder)));
+
 const state = {
   activeTab: 'Dashboard',
-  liveScore: 'Home 2 - Away 1',
+  liveScore: 'BOS 0 - NYY 0',
   isStreaming: false,
+  brandedAssetsOpen: true,
+  brandedAssetsFolderFilter: 'All folders',
+  brandedAssetsDimensionFilter: 'All dimensions',
+  brandedAssetsSort: 'newest',
+  brandedAssets: seedAssets,
+  brandedFolders: ['General', ...inferredFolders],
+  designSelectedAssetId: seedAssets[0]?.id || null,
+  designTextLayers: [
+    { id: 1, name: 'Headline', text: 'Final Score Update', x: 32, y: 36, size: 56, color: '#ffffff', bindKey: 'none' },
+    { id: 2, name: 'Subhead', text: 'Waiting to start MLB simulation.', x: 32, y: 110, size: 40, color: '#bfdbfe', bindKey: 'lastEvent' },
+  ],
+  nextTextLayerId: 3,
+  simulationRunning: false,
+  simulationSpeedMs: 1300,
+  simulationIndex: -1,
+  gameState: cloneValue(bootstrap.initialGameState || {}),
 };
+
+let simulationTimer = null;
 
 const icons = {
   logos: '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>',
   fonts: '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20 10 4l6 16"/><path d="M6 14h8"/></svg>',
   palette: '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="8" cy="10" r="1"/><circle cx="12" cy="8" r="1"/><circle cx="16" cy="10" r="1"/><path d="M12 16h.01"/></svg>',
   animation: '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v20M2 12h20"/><path d="m5 5 14 14M19 5 5 19"/></svg>',
+  branded: '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h10M7 13h7"/></svg>',
 };
 
 const streamButton = document.getElementById('streamButton');
@@ -23,13 +54,89 @@ function setState(patch) {
 }
 
 function renderTabs() {
-  tabsEl.innerHTML = tabs
-    .map((tab) => `<button class="tab-btn ${state.activeTab === tab ? 'active' : ''}" data-tab="${tab}">${tab}</button>`)
-    .join('');
+  tabsEl.innerHTML = tabs.map((tab) => `<button class="tab-btn ${state.activeTab === tab ? 'active' : ''}" data-tab="${tab}">${tab}</button>`).join('');
+  tabsEl.querySelectorAll('.tab-btn').forEach((btn) => btn.addEventListener('click', () => setState({ activeTab: btn.dataset.tab })));
+}
 
-  tabsEl.querySelectorAll('.tab-btn').forEach((btn) => {
-    btn.addEventListener('click', () => setState({ activeTab: btn.dataset.tab }));
+function getAssetById(id) {
+  return state.brandedAssets.find((asset) => asset.id === Number(id));
+}
+
+function getDimensionRatio(dimension) {
+  const [w, h] = dimension.split('x').map(Number);
+  return w / h;
+}
+
+function getFilteredAndSortedAssets() {
+  const filtered = state.brandedAssets.filter((asset) => {
+    const folderMatch = state.brandedAssetsFolderFilter === 'All folders' || asset.folder === state.brandedAssetsFolderFilter;
+    const dimensionMatch = state.brandedAssetsDimensionFilter === 'All dimensions' || asset.dimension === state.brandedAssetsDimensionFilter;
+    return folderMatch && dimensionMatch;
   });
+
+  return filtered.sort((a, b) => {
+    if (state.brandedAssetsSort === 'name-asc') return a.name.localeCompare(b.name);
+    if (state.brandedAssetsSort === 'name-desc') return b.name.localeCompare(a.name);
+    if (state.brandedAssetsSort === 'oldest') return new Date(a.createdAt) - new Date(b.createdAt);
+    if (state.brandedAssetsSort === 'dimension') return a.dimension.localeCompare(b.dimension);
+    return new Date(b.createdAt) - new Date(a.createdAt);
+  });
+}
+
+function brandedAssetsRows(assets) {
+  return assets.map((asset) => `
+    <button class="brand-list-row" data-asset-id="${asset.id}">
+      <span class="cell name">${asset.name}</span>
+      <span class="cell folder">${asset.folder}</span>
+      <span class="cell dim">${asset.dimension}</span>
+      <span class="cell date">${new Date(asset.createdAt).toLocaleDateString()}</span>
+    </button>`).join('');
+}
+
+function brandedAssetsManager() {
+  const assets = getFilteredAndSortedAssets();
+
+  return `
+    <div class="brand-manager ${state.brandedAssetsOpen ? 'open' : ''}">
+      <div class="brand-manager-header">
+        <h4>Branded Assets Locker</h4>
+      </div>
+      <div class="brand-controls compact">
+        <label class="control-group">Upload PNG<input id="brandAssetUpload" type="file" accept="image/png" multiple /></label>
+        <label class="control-group">Folder
+          <select id="brandFolderFilter">
+            <option value="All folders" ${state.brandedAssetsFolderFilter === 'All folders' ? 'selected' : ''}>All folders</option>
+            ${state.brandedFolders.map((folder) => `<option value="${folder}" ${state.brandedAssetsFolderFilter === folder ? 'selected' : ''}>${folder}</option>`).join('')}
+          </select>
+        </label>
+        <label class="control-group">Dimension
+          <select id="brandDimensionFilter">
+            <option value="All dimensions" ${state.brandedAssetsDimensionFilter === 'All dimensions' ? 'selected' : ''}>All dimensions</option>
+            ${supportedDimensions.map((dimension) => `<option value="${dimension}" ${state.brandedAssetsDimensionFilter === dimension ? 'selected' : ''}>${dimension}</option>`).join('')}
+          </select>
+        </label>
+        <label class="control-group">Sort
+          <select id="brandAssetSort">
+            <option value="newest" ${state.brandedAssetsSort === 'newest' ? 'selected' : ''}>Newest first</option>
+            <option value="oldest" ${state.brandedAssetsSort === 'oldest' ? 'selected' : ''}>Oldest first</option>
+            <option value="name-asc" ${state.brandedAssetsSort === 'name-asc' ? 'selected' : ''}>Name A-Z</option>
+            <option value="name-desc" ${state.brandedAssetsSort === 'name-desc' ? 'selected' : ''}>Name Z-A</option>
+            <option value="dimension" ${state.brandedAssetsSort === 'dimension' ? 'selected' : ''}>Dimension</option>
+          </select>
+        </label>
+      </div>
+      <form id="brandFolderForm" class="folder-form full-row">
+        <label class="control-group">Upload Dimension
+          <select id="brandUploadDimension">${supportedDimensions.map((dimension) => `<option value="${dimension}">${dimension}</option>`).join('')}</select>
+        </label>
+        <input id="brandFolderInput" placeholder="New folder name" maxlength="24" />
+        <button id="brandCreateFolder" type="submit">Create Folder</button>
+      </form>
+      <div class="brand-assets-wrap list">
+        ${assets.length ? `<div class="brand-list-header"><span>Name</span><span>Folder</span><span>Dimension</span><span>Date Added</span></div>${brandedAssetsRows(assets)}` : '<p class="muted">No assets found for this filter.</p>'}
+      </div>
+    </div>
+  `;
 }
 
 function dashboardView() {
@@ -45,6 +152,7 @@ function dashboardView() {
     <section class="panel">
       <h3>Global Asset Library</h3>
       <div class="asset-icons">
+        <button id="toggleBrandedAssets" class="asset asset-btn ${state.brandedAssetsOpen ? 'active' : ''}">${icons.branded}<span>Branded Assets</span></button>
         <div class="asset">${icons.logos}<span>Logos</span></div>
         <div class="asset">${icons.fonts}<span>Fonts</span></div>
         <div class="asset">${icons.palette}<span>Palette</span></div>
@@ -52,23 +160,74 @@ function dashboardView() {
         <div class="asset">${icons.logos}<span>Bug</span></div>
         <div class="asset">${icons.fonts}<span>Templates</span></div>
       </div>
+      ${brandedAssetsManager()}
     </section>
   `;
 }
 
+function getBoundText(layer) {
+  if (layer.bindKey === 'none') return layer.text;
+  if (layer.bindKey === 'score') return `Score: BOS ${state.gameState.score.BOS} - NYY ${state.gameState.score.NYY}`;
+  if (layer.bindKey === 'inning') return `${state.gameState.inningState} ${state.gameState.inning}`;
+  if (layer.bindKey === 'count') return `Count ${state.gameState.balls}-${state.gameState.strikes}, ${state.gameState.outs} out`;
+  if (layer.bindKey === 'matchup') return `${state.gameState.pitcher} vs ${state.gameState.batter}`;
+  if (layer.bindKey === 'lastEvent') return state.gameState.lastEvent;
+  return layer.text;
+}
+
 function designView() {
+  const selectedAsset = getAssetById(state.designSelectedAssetId) || state.brandedAssets[0];
+  const ratio = selectedAsset ? getDimensionRatio(selectedAsset.dimension) : 16 / 9;
+
   return `
-    <section class="panel">
-      <h3>Design Canvas · 16:9</h3>
-      <div class="canvas"><div class="score-chip">${state.liveScore}</div></div>
-    </section>
-    <section class="panel">
-      <h3>Graph Editor</h3>
-      <div class="node-row">
-        <div class="node">Score API</div>
-        <div class="node">Logic Gate</div>
-        <div class="node">Text Renderer</div>
+    <section class="panel design-layout">
+      <div>
+        <h3>Design Canvas · Linked Branded Asset</h3>
+        <div class="design-stage-shell">
+          <div class="design-stage" style="--asset-ratio:${ratio};">
+            ${selectedAsset ? `<img src="${selectedAsset.src}" alt="${selectedAsset.name}" class="canvas-bg" />` : ''}
+            ${state.designTextLayers.map((layer) => `<span class="text-layer" style="left:${layer.x}px;top:${layer.y}px;font-size:${layer.size}px;color:${layer.color};">${getBoundText(layer)}</span>`).join('')}
+          </div>
+        </div>
       </div>
+      <aside class="design-sidebar">
+        <div class="panel mini-panel">
+          <h3>Branded Assets Locker</h3>
+          <div class="design-asset-list">
+            ${state.brandedAssets.map((asset) => `<button class="design-asset-item ${state.designSelectedAssetId === asset.id ? 'active' : ''}" data-design-asset-id="${asset.id}">${asset.name}<span>${asset.dimension}</span></button>`).join('')}
+          </div>
+        </div>
+        <div class="panel mini-panel">
+          <div class="layer-head">
+            <h3>Text Layers & Data Bind</h3>
+            <button id="addTextLayer" class="pill-btn">Add Text Layer</button>
+          </div>
+          <div class="layer-controls">
+            ${state.designTextLayers.map((layer) => `
+              <div class="layer-card">
+                <div class="layer-title-row">
+                  <strong>${layer.name}</strong>
+                  <button class="layer-delete" data-remove-layer-id="${layer.id}">Remove</button>
+                </div>
+                <input data-layer-id="${layer.id}" data-prop="text" value="${layer.text}" />
+                <div class="layer-row">
+                  <input type="number" data-layer-id="${layer.id}" data-prop="x" value="${layer.x}" />
+                  <input type="number" data-layer-id="${layer.id}" data-prop="y" value="${layer.y}" />
+                  <input type="number" data-layer-id="${layer.id}" data-prop="size" value="${layer.size}" />
+                  <input type="color" data-layer-id="${layer.id}" data-prop="color" value="${layer.color}" />
+                </div>
+                <select data-layer-id="${layer.id}" data-prop="bindKey">
+                  <option value="none" ${layer.bindKey === 'none' ? 'selected' : ''}>Manual</option>
+                  <option value="score" ${layer.bindKey === 'score' ? 'selected' : ''}>Bind Score</option>
+                  <option value="inning" ${layer.bindKey === 'inning' ? 'selected' : ''}>Bind Inning State</option>
+                  <option value="count" ${layer.bindKey === 'count' ? 'selected' : ''}>Bind Count/Outs</option>
+                  <option value="matchup" ${layer.bindKey === 'matchup' ? 'selected' : ''}>Bind Pitcher vs Batter</option>
+                  <option value="lastEvent" ${layer.bindKey === 'lastEvent' ? 'selected' : ''}>Bind Last Event</option>
+                </select>
+              </div>`).join('')}
+          </div>
+        </div>
+      </aside>
     </section>
   `;
 }
@@ -76,32 +235,48 @@ function designView() {
 function dataEngineView() {
   return `
     <section class="panel">
-      <h3>Data Engine · Live Spreadsheet</h3>
+      <h3>Data Simulation Engine · Pitch by Pitch</h3>
+      <div class="sim-toolbar">
+        <button id="toggleSimulation" class="utility-btn ${state.simulationRunning ? 'sim-on' : ''}">${state.simulationRunning ? 'Stop Simulation' : 'Start Simulation'}</button>
+        <label class="control-group">Speed
+          <select id="simulationSpeed">
+            <option value="1800" ${state.simulationSpeedMs === 1800 ? 'selected' : ''}>Slow</option>
+            <option value="1300" ${state.simulationSpeedMs === 1300 ? 'selected' : ''}>Normal</option>
+            <option value="700" ${state.simulationSpeedMs === 700 ? 'selected' : ''}>Fast</option>
+          </select>
+        </label>
+        <button id="resetSimulation" class="pill-btn">Reset Game</button>
+      </div>
       <table class="table">
         <thead><tr><th>KEY</th><th>SOURCE</th><th>VALUE</th></tr></thead>
         <tbody>
-          <tr>
-            <td>liveScore</td>
-            <td>Google Sheet: Matchday</td>
-            <td><input id="scoreInput" class="score-input" value="${state.liveScore}" /></td>
-          </tr>
-          <tr><td>clock</td><td>Score API</td><td>72:44</td></tr>
-          <tr><td>period</td><td>Logic Node</td><td>2nd Half</td></tr>
+          <tr><td>score</td><td>MLB Simulator</td><td>BOS ${state.gameState.score.BOS} - NYY ${state.gameState.score.NYY}</td></tr>
+          <tr><td>inning</td><td>MLB Simulator</td><td>${state.gameState.inningState} ${state.gameState.inning}</td></tr>
+          <tr><td>count</td><td>MLB Simulator</td><td>${state.gameState.balls}-${state.gameState.strikes}, ${state.gameState.outs} out</td></tr>
+          <tr><td>runnersOnBase</td><td>MLB Simulator</td><td>${state.gameState.runnersOnBase}</td></tr>
+          <tr><td>pitcher / batter</td><td>MLB Simulator</td><td>${state.gameState.pitcher} vs ${state.gameState.batter}</td></tr>
+          <tr><td>pitch</td><td>MLB Simulator</td><td>${state.gameState.pitchType} · ${state.gameState.pitchVelocity} mph · ${state.gameState.pitchLocation}</td></tr>
+          <tr><td>contact metrics</td><td>MLB Simulator</td><td>${state.gameState.batSpeed} mph · ${state.gameState.exitVelocity} mph · ${state.gameState.launchAngle}° · ${state.gameState.projectedDistance} ft</td></tr>
+          <tr><td>lastEvent</td><td>MLB Simulator</td><td>${state.gameState.lastEvent}</td></tr>
         </tbody>
       </table>
+    </section>
+    <section class="panel">
+      <h3>Pitch Stream</h3>
+      <div class="sim-feed">
+        ${mlbSimulationFeed.map((play, index) => `<div class="feed-row ${index === state.simulationIndex ? 'active' : ''}"><strong>${play.inningState} ${play.inning}</strong><span>${play.pitch.type} ${play.pitch.velocity} mph · ${play.summary}</span><em>BOS ${play.score.BOS} - NYY ${play.score.NYY}</em></div>`).join('')}
+      </div>
     </section>
   `;
 }
 
 function controlRoomView() {
-  const shots = ['Home Goal','Away Goal','Yellow Card','Red Card','Sub Home','Sub Away','Full Screen Stats','Lower Third','Corner Kick','VAR Check','Final Whistle','Replay Transition'];
+  const shots = ['Home Goal', 'Away Goal', 'Yellow Card', 'Red Card', 'Sub Home', 'Sub Away', 'Full Screen Stats', 'Lower Third', 'Corner Kick', 'VAR Check', 'Final Whistle', 'Replay Transition'];
   return `
     <section class="panel control-layout">
       <div>
         <h3>Shotbox</h3>
-        <div class="shotbox">
-          ${shots.map((s) => `<button class="shot">${s}</button>`).join('')}
-        </div>
+        <div class="shotbox">${shots.map((s) => `<button class="shot">${s}</button>`).join('')}</div>
       </div>
       <div class="monitors">
         <div class="monitor preview"><h4>PREVIEW</h4><div class="monotext">${state.liveScore}</div></div>
@@ -121,11 +296,7 @@ function outputView() {
       </div>
       <div>
         <h3>System Event Log</h3>
-        <div class="log">
-          ${state.isStreaming
-            ? '[12:00:01] INFO: Renderless Engine Initialized\n[12:00:04] SUCCESS: NDI sink linked\n[12:00:07] INFO: Preview chain healthy\n[12:00:10] INFO: Frame rate stable at 60 FPS\n[12:00:13] SUCCESS: Program output live\n[12:00:14] INFO: Audio embed synchronized\n[12:00:16] INFO: GPU utilization nominal\n[12:00:19] SUCCESS: Stream active to destination A'
-            : '[idle] Streaming disabled. Press "Push to Stream" to start output telemetry.'}
-        </div>
+        <div class="log">${state.isStreaming ? '[12:00:01] INFO: Renderless Engine Initialized\n[12:00:04] SUCCESS: NDI sink linked\n[12:00:07] INFO: Preview chain healthy\n[12:00:10] INFO: Frame rate stable at 60 FPS\n[12:00:13] SUCCESS: Program output live\n[12:00:14] INFO: Audio embed synchronized\n[12:00:16] INFO: GPU utilization nominal\n[12:00:19] SUCCESS: Stream active to destination A' : '[idle] Streaming disabled. Press "Push to Stream" to start output telemetry.'}</div>
       </div>
     </section>
   `;
@@ -142,11 +313,186 @@ function renderView() {
   }
 }
 
-function wireInteractions() {
-  const input = document.getElementById('scoreInput');
-  if (input) {
-    input.addEventListener('input', (e) => setState({ liveScore: e.target.value }));
+function runSimulationStep() {
+  const nextIndex = state.simulationIndex + 1;
+  if (nextIndex >= mlbSimulationFeed.length) {
+    stopSimulation();
+    return;
   }
+
+  const play = mlbSimulationFeed[nextIndex];
+  setState({
+    simulationIndex: nextIndex,
+    liveScore: `BOS ${play.score.BOS} - NYY ${play.score.NYY}`,
+    gameState: {
+      ...state.gameState,
+      inning: play.inning,
+      inningState: play.inningState,
+      score: play.score,
+      balls: play.count.balls,
+      strikes: play.count.strikes,
+      outs: play.count.outs,
+      runnersOnBase: play.runnersOnBase,
+      pitcher: play.pitcher,
+      batter: play.batter,
+      pitchType: play.pitch.type,
+      pitchVelocity: play.pitch.velocity,
+      pitchLocation: play.pitch.location,
+      batSpeed: play.hit.batSpeed,
+      exitVelocity: play.hit.exitVelocity,
+      launchAngle: play.hit.launchAngle,
+      projectedDistance: play.hit.projectedDistance,
+      lastEvent: play.summary,
+    },
+  });
+}
+
+function startSimulation() {
+  if (simulationTimer) return;
+  setState({ simulationRunning: true });
+  simulationTimer = setInterval(runSimulationStep, state.simulationSpeedMs);
+}
+
+function stopSimulation() {
+  if (simulationTimer) {
+    clearInterval(simulationTimer);
+    simulationTimer = null;
+  }
+  if (state.simulationRunning) setState({ simulationRunning: false });
+}
+
+function resetSimulation() {
+  stopSimulation();
+  setState({
+    simulationIndex: -1,
+    liveScore: 'BOS 0 - NYY 0',
+    gameState: cloneValue(bootstrap.initialGameState || {}),
+  });
+}
+
+function updateLayer(layerId, prop, value) {
+  const castValue = prop === 'x' || prop === 'y' || prop === 'size' ? Number(value) : value;
+  const layers = state.designTextLayers.map((layer) => (layer.id === Number(layerId) ? { ...layer, [prop]: castValue } : layer));
+  setState({ designTextLayers: layers });
+}
+
+function addTextLayer() {
+  const id = state.nextTextLayerId;
+  const newLayer = { id, name: `Layer ${id}`, text: 'New Text Layer', x: 32, y: 32 + state.designTextLayers.length * 48, size: 32, color: '#ffffff', bindKey: 'none' };
+  setState({ designTextLayers: [...state.designTextLayers, newLayer], nextTextLayerId: id + 1 });
+}
+
+function removeTextLayer(layerId) {
+  const layers = state.designTextLayers.filter((layer) => layer.id !== Number(layerId));
+  if (layers.length) setState({ designTextLayers: layers });
+}
+
+function guessDimensionFromFileName(name) {
+  const lowerName = name.toLowerCase();
+  return supportedDimensions.find((dimension) => lowerName.includes(dimension)) || '1920x1080';
+}
+
+function createFolder() {
+  const folderInput = document.getElementById('brandFolderInput');
+  if (!folderInput) return;
+  const folderName = folderInput.value.trim();
+  if (!folderName || state.brandedFolders.includes(folderName)) return;
+
+  setState({
+    brandedFolders: [...state.brandedFolders, folderName],
+    brandedAssetsFolderFilter: folderName,
+  });
+}
+
+function wireBrandedAssetInteractions() {
+  const toggleButton = document.getElementById('toggleBrandedAssets');
+  if (toggleButton) toggleButton.addEventListener('click', () => setState({ brandedAssetsOpen: !state.brandedAssetsOpen }));
+
+  const uploadInput = document.getElementById('brandAssetUpload');
+  if (uploadInput) {
+    uploadInput.addEventListener('change', (event) => {
+      const files = Array.from(event.target.files || []).filter((file) => file.type === 'image/png');
+      if (!files.length) return;
+
+      const targetFolder = state.brandedAssetsFolderFilter === 'All folders' ? 'General' : state.brandedAssetsFolderFilter;
+      const uploadDimension = document.getElementById('brandUploadDimension')?.value;
+
+      const newAssets = files.map((file, index) => ({
+        id: Date.now() + index,
+        name: file.name,
+        folder: targetFolder,
+        dimension: uploadDimension || guessDimensionFromFileName(file.name),
+        createdAt: new Date().toISOString(),
+        src: URL.createObjectURL(file),
+      }));
+
+      setState({ brandedAssets: [...newAssets, ...state.brandedAssets] });
+    });
+  }
+
+  const folderFilter = document.getElementById('brandFolderFilter');
+  if (folderFilter) folderFilter.addEventListener('change', (event) => setState({ brandedAssetsFolderFilter: event.target.value }));
+
+  const dimensionFilter = document.getElementById('brandDimensionFilter');
+  if (dimensionFilter) dimensionFilter.addEventListener('change', (event) => setState({ brandedAssetsDimensionFilter: event.target.value }));
+
+  const sortSelect = document.getElementById('brandAssetSort');
+  if (sortSelect) sortSelect.addEventListener('change', (event) => setState({ brandedAssetsSort: event.target.value }));
+
+  const folderForm = document.getElementById('brandFolderForm');
+  if (folderForm) folderForm.addEventListener('submit', (event) => { event.preventDefault(); createFolder(); });
+
+  document.querySelectorAll('[data-asset-id]').forEach((row) => {
+    row.addEventListener('click', () => setState({ designSelectedAssetId: Number(row.dataset.assetId), activeTab: 'Design' }));
+  });
+}
+
+function wireDesignInteractions() {
+  document.querySelectorAll('[data-design-asset-id]').forEach((button) => {
+    button.addEventListener('click', () => setState({ designSelectedAssetId: Number(button.dataset.designAssetId) }));
+  });
+
+  const addLayerButton = document.getElementById('addTextLayer');
+  if (addLayerButton) addLayerButton.addEventListener('click', addTextLayer);
+
+  document.querySelectorAll('[data-remove-layer-id]').forEach((button) => {
+    button.addEventListener('click', () => removeTextLayer(button.dataset.removeLayerId));
+  });
+
+  document.querySelectorAll('[data-layer-id]').forEach((control) => {
+    control.addEventListener('input', () => updateLayer(control.dataset.layerId, control.dataset.prop, control.value));
+    control.addEventListener('change', () => updateLayer(control.dataset.layerId, control.dataset.prop, control.value));
+  });
+}
+
+function wireDataEngineInteractions() {
+  const toggleSimulationButton = document.getElementById('toggleSimulation');
+  if (toggleSimulationButton) {
+    toggleSimulationButton.addEventListener('click', () => {
+      if (state.simulationRunning) stopSimulation();
+      else startSimulation();
+    });
+  }
+
+  const speedSelect = document.getElementById('simulationSpeed');
+  if (speedSelect) {
+    speedSelect.addEventListener('change', (event) => {
+      const nextSpeed = Number(event.target.value);
+      const wasRunning = state.simulationRunning;
+      stopSimulation();
+      setState({ simulationSpeedMs: nextSpeed });
+      if (wasRunning) startSimulation();
+    });
+  }
+
+  const resetButton = document.getElementById('resetSimulation');
+  if (resetButton) resetButton.addEventListener('click', resetSimulation);
+}
+
+function wireInteractions() {
+  wireBrandedAssetInteractions();
+  wireDesignInteractions();
+  wireDataEngineInteractions();
 }
 
 function render() {
