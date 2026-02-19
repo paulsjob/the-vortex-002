@@ -20,7 +20,6 @@ const state = {
   brandedAssetsFolderFilter: 'All folders',
   brandedAssetsDimensionFilter: 'All dimensions',
   brandedAssetsSort: 'newest',
-  brandedAssetsView: 'list',
   brandedAssets: seedAssets,
   brandedFolders: ['General', ...inferredFolders],
   designSelectedAssetId: seedAssets[0]?.id || null,
@@ -73,6 +72,14 @@ function getFilteredAndSortedAssets() {
     const folderMatch = state.brandedAssetsFolderFilter === 'All folders' || asset.folder === state.brandedAssetsFolderFilter;
     const dimensionMatch = state.brandedAssetsDimensionFilter === 'All dimensions' || asset.dimension === state.brandedAssetsDimensionFilter;
     return folderMatch && dimensionMatch;
+  });
+
+  return filtered.sort((a, b) => {
+    if (state.brandedAssetsSort === 'name-asc') return a.name.localeCompare(b.name);
+    if (state.brandedAssetsSort === 'name-desc') return b.name.localeCompare(a.name);
+    if (state.brandedAssetsSort === 'oldest') return new Date(a.createdAt) - new Date(b.createdAt);
+    if (state.brandedAssetsSort === 'dimension') return a.dimension.localeCompare(b.dimension);
+    return new Date(b.createdAt) - new Date(a.createdAt);
   });
 
   return filtered.sort((a, b) => {
@@ -160,6 +167,62 @@ function brandedAssetsManager() {
   `;
 }
 
+function brandedAssetsRows(assets) {
+  return assets.map((asset) => `
+    <button class="brand-list-row" data-asset-id="${asset.id}">
+      <span class="cell name">${asset.name}</span>
+      <span class="cell folder">${asset.folder}</span>
+      <span class="cell dim">${asset.dimension}</span>
+      <span class="cell date">${new Date(asset.createdAt).toLocaleDateString()}</span>
+    </button>`).join('');
+}
+
+function brandedAssetsManager() {
+  const assets = getFilteredAndSortedAssets();
+
+  return `
+    <div class="brand-manager ${state.brandedAssetsOpen ? 'open' : ''}">
+      <div class="brand-manager-header">
+        <h4>Branded Assets Locker</h4>
+      </div>
+      <div class="brand-controls compact">
+        <label class="control-group">Upload PNG<input id="brandAssetUpload" type="file" accept="image/png" multiple /></label>
+        <label class="control-group">Folder
+          <select id="brandFolderFilter">
+            <option value="All folders" ${state.brandedAssetsFolderFilter === 'All folders' ? 'selected' : ''}>All folders</option>
+            ${state.brandedFolders.map((folder) => `<option value="${folder}" ${state.brandedAssetsFolderFilter === folder ? 'selected' : ''}>${folder}</option>`).join('')}
+          </select>
+        </label>
+        <label class="control-group">Dimension
+          <select id="brandDimensionFilter">
+            <option value="All dimensions" ${state.brandedAssetsDimensionFilter === 'All dimensions' ? 'selected' : ''}>All dimensions</option>
+            ${supportedDimensions.map((dimension) => `<option value="${dimension}" ${state.brandedAssetsDimensionFilter === dimension ? 'selected' : ''}>${dimension}</option>`).join('')}
+          </select>
+        </label>
+        <label class="control-group">Sort
+          <select id="brandAssetSort">
+            <option value="newest" ${state.brandedAssetsSort === 'newest' ? 'selected' : ''}>Newest first</option>
+            <option value="oldest" ${state.brandedAssetsSort === 'oldest' ? 'selected' : ''}>Oldest first</option>
+            <option value="name-asc" ${state.brandedAssetsSort === 'name-asc' ? 'selected' : ''}>Name A-Z</option>
+            <option value="name-desc" ${state.brandedAssetsSort === 'name-desc' ? 'selected' : ''}>Name Z-A</option>
+            <option value="dimension" ${state.brandedAssetsSort === 'dimension' ? 'selected' : ''}>Dimension</option>
+          </select>
+        </label>
+      </div>
+      <form id="brandFolderForm" class="folder-form full-row">
+        <label class="control-group">Upload Dimension
+          <select id="brandUploadDimension">${supportedDimensions.map((dimension) => `<option value="${dimension}">${dimension}</option>`).join('')}</select>
+        </label>
+        <input id="brandFolderInput" placeholder="New folder name" maxlength="24" />
+        <button id="brandCreateFolder" type="submit">Create Folder</button>
+      </form>
+      <div class="brand-assets-wrap list">
+        ${assets.length ? `<div class="brand-list-header"><span>Name</span><span>Folder</span><span>Dimension</span><span>Date Added</span></div>${brandedAssetsRows(assets)}` : '<p class="muted">No assets found for this filter.</p>'}
+      </div>
+    </div>
+  `;
+}
+
 function dashboardView() {
   return `
     <section class="panel">
@@ -213,7 +276,6 @@ function designView() {
             ${state.designTextLayers.map((layer) => `<span class="text-layer" style="left:${layer.x}px;top:${layer.y}px;font-size:${layer.size}px;color:${layer.color};">${getBoundText(layer)}</span>`).join('')}
           </div>
         </div>
-        <p class="muted canvas-meta">Comp Size: ${selectedAsset?.dimension || 'N/A'} · Asset fit is ratio-accurate for portrait/square/landscape.</p>
       </div>
       <aside class="design-sidebar">
         <div class="panel mini-panel">
@@ -260,7 +322,7 @@ function designView() {
 function dataEngineView() {
   return `
     <section class="panel">
-      <h3>Data Simulation Engine · MLB Live Feed</h3>
+      <h3>Data Simulation Engine · Pitch by Pitch</h3>
       <div class="sim-toolbar">
         <button id="toggleSimulation" class="utility-btn ${state.simulationRunning ? 'sim-on' : ''}">${state.simulationRunning ? 'Stop Simulation' : 'Start Simulation'}</button>
         <label class="control-group">Speed
@@ -276,20 +338,18 @@ function dataEngineView() {
         <thead><tr><th>KEY</th><th>SOURCE</th><th>VALUE</th></tr></thead>
         <tbody>
           <tr><td>score</td><td>MLB Simulator</td><td>BOS ${state.gameState.score.BOS} - NYY ${state.gameState.score.NYY}</td></tr>
-          <tr><td>inning</td><td>MLB Simulator</td><td>${state.gameState.inning}</td></tr>
-          <tr><td>inningState</td><td>MLB Simulator</td><td>${state.gameState.inningState}</td></tr>
-          <tr><td>balls / strikes / outs</td><td>MLB Simulator</td><td>${state.gameState.balls} / ${state.gameState.strikes} / ${state.gameState.outs}</td></tr>
+          <tr><td>inning</td><td>MLB Simulator</td><td>${state.gameState.inningState} ${state.gameState.inning}</td></tr>
+          <tr><td>count</td><td>MLB Simulator</td><td>${state.gameState.balls}-${state.gameState.strikes}, ${state.gameState.outs} out</td></tr>
           <tr><td>runnersOnBase</td><td>MLB Simulator</td><td>${state.gameState.runnersOnBase}</td></tr>
-          <tr><td>pitcher</td><td>MLB Simulator</td><td>${state.gameState.pitcher}</td></tr>
-          <tr><td>batter</td><td>MLB Simulator</td><td>${state.gameState.batter}</td></tr>
-          <tr><td>pitchType-velocity-location</td><td>MLB Simulator</td><td>${state.gameState.pitchType} · ${state.gameState.pitchVelocity} mph · ${state.gameState.pitchLocation}</td></tr>
-          <tr><td>batSpeed-exitVelo-launchAngle-distance</td><td>MLB Simulator</td><td>${state.gameState.batSpeed} mph · ${state.gameState.exitVelocity} mph · ${state.gameState.launchAngle}° · ${state.gameState.projectedDistance} ft</td></tr>
+          <tr><td>pitcher / batter</td><td>MLB Simulator</td><td>${state.gameState.pitcher} vs ${state.gameState.batter}</td></tr>
+          <tr><td>pitch</td><td>MLB Simulator</td><td>${state.gameState.pitchType} · ${state.gameState.pitchVelocity} mph · ${state.gameState.pitchLocation}</td></tr>
+          <tr><td>contact metrics</td><td>MLB Simulator</td><td>${state.gameState.batSpeed} mph · ${state.gameState.exitVelocity} mph · ${state.gameState.launchAngle}° · ${state.gameState.projectedDistance} ft</td></tr>
           <tr><td>lastEvent</td><td>MLB Simulator</td><td>${state.gameState.lastEvent}</td></tr>
         </tbody>
       </table>
     </section>
     <section class="panel">
-      <h3>Pitch-by-Pitch Live Timeline</h3>
+      <h3>Pitch Stream</h3>
       <div class="sim-feed">
         ${mlbSimulationFeed.map((play, index) => `<div class="feed-row ${index === state.simulationIndex ? 'active' : ''}"><strong>${play.inningState} ${play.inning}</strong><span>${play.pitch.type} ${play.pitch.velocity} mph · ${play.summary}</span><em>BOS ${play.score.BOS} - NYY ${play.score.NYY}</em></div>`).join('')}
       </div>
@@ -411,28 +471,13 @@ function updateLayer(layerId, prop, value) {
 
 function addTextLayer() {
   const id = state.nextTextLayerId;
-  const newLayer = {
-    id,
-    name: `Layer ${id}`,
-    text: 'New Text Layer',
-    x: 32,
-    y: 32 + state.designTextLayers.length * 52,
-    size: 32,
-    color: '#ffffff',
-    bindKey: 'none',
-  };
-
-  setState({
-    designTextLayers: [...state.designTextLayers, newLayer],
-    nextTextLayerId: id + 1,
-  });
+  const newLayer = { id, name: `Layer ${id}`, text: 'New Text Layer', x: 32, y: 32 + state.designTextLayers.length * 48, size: 32, color: '#ffffff', bindKey: 'none' };
+  setState({ designTextLayers: [...state.designTextLayers, newLayer], nextTextLayerId: id + 1 });
 }
 
 function removeTextLayer(layerId) {
   const layers = state.designTextLayers.filter((layer) => layer.id !== Number(layerId));
-  if (layers.length) {
-    setState({ designTextLayers: layers });
-  }
+  if (layers.length) setState({ designTextLayers: layers });
 }
 
 function guessDimensionFromFileName(name) {
@@ -443,7 +488,6 @@ function guessDimensionFromFileName(name) {
 function createFolder() {
   const folderInput = document.getElementById('brandFolderInput');
   if (!folderInput) return;
-
   const folderName = folderInput.value.trim();
   if (!folderName || state.brandedFolders.includes(folderName)) return;
 
@@ -456,12 +500,6 @@ function createFolder() {
 function wireBrandedAssetInteractions() {
   const toggleButton = document.getElementById('toggleBrandedAssets');
   if (toggleButton) toggleButton.addEventListener('click', () => setState({ brandedAssetsOpen: !state.brandedAssetsOpen }));
-
-  const listViewButton = document.getElementById('brandListView');
-  if (listViewButton) listViewButton.addEventListener('click', () => setState({ brandedAssetsView: 'list' }));
-
-  const gridViewButton = document.getElementById('brandGridView');
-  if (gridViewButton) gridViewButton.addEventListener('click', () => setState({ brandedAssetsView: 'grid' }));
 
   const uploadInput = document.getElementById('brandAssetUpload');
   if (uploadInput) {
@@ -493,9 +531,6 @@ function wireBrandedAssetInteractions() {
 
   const sortSelect = document.getElementById('brandAssetSort');
   if (sortSelect) sortSelect.addEventListener('change', (event) => setState({ brandedAssetsSort: event.target.value }));
-
-  const createFolderButton = document.getElementById('brandCreateFolder');
-  if (createFolderButton) createFolderButton.addEventListener('click', createFolder);
 
   const folderForm = document.getElementById('brandFolderForm');
   if (folderForm) folderForm.addEventListener('submit', (event) => { event.preventDefault(); createFolder(); });
