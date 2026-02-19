@@ -1,27 +1,16 @@
 const tabs = ['Dashboard', 'Design', 'Data Engine', 'Control Room', 'Output'];
 
-const supportedDimensions = ['1920x1080', '1080x1920', '1080x1080', '1080x1350'];
+const bootstrap = window.RENDERLESS_BOOTSTRAP || {};
+const supportedDimensions = bootstrap.supportedDimensions || ['1920x1080', '1080x1920', '1080x1080', '1080x1350'];
+const mlbSimulationFeed = bootstrap.mlbSimulationFeed || [];
 
-const mlbSimulationFeed = [
-  { inning: 'Top 1', battingTeam: 'NYY', runsScored: 2, scoreAfter: 'BOS 0 - NYY 2', summary: 'Leadoff double sparks a quick two-run rally.' },
-  { inning: 'Bottom 1', battingTeam: 'BOS', runsScored: 3, scoreAfter: 'BOS 3 - NYY 2', summary: 'Devers clears the bases with a three-run blast.' },
-  { inning: 'Top 2', battingTeam: 'NYY', runsScored: 1, scoreAfter: 'BOS 3 - NYY 3', summary: 'Soto ropes an RBI single to tie it.' },
-  { inning: 'Bottom 2', battingTeam: 'BOS', runsScored: 2, scoreAfter: 'BOS 5 - NYY 3', summary: 'Back-to-back doubles put Boston back in front.' },
-  { inning: 'Top 3', battingTeam: 'NYY', runsScored: 3, scoreAfter: 'BOS 5 - NYY 6', summary: 'Judge launches a no-doubt three-run homer.' },
-  { inning: 'Bottom 3', battingTeam: 'BOS', runsScored: 4, scoreAfter: 'BOS 9 - NYY 6', summary: 'Boston answers with a four-spot and loud Fenway crowd.' },
-  { inning: 'Top 4', battingTeam: 'NYY', runsScored: 1, scoreAfter: 'BOS 9 - NYY 7', summary: 'Ground-rule double plates one for New York.' },
-  { inning: 'Bottom 4', battingTeam: 'BOS', runsScored: 0, scoreAfter: 'BOS 9 - NYY 7', summary: 'Quick 1-2-3 inning from the Yankees bullpen.' },
-  { inning: 'Top 5', battingTeam: 'NYY', runsScored: 2, scoreAfter: 'BOS 9 - NYY 9', summary: 'Rizzo lines a two-run single to tie game again.' },
-  { inning: 'Bottom 5', battingTeam: 'BOS', runsScored: 1, scoreAfter: 'BOS 10 - NYY 9', summary: 'Sac fly gives Boston the edge.' },
-  { inning: 'Top 6', battingTeam: 'NYY', runsScored: 0, scoreAfter: 'BOS 10 - NYY 9', summary: 'Boston reliever strands two runners.' },
-  { inning: 'Bottom 6', battingTeam: 'BOS', runsScored: 2, scoreAfter: 'BOS 12 - NYY 9', summary: 'Two-run single extends Sox lead to three.' },
-  { inning: 'Top 7', battingTeam: 'NYY', runsScored: 2, scoreAfter: 'BOS 12 - NYY 11', summary: 'Torres homers to left and closes the gap.' },
-  { inning: 'Bottom 7', battingTeam: 'BOS', runsScored: 1, scoreAfter: 'BOS 13 - NYY 11', summary: 'Duran scores on an infield chopper.' },
-  { inning: 'Top 8', battingTeam: 'NYY', runsScored: 1, scoreAfter: 'BOS 13 - NYY 12', summary: 'Volpe RBI single makes it a one-run game.' },
-  { inning: 'Bottom 8', battingTeam: 'BOS', runsScored: 2, scoreAfter: 'BOS 15 - NYY 12', summary: 'Two insurance runs on a gapper and a sac fly.' },
-  { inning: 'Top 9', battingTeam: 'NYY', runsScored: 0, scoreAfter: 'BOS 15 - NYY 12', summary: 'Boston closer fans two to end a wild classic.' },
-  { inning: 'Bottom 9', battingTeam: 'BOS', runsScored: 0, scoreAfter: 'BOS 15 - NYY 12', summary: 'Ballgame final: Red Sox 15, Yankees 12.' },
-];
+function cloneValue(value) {
+  if (typeof structuredClone === 'function') {
+    return structuredClone(value);
+  }
+
+  return JSON.parse(JSON.stringify(value));
+}
 
 const state = {
   activeTab: 'Dashboard',
@@ -32,59 +21,17 @@ const state = {
   brandedAssetsDimensionFilter: 'All dimensions',
   brandedAssetsSort: 'newest',
   brandedAssetsView: 'list',
-  brandedAssets: [
-    {
-      id: 1,
-      name: 'red-sox-scorebug-1920x1080.png',
-      folder: 'Scorebugs',
-      dimension: '1920x1080',
-      createdAt: new Date('2026-01-10T09:10:00').toISOString(),
-      src: 'https://dummyimage.com/320x180/0f172a/93c5fd.png&text=Scorebug+16:9',
-    },
-    {
-      id: 2,
-      name: 'yankees-story-1080x1920.png',
-      folder: 'Social Stories',
-      dimension: '1080x1920',
-      createdAt: new Date('2026-01-14T12:45:00').toISOString(),
-      src: 'https://dummyimage.com/200x360/111827/86efac.png&text=Story+9:16',
-    },
-    {
-      id: 3,
-      name: 'postgame-square-1080x1080.png',
-      folder: 'Social Square',
-      dimension: '1080x1080',
-      createdAt: new Date('2026-01-16T18:25:00').toISOString(),
-      src: 'https://dummyimage.com/300x300/1e293b/fca5a5.png&text=Square+1:1',
-    },
-    {
-      id: 4,
-      name: 'lineup-feed-1080x1350.png',
-      folder: 'Social Feed',
-      dimension: '1080x1350',
-      createdAt: new Date('2026-01-18T08:00:00').toISOString(),
-      src: 'https://dummyimage.com/280x350/172554/bae6fd.png&text=Feed+4:5',
-    },
-  ],
+  brandedAssets: cloneValue(bootstrap.brandedAssets || []),
   brandedFolders: ['General', 'Scorebugs', 'Social Stories', 'Social Square', 'Social Feed'],
   designSelectedAssetId: 1,
   designTextLayers: [
-    { id: 1, name: 'Headline', text: 'Final Score Update', x: 16, y: 16, size: 42, color: '#ffffff', bindKey: 'none' },
-    { id: 2, name: 'Subhead', text: 'Fenway Thriller', x: 16, y: 72, size: 24, color: '#bfdbfe', bindKey: 'lastEvent' },
+    { id: 1, name: 'Headline', text: 'Final Score Update', x: 32, y: 30, size: 58, color: '#ffffff', bindKey: 'none' },
+    { id: 2, name: 'Subhead', text: 'Waiting to start MLB simulation.', x: 32, y: 105, size: 44, color: '#bfdbfe', bindKey: 'lastEvent' },
   ],
   simulationRunning: false,
   simulationSpeedMs: 1300,
   simulationIndex: -1,
-  gameState: {
-    matchup: 'Red Sox vs Yankees',
-    inning: 'Pregame',
-    outs: 0,
-    baseState: 'Bases Empty',
-    score: { BOS: 0, NYY: 0 },
-    hits: { BOS: 0, NYY: 0 },
-    errors: { BOS: 0, NYY: 0 },
-    lastEvent: 'Waiting to start MLB simulation.',
-  },
+  gameState: cloneValue(bootstrap.initialGameState || {}),
 };
 
 let simulationTimer = null;
@@ -107,17 +54,17 @@ function setState(patch) {
 }
 
 function renderTabs() {
-  tabsEl.innerHTML = tabs
-    .map((tab) => `<button class="tab-btn ${state.activeTab === tab ? 'active' : ''}" data-tab="${tab}">${tab}</button>`)
-    .join('');
-
-  tabsEl.querySelectorAll('.tab-btn').forEach((btn) => {
-    btn.addEventListener('click', () => setState({ activeTab: btn.dataset.tab }));
-  });
+  tabsEl.innerHTML = tabs.map((tab) => `<button class="tab-btn ${state.activeTab === tab ? 'active' : ''}" data-tab="${tab}">${tab}</button>`).join('');
+  tabsEl.querySelectorAll('.tab-btn').forEach((btn) => btn.addEventListener('click', () => setState({ activeTab: btn.dataset.tab })));
 }
 
 function getAssetById(id) {
   return state.brandedAssets.find((asset) => asset.id === Number(id));
+}
+
+function getDimensionRatio(dimension) {
+  const [w, h] = dimension.split('x').map(Number);
+  return w / h;
 }
 
 function getFilteredAndSortedAssets() {
@@ -138,32 +85,26 @@ function getFilteredAndSortedAssets() {
 
 function brandedAssetsRows(assets) {
   return assets
-    .map(
-      (asset) => `
-        <button class="brand-list-row" data-asset-id="${asset.id}">
-          <span class="cell name">${asset.name}</span>
-          <span class="cell folder">${asset.folder}</span>
-          <span class="cell dim">${asset.dimension}</span>
-          <span class="cell date">${new Date(asset.createdAt).toLocaleDateString()}</span>
-        </button>
-      `,
-    )
+    .map((asset) => `
+      <button class="brand-list-row" data-asset-id="${asset.id}">
+        <span class="cell name">${asset.name}</span>
+        <span class="cell folder">${asset.folder}</span>
+        <span class="cell dim">${asset.dimension}</span>
+        <span class="cell date">${new Date(asset.createdAt).toLocaleDateString()}</span>
+      </button>`)
     .join('');
 }
 
 function brandedAssetsGrid(assets) {
   return assets
-    .map(
-      (asset) => `
+    .map((asset) => `
       <article class="brand-asset-card" data-asset-id="${asset.id}">
         <img src="${asset.src}" alt="${asset.name}" />
         <div>
           <strong>${asset.name}</strong>
           <p class="muted">${asset.folder} · ${asset.dimension}</p>
         </div>
-      </article>
-    `,
-    )
+      </article>`)
     .join('');
 }
 
@@ -174,12 +115,10 @@ function brandedAssetsManager() {
     <div class="brand-manager ${state.brandedAssetsOpen ? 'open' : ''}">
       <div class="brand-manager-header">
         <h4>Branded Assets Locker</h4>
-        <p class="muted">PNG upload, dimension-aware organization, fast list view, and one-click insertion into Design.</p>
+        <p class="muted">PNG upload, dimension-aware organization, and fast list navigation.</p>
       </div>
       <div class="brand-controls">
-        <label class="control-group">Upload PNG
-          <input id="brandAssetUpload" type="file" accept="image/png" multiple />
-        </label>
+        <label class="control-group">Upload PNG<input id="brandAssetUpload" type="file" accept="image/png" multiple /></label>
         <label class="control-group">Folder
           <select id="brandFolderFilter">
             <option value="All folders" ${state.brandedAssetsFolderFilter === 'All folders' ? 'selected' : ''}>All folders</option>
@@ -201,26 +140,17 @@ function brandedAssetsManager() {
             <option value="dimension" ${state.brandedAssetsSort === 'dimension' ? 'selected' : ''}>Dimension</option>
           </select>
         </label>
-        <form id="brandFolderForm" class="folder-form">
-          <input id="brandFolderInput" placeholder="New folder name" maxlength="24" />
-          <button type="submit">Create Folder</button>
-        </form>
         <label class="control-group">Upload Dimension
-          <select id="brandUploadDimension">
-            ${supportedDimensions.map((dimension) => `<option value="${dimension}">${dimension}</option>`).join('')}
-          </select>
+          <select id="brandUploadDimension">${supportedDimensions.map((dimension) => `<option value="${dimension}">${dimension}</option>`).join('')}</select>
         </label>
+        <form id="brandFolderForm" class="folder-form"><input id="brandFolderInput" placeholder="New folder name" maxlength="24" /><button type="submit">Create Folder</button></form>
       </div>
       <div class="view-mode-row">
         <button id="brandListView" class="pill-btn ${state.brandedAssetsView === 'list' ? 'active' : ''}">List View</button>
         <button id="brandGridView" class="pill-btn ${state.brandedAssetsView === 'grid' ? 'active' : ''}">Grid View</button>
       </div>
       <div class="brand-assets-wrap ${state.brandedAssetsView}">
-        ${assets.length
-          ? state.brandedAssetsView === 'list'
-            ? `<div class="brand-list-header"><span>Name</span><span>Folder</span><span>Dimension</span><span>Date Added</span></div>${brandedAssetsRows(assets)}`
-            : brandedAssetsGrid(assets)
-          : '<p class="muted">No assets found for this filter.</p>'}
+        ${assets.length ? (state.brandedAssetsView === 'list' ? `<div class="brand-list-header"><span>Name</span><span>Folder</span><span>Dimension</span><span>Date Added</span></div>${brandedAssetsRows(assets)}` : brandedAssetsGrid(assets)) : '<p class="muted">No assets found for this filter.</p>'}
       </div>
     </div>
   `;
@@ -258,35 +188,37 @@ function dashboardView() {
 function getBoundText(layer) {
   if (layer.bindKey === 'none') return layer.text;
   if (layer.bindKey === 'score') return `Score: BOS ${state.gameState.score.BOS} - NYY ${state.gameState.score.NYY}`;
-  if (layer.bindKey === 'inning') return `Inning: ${state.gameState.inning}`;
+  if (layer.bindKey === 'inning') return `${state.gameState.inningState} ${state.gameState.inning}`;
+  if (layer.bindKey === 'count') return `Count ${state.gameState.balls}-${state.gameState.strikes}, ${state.gameState.outs} out`;
+  if (layer.bindKey === 'matchup') return `${state.gameState.pitcher} vs ${state.gameState.batter}`;
   if (layer.bindKey === 'lastEvent') return state.gameState.lastEvent;
   return layer.text;
 }
 
 function designView() {
   const selectedAsset = getAssetById(state.designSelectedAssetId) || state.brandedAssets[0];
+  const ratio = selectedAsset ? getDimensionRatio(selectedAsset.dimension) : 16 / 9;
 
   return `
     <section class="panel design-layout">
       <div>
         <h3>Design Canvas · Linked Branded Asset</h3>
-        <div class="canvas design-canvas">
-          ${selectedAsset ? `<img src="${selectedAsset.src}" alt="${selectedAsset.name}" class="canvas-bg" />` : ''}
-          ${state.designTextLayers
-            .map(
-              (layer) => `<span class="text-layer" style="left:${layer.x}px;top:${layer.y}px;font-size:${layer.size}px;color:${layer.color};">${getBoundText(layer)}</span>`,
-            )
-            .join('')}
+        <div class="design-stage-shell">
+          <div class="design-stage" style="--asset-ratio:${ratio};">
+            ${selectedAsset ? `<img src="${selectedAsset.src}" alt="${selectedAsset.name}" class="canvas-bg" />` : ''}
+            ${state.designTextLayers
+              .map((layer) => `<span class="text-layer" style="left:${layer.x}px;top:${layer.y}px;font-size:${layer.size}px;color:${layer.color};">${getBoundText(layer)}</span>`)
+              .join('')}
+          </div>
         </div>
+        <p class="muted canvas-meta">Comp Size: ${selectedAsset?.dimension || 'N/A'} · Asset fit is ratio-accurate for portrait/square/landscape.</p>
       </div>
       <aside class="design-sidebar">
         <div class="panel mini-panel">
           <h3>Branded Assets Locker</h3>
           <div class="design-asset-list">
             ${state.brandedAssets
-              .map(
-                (asset) => `<button class="design-asset-item ${state.designSelectedAssetId === asset.id ? 'active' : ''}" data-design-asset-id="${asset.id}">${asset.name}<span>${asset.dimension}</span></button>`,
-              )
+              .map((asset) => `<button class="design-asset-item ${state.designSelectedAssetId === asset.id ? 'active' : ''}" data-design-asset-id="${asset.id}">${asset.name}<span>${asset.dimension}</span></button>`)
               .join('')}
           </div>
         </div>
@@ -308,7 +240,9 @@ function designView() {
                     <select data-layer-id="${layer.id}" data-prop="bindKey">
                       <option value="none" ${layer.bindKey === 'none' ? 'selected' : ''}>Manual</option>
                       <option value="score" ${layer.bindKey === 'score' ? 'selected' : ''}>Bind Score</option>
-                      <option value="inning" ${layer.bindKey === 'inning' ? 'selected' : ''}>Bind Inning</option>
+                      <option value="inning" ${layer.bindKey === 'inning' ? 'selected' : ''}>Bind Inning State</option>
+                      <option value="count" ${layer.bindKey === 'count' ? 'selected' : ''}>Bind Count/Outs</option>
+                      <option value="matchup" ${layer.bindKey === 'matchup' ? 'selected' : ''}>Bind Pitcher vs Batter</option>
                       <option value="lastEvent" ${layer.bindKey === 'lastEvent' ? 'selected' : ''}>Bind Last Event</option>
                     </select>
                   </div>
@@ -340,20 +274,25 @@ function dataEngineView() {
       <table class="table">
         <thead><tr><th>KEY</th><th>SOURCE</th><th>VALUE</th></tr></thead>
         <tbody>
-          <tr><td>matchup</td><td>MLB Simulator</td><td>${state.gameState.matchup}</td></tr>
-          <tr><td>inning</td><td>MLB Simulator</td><td>${state.gameState.inning}</td></tr>
           <tr><td>score</td><td>MLB Simulator</td><td>BOS ${state.gameState.score.BOS} - NYY ${state.gameState.score.NYY}</td></tr>
-          <tr><td>hits</td><td>MLB Simulator</td><td>BOS ${state.gameState.hits.BOS} / NYY ${state.gameState.hits.NYY}</td></tr>
+          <tr><td>inning</td><td>MLB Simulator</td><td>${state.gameState.inning}</td></tr>
+          <tr><td>inningState</td><td>MLB Simulator</td><td>${state.gameState.inningState}</td></tr>
+          <tr><td>balls / strikes / outs</td><td>MLB Simulator</td><td>${state.gameState.balls} / ${state.gameState.strikes} / ${state.gameState.outs}</td></tr>
+          <tr><td>runnersOnBase</td><td>MLB Simulator</td><td>${state.gameState.runnersOnBase}</td></tr>
+          <tr><td>pitcher</td><td>MLB Simulator</td><td>${state.gameState.pitcher}</td></tr>
+          <tr><td>batter</td><td>MLB Simulator</td><td>${state.gameState.batter}</td></tr>
+          <tr><td>pitchType-velocity-location</td><td>MLB Simulator</td><td>${state.gameState.pitchType} · ${state.gameState.pitchVelocity} mph · ${state.gameState.pitchLocation}</td></tr>
+          <tr><td>batSpeed-exitVelo-launchAngle-distance</td><td>MLB Simulator</td><td>${state.gameState.batSpeed} mph · ${state.gameState.exitVelocity} mph · ${state.gameState.launchAngle}° · ${state.gameState.projectedDistance} ft</td></tr>
           <tr><td>lastEvent</td><td>MLB Simulator</td><td>${state.gameState.lastEvent}</td></tr>
         </tbody>
       </table>
     </section>
     <section class="panel">
-      <h3>Full 9-Inning Game Feed (15-12 Red Sox)</h3>
+      <h3>Pitch-by-Pitch Live Timeline</h3>
       <div class="sim-feed">
         ${mlbSimulationFeed
           .map(
-            (play, index) => `<div class="feed-row ${index === state.simulationIndex ? 'active' : ''}"><strong>${play.inning}</strong><span>${play.summary}</span><em>${play.scoreAfter}</em></div>`,
+            (play, index) => `<div class="feed-row ${index === state.simulationIndex ? 'active' : ''}"><strong>${play.inningState} ${play.inning}</strong><span>${play.pitch.type} ${play.pitch.velocity} mph · ${play.summary}</span><em>BOS ${play.score.BOS} - NYY ${play.score.NYY}</em></div>`,
           )
           .join('')}
       </div>
@@ -367,9 +306,7 @@ function controlRoomView() {
     <section class="panel control-layout">
       <div>
         <h3>Shotbox</h3>
-        <div class="shotbox">
-          ${shots.map((s) => `<button class="shot">${s}</button>`).join('')}
-        </div>
+        <div class="shotbox">${shots.map((s) => `<button class="shot">${s}</button>`).join('')}</div>
       </div>
       <div class="monitors">
         <div class="monitor preview"><h4>PREVIEW</h4><div class="monotext">${state.liveScore}</div></div>
@@ -389,11 +326,7 @@ function outputView() {
       </div>
       <div>
         <h3>System Event Log</h3>
-        <div class="log">
-          ${state.isStreaming
-            ? '[12:00:01] INFO: Renderless Engine Initialized\n[12:00:04] SUCCESS: NDI sink linked\n[12:00:07] INFO: Preview chain healthy\n[12:00:10] INFO: Frame rate stable at 60 FPS\n[12:00:13] SUCCESS: Program output live\n[12:00:14] INFO: Audio embed synchronized\n[12:00:16] INFO: GPU utilization nominal\n[12:00:19] SUCCESS: Stream active to destination A'
-            : '[idle] Streaming disabled. Press "Push to Stream" to start output telemetry.'}
-        </div>
+        <div class="log">${state.isStreaming ? '[12:00:01] INFO: Renderless Engine Initialized\n[12:00:04] SUCCESS: NDI sink linked\n[12:00:07] INFO: Preview chain healthy\n[12:00:10] INFO: Frame rate stable at 60 FPS\n[12:00:13] SUCCESS: Program output live\n[12:00:14] INFO: Audio embed synchronized\n[12:00:16] INFO: GPU utilization nominal\n[12:00:19] SUCCESS: Stream active to destination A' : '[idle] Streaming disabled. Press "Push to Stream" to start output telemetry.'}</div>
       </div>
     </section>
   `;
@@ -416,12 +349,6 @@ function renderView() {
   }
 }
 
-function deriveHits(feedIndex) {
-  const bosHits = 7 + Math.floor(feedIndex * 0.7);
-  const nyyHits = 6 + Math.floor(feedIndex * 0.65);
-  return { BOS: bosHits, NYY: nyyHits };
-}
-
 function runSimulationStep() {
   const nextIndex = state.simulationIndex + 1;
   if (nextIndex >= mlbSimulationFeed.length) {
@@ -430,28 +357,34 @@ function runSimulationStep() {
   }
 
   const play = mlbSimulationFeed[nextIndex];
-  const [, bosScoreRaw, nyyScoreRaw] = play.scoreAfter.match(/BOS\s(\d+)\s-\sNYY\s(\d+)/) || [];
-  const bosScore = Number(bosScoreRaw || 0);
-  const nyyScore = Number(nyyScoreRaw || 0);
-
   setState({
     simulationIndex: nextIndex,
-    liveScore: `BOS ${bosScore} - NYY ${nyyScore}`,
+    liveScore: `BOS ${play.score.BOS} - NYY ${play.score.NYY}`,
     gameState: {
       ...state.gameState,
       inning: play.inning,
-      score: { BOS: bosScore, NYY: nyyScore },
-      hits: deriveHits(nextIndex),
+      inningState: play.inningState,
+      score: play.score,
+      balls: play.count.balls,
+      strikes: play.count.strikes,
+      outs: play.count.outs,
+      runnersOnBase: play.runnersOnBase,
+      pitcher: play.pitcher,
+      batter: play.batter,
+      pitchType: play.pitch.type,
+      pitchVelocity: play.pitch.velocity,
+      pitchLocation: play.pitch.location,
+      batSpeed: play.hit.batSpeed,
+      exitVelocity: play.hit.exitVelocity,
+      launchAngle: play.hit.launchAngle,
+      projectedDistance: play.hit.projectedDistance,
       lastEvent: play.summary,
-      outs: nextIndex % 3,
-      baseState: play.runsScored ? 'Runners advanced' : 'Bases Empty',
     },
   });
 }
 
 function startSimulation() {
   if (simulationTimer) return;
-
   setState({ simulationRunning: true });
   simulationTimer = setInterval(runSimulationStep, state.simulationSpeedMs);
 }
@@ -461,10 +394,7 @@ function stopSimulation() {
     clearInterval(simulationTimer);
     simulationTimer = null;
   }
-
-  if (state.simulationRunning) {
-    setState({ simulationRunning: false });
-  }
+  if (state.simulationRunning) setState({ simulationRunning: false });
 }
 
 function resetSimulation() {
@@ -474,12 +404,23 @@ function resetSimulation() {
     liveScore: 'BOS 0 - NYY 0',
     gameState: {
       ...state.gameState,
-      inning: 'Pregame',
+      inning: 1,
+      inningState: 'Top',
       score: { BOS: 0, NYY: 0 },
-      hits: { BOS: 0, NYY: 0 },
-      lastEvent: 'Simulation reset. Ready to start.',
+      balls: 0,
+      strikes: 0,
       outs: 0,
-      baseState: 'Bases Empty',
+      runnersOnBase: 'Bases empty',
+      pitcher: 'Brayan Bello',
+      batter: 'Anthony Volpe',
+      pitchType: '4-Seam Fastball',
+      pitchVelocity: 96,
+      pitchLocation: 'Outer third',
+      batSpeed: 0,
+      exitVelocity: 0,
+      launchAngle: 0,
+      projectedDistance: 0,
+      lastEvent: 'Simulation reset. Ready to start.',
     },
   });
 }
@@ -498,29 +439,21 @@ function guessDimensionFromFileName(name) {
 
 function wireBrandedAssetInteractions() {
   const toggleButton = document.getElementById('toggleBrandedAssets');
-  if (toggleButton) {
-    toggleButton.addEventListener('click', () => setState({ brandedAssetsOpen: !state.brandedAssetsOpen }));
-  }
+  if (toggleButton) toggleButton.addEventListener('click', () => setState({ brandedAssetsOpen: !state.brandedAssetsOpen }));
 
   const listViewButton = document.getElementById('brandListView');
-  if (listViewButton) {
-    listViewButton.addEventListener('click', () => setState({ brandedAssetsView: 'list' }));
-  }
+  if (listViewButton) listViewButton.addEventListener('click', () => setState({ brandedAssetsView: 'list' }));
 
   const gridViewButton = document.getElementById('brandGridView');
-  if (gridViewButton) {
-    gridViewButton.addEventListener('click', () => setState({ brandedAssetsView: 'grid' }));
-  }
+  if (gridViewButton) gridViewButton.addEventListener('click', () => setState({ brandedAssetsView: 'grid' }));
 
   const uploadInput = document.getElementById('brandAssetUpload');
   if (uploadInput) {
     uploadInput.addEventListener('change', (event) => {
       const files = Array.from(event.target.files || []).filter((file) => file.type === 'image/png');
       if (!files.length) return;
-
       const targetFolder = state.brandedAssetsFolderFilter === 'All folders' ? 'General' : state.brandedAssetsFolderFilter;
       const uploadDimension = document.getElementById('brandUploadDimension')?.value;
-
       const newAssets = files.map((file, index) => ({
         id: Date.now() + index,
         name: file.name,
@@ -529,31 +462,18 @@ function wireBrandedAssetInteractions() {
         createdAt: new Date().toISOString(),
         src: URL.createObjectURL(file),
       }));
-
       setState({ brandedAssets: [...newAssets, ...state.brandedAssets] });
     });
   }
 
   const folderFilter = document.getElementById('brandFolderFilter');
-  if (folderFilter) {
-    folderFilter.addEventListener('change', (event) => {
-      setState({ brandedAssetsFolderFilter: event.target.value });
-    });
-  }
+  if (folderFilter) folderFilter.addEventListener('change', (event) => setState({ brandedAssetsFolderFilter: event.target.value }));
 
   const dimensionFilter = document.getElementById('brandDimensionFilter');
-  if (dimensionFilter) {
-    dimensionFilter.addEventListener('change', (event) => {
-      setState({ brandedAssetsDimensionFilter: event.target.value });
-    });
-  }
+  if (dimensionFilter) dimensionFilter.addEventListener('change', (event) => setState({ brandedAssetsDimensionFilter: event.target.value }));
 
   const sortSelect = document.getElementById('brandAssetSort');
-  if (sortSelect) {
-    sortSelect.addEventListener('change', (event) => {
-      setState({ brandedAssetsSort: event.target.value });
-    });
-  }
+  if (sortSelect) sortSelect.addEventListener('change', (event) => setState({ brandedAssetsSort: event.target.value }));
 
   const folderForm = document.getElementById('brandFolderForm');
   if (folderForm) {
@@ -562,18 +482,13 @@ function wireBrandedAssetInteractions() {
       const folderInput = document.getElementById('brandFolderInput');
       const folderName = folderInput.value.trim();
       if (!folderName || state.brandedFolders.includes(folderName)) return;
-
-      setState({
-        brandedFolders: [...state.brandedFolders, folderName],
-        brandedAssetsFolderFilter: folderName,
-      });
+      setState({ brandedFolders: [...state.brandedFolders, folderName], brandedAssetsFolderFilter: folderName });
+      folderInput.value = '';
     });
   }
 
   document.querySelectorAll('[data-asset-id]').forEach((row) => {
-    row.addEventListener('click', () => {
-      setState({ designSelectedAssetId: Number(row.dataset.assetId), activeTab: 'Design' });
-    });
+    row.addEventListener('click', () => setState({ designSelectedAssetId: Number(row.dataset.assetId), activeTab: 'Design' }));
   });
 }
 
@@ -592,11 +507,8 @@ function wireDataEngineInteractions() {
   const toggleSimulationButton = document.getElementById('toggleSimulation');
   if (toggleSimulationButton) {
     toggleSimulationButton.addEventListener('click', () => {
-      if (state.simulationRunning) {
-        stopSimulation();
-      } else {
-        startSimulation();
-      }
+      if (state.simulationRunning) stopSimulation();
+      else startSimulation();
     });
   }
 
@@ -607,16 +519,12 @@ function wireDataEngineInteractions() {
       const wasRunning = state.simulationRunning;
       stopSimulation();
       setState({ simulationSpeedMs: nextSpeed });
-      if (wasRunning) {
-        startSimulation();
-      }
+      if (wasRunning) startSimulation();
     });
   }
 
   const resetButton = document.getElementById('resetSimulation');
-  if (resetButton) {
-    resetButton.addEventListener('click', resetSimulation);
-  }
+  if (resetButton) resetButton.addEventListener('click', resetSimulation);
 }
 
 function wireInteractions() {
