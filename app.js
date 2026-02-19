@@ -237,7 +237,10 @@ function dashboardView() {
       </div>
     </section>
     <section class="panel">
-      <h3>Global Asset Library</h3>
+      <div class="asset-header">
+        <h3>Global Asset Library</h3>
+        <button id="toggleBrandedAssets" class="utility-btn">Branded Assets</button>
+      </div>
       <div class="asset-icons">
         <button id="toggleBrandedAssets" class="asset asset-btn ${state.brandedAssetsOpen ? 'active' : ''}">${icons.branded}<span>Branded Assets</span></button>
         <div class="asset">${icons.logos}<span>Logos</span></div>
