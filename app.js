@@ -171,7 +171,10 @@ function dashboardView() {
       </div>
     </section>
     <section class="panel">
-      <h3>Global Asset Library</h3>
+      <div class="asset-header">
+        <h3>Global Asset Library</h3>
+        <button id="toggleBrandedAssets" class="utility-btn">Branded Assets</button>
+      </div>
       <div class="asset-icons">
         <button id="toggleBrandedAssets" class="asset asset-btn ${state.brandedAssetsOpen ? 'active' : ''}">${icons.branded}<span>Branded Assets</span></button>
         <div class="asset">${icons.logos}<span>Logos</span></div>
@@ -328,12 +331,18 @@ function outputView() {
 
 function renderView() {
   switch (state.activeTab) {
-    case 'Dashboard': return dashboardView();
-    case 'Design': return designView();
-    case 'Data Engine': return dataEngineView();
-    case 'Control Room': return controlRoomView();
-    case 'Output': return outputView();
-    default: return dashboardView();
+    case 'Dashboard':
+      return dashboardView();
+    case 'Design':
+      return designView();
+    case 'Data Engine':
+      return dataEngineView();
+    case 'Control Room':
+      return controlRoomView();
+    case 'Output':
+      return outputView();
+    default:
+      return dashboardView();
   }
 }
 
