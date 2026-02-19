@@ -5,12 +5,12 @@ const supportedDimensions = bootstrap.supportedDimensions || ['1920x1080', '1080
 const mlbSimulationFeed = bootstrap.mlbSimulationFeed || [];
 
 function cloneValue(value) {
-  if (typeof structuredClone === 'function') {
-    return structuredClone(value);
-  }
-
+  if (typeof structuredClone === 'function') return structuredClone(value);
   return JSON.parse(JSON.stringify(value));
 }
+
+const seedAssets = cloneValue(bootstrap.brandedAssets || []);
+const inferredFolders = Array.from(new Set(seedAssets.map((asset) => asset.folder)));
 
 const state = {
   activeTab: 'Dashboard',
@@ -21,13 +21,14 @@ const state = {
   brandedAssetsDimensionFilter: 'All dimensions',
   brandedAssetsSort: 'newest',
   brandedAssetsView: 'list',
-  brandedAssets: cloneValue(bootstrap.brandedAssets || []),
-  brandedFolders: ['General', 'Scorebugs', 'Social Stories', 'Social Square', 'Social Feed'],
-  designSelectedAssetId: 1,
+  brandedAssets: seedAssets,
+  brandedFolders: ['General', ...inferredFolders],
+  designSelectedAssetId: seedAssets[0]?.id || null,
   designTextLayers: [
-    { id: 1, name: 'Headline', text: 'Final Score Update', x: 32, y: 30, size: 58, color: '#ffffff', bindKey: 'none' },
-    { id: 2, name: 'Subhead', text: 'Waiting to start MLB simulation.', x: 32, y: 105, size: 44, color: '#bfdbfe', bindKey: 'lastEvent' },
+    { id: 1, name: 'Headline', text: 'Final Score Update', x: 32, y: 36, size: 56, color: '#ffffff', bindKey: 'none' },
+    { id: 2, name: 'Subhead', text: 'Waiting to start MLB simulation.', x: 32, y: 110, size: 40, color: '#bfdbfe', bindKey: 'lastEvent' },
   ],
+  nextTextLayerId: 3,
   simulationRunning: false,
   simulationSpeedMs: 1300,
   simulationIndex: -1,
@@ -84,28 +85,24 @@ function getFilteredAndSortedAssets() {
 }
 
 function brandedAssetsRows(assets) {
-  return assets
-    .map((asset) => `
-      <button class="brand-list-row" data-asset-id="${asset.id}">
-        <span class="cell name">${asset.name}</span>
-        <span class="cell folder">${asset.folder}</span>
-        <span class="cell dim">${asset.dimension}</span>
-        <span class="cell date">${new Date(asset.createdAt).toLocaleDateString()}</span>
-      </button>`)
-    .join('');
+  return assets.map((asset) => `
+    <button class="brand-list-row" data-asset-id="${asset.id}">
+      <span class="cell name">${asset.name}</span>
+      <span class="cell folder">${asset.folder}</span>
+      <span class="cell dim">${asset.dimension}</span>
+      <span class="cell date">${new Date(asset.createdAt).toLocaleDateString()}</span>
+    </button>`).join('');
 }
 
 function brandedAssetsGrid(assets) {
-  return assets
-    .map((asset) => `
-      <article class="brand-asset-card" data-asset-id="${asset.id}">
-        <img src="${asset.src}" alt="${asset.name}" />
-        <div>
-          <strong>${asset.name}</strong>
-          <p class="muted">${asset.folder} · ${asset.dimension}</p>
-        </div>
-      </article>`)
-    .join('');
+  return assets.map((asset) => `
+    <article class="brand-asset-card" data-asset-id="${asset.id}">
+      <img src="${asset.src}" alt="${asset.name}" />
+      <div>
+        <strong>${asset.name}</strong>
+        <p class="muted">${asset.folder} · ${asset.dimension}</p>
+      </div>
+    </article>`).join('');
 }
 
 function brandedAssetsManager() {
@@ -115,7 +112,7 @@ function brandedAssetsManager() {
     <div class="brand-manager ${state.brandedAssetsOpen ? 'open' : ''}">
       <div class="brand-manager-header">
         <h4>Branded Assets Locker</h4>
-        <p class="muted">PNG upload, dimension-aware organization, and fast list navigation.</p>
+        <p class="muted">Upload PNG files, organize by folder/dimension, and move fast in list view.</p>
       </div>
       <div class="brand-controls">
         <label class="control-group">Upload PNG<input id="brandAssetUpload" type="file" accept="image/png" multiple /></label>
@@ -143,14 +140,21 @@ function brandedAssetsManager() {
         <label class="control-group">Upload Dimension
           <select id="brandUploadDimension">${supportedDimensions.map((dimension) => `<option value="${dimension}">${dimension}</option>`).join('')}</select>
         </label>
-        <form id="brandFolderForm" class="folder-form"><input id="brandFolderInput" placeholder="New folder name" maxlength="24" /><button type="submit">Create Folder</button></form>
+        <form id="brandFolderForm" class="folder-form">
+          <input id="brandFolderInput" placeholder="New folder name" maxlength="24" />
+          <button id="brandCreateFolder" type="button">Create Folder</button>
+        </form>
       </div>
       <div class="view-mode-row">
         <button id="brandListView" class="pill-btn ${state.brandedAssetsView === 'list' ? 'active' : ''}">List View</button>
         <button id="brandGridView" class="pill-btn ${state.brandedAssetsView === 'grid' ? 'active' : ''}">Grid View</button>
       </div>
       <div class="brand-assets-wrap ${state.brandedAssetsView}">
-        ${assets.length ? (state.brandedAssetsView === 'list' ? `<div class="brand-list-header"><span>Name</span><span>Folder</span><span>Dimension</span><span>Date Added</span></div>${brandedAssetsRows(assets)}` : brandedAssetsGrid(assets)) : '<p class="muted">No assets found for this filter.</p>'}
+        ${assets.length
+          ? (state.brandedAssetsView === 'list'
+              ? `<div class="brand-list-header"><span>Name</span><span>Folder</span><span>Dimension</span><span>Date Added</span></div>${brandedAssetsRows(assets)}`
+              : brandedAssetsGrid(assets))
+          : '<p class="muted">No assets found for this filter.</p>'}
       </div>
     </div>
   `;
@@ -206,9 +210,7 @@ function designView() {
         <div class="design-stage-shell">
           <div class="design-stage" style="--asset-ratio:${ratio};">
             ${selectedAsset ? `<img src="${selectedAsset.src}" alt="${selectedAsset.name}" class="canvas-bg" />` : ''}
-            ${state.designTextLayers
-              .map((layer) => `<span class="text-layer" style="left:${layer.x}px;top:${layer.y}px;font-size:${layer.size}px;color:${layer.color};">${getBoundText(layer)}</span>`)
-              .join('')}
+            ${state.designTextLayers.map((layer) => `<span class="text-layer" style="left:${layer.x}px;top:${layer.y}px;font-size:${layer.size}px;color:${layer.color};">${getBoundText(layer)}</span>`).join('')}
           </div>
         </div>
         <p class="muted canvas-meta">Comp Size: ${selectedAsset?.dimension || 'N/A'} · Asset fit is ratio-accurate for portrait/square/landscape.</p>
@@ -217,38 +219,37 @@ function designView() {
         <div class="panel mini-panel">
           <h3>Branded Assets Locker</h3>
           <div class="design-asset-list">
-            ${state.brandedAssets
-              .map((asset) => `<button class="design-asset-item ${state.designSelectedAssetId === asset.id ? 'active' : ''}" data-design-asset-id="${asset.id}">${asset.name}<span>${asset.dimension}</span></button>`)
-              .join('')}
+            ${state.brandedAssets.map((asset) => `<button class="design-asset-item ${state.designSelectedAssetId === asset.id ? 'active' : ''}" data-design-asset-id="${asset.id}">${asset.name}<span>${asset.dimension}</span></button>`).join('')}
           </div>
         </div>
         <div class="panel mini-panel">
-          <h3>Text Layers & Data Bind</h3>
+          <div class="layer-head">
+            <h3>Text Layers & Data Bind</h3>
+            <button id="addTextLayer" class="pill-btn">Add Text Layer</button>
+          </div>
           <div class="layer-controls">
-            ${state.designTextLayers
-              .map(
-                (layer) => `
-                  <div class="layer-card">
-                    <strong>${layer.name}</strong>
-                    <input data-layer-id="${layer.id}" data-prop="text" value="${layer.text}" />
-                    <div class="layer-row">
-                      <input type="number" data-layer-id="${layer.id}" data-prop="x" value="${layer.x}" />
-                      <input type="number" data-layer-id="${layer.id}" data-prop="y" value="${layer.y}" />
-                      <input type="number" data-layer-id="${layer.id}" data-prop="size" value="${layer.size}" />
-                      <input type="color" data-layer-id="${layer.id}" data-prop="color" value="${layer.color}" />
-                    </div>
-                    <select data-layer-id="${layer.id}" data-prop="bindKey">
-                      <option value="none" ${layer.bindKey === 'none' ? 'selected' : ''}>Manual</option>
-                      <option value="score" ${layer.bindKey === 'score' ? 'selected' : ''}>Bind Score</option>
-                      <option value="inning" ${layer.bindKey === 'inning' ? 'selected' : ''}>Bind Inning State</option>
-                      <option value="count" ${layer.bindKey === 'count' ? 'selected' : ''}>Bind Count/Outs</option>
-                      <option value="matchup" ${layer.bindKey === 'matchup' ? 'selected' : ''}>Bind Pitcher vs Batter</option>
-                      <option value="lastEvent" ${layer.bindKey === 'lastEvent' ? 'selected' : ''}>Bind Last Event</option>
-                    </select>
-                  </div>
-                `,
-              )
-              .join('')}
+            ${state.designTextLayers.map((layer) => `
+              <div class="layer-card">
+                <div class="layer-title-row">
+                  <strong>${layer.name}</strong>
+                  <button class="layer-delete" data-remove-layer-id="${layer.id}">Remove</button>
+                </div>
+                <input data-layer-id="${layer.id}" data-prop="text" value="${layer.text}" />
+                <div class="layer-row">
+                  <input type="number" data-layer-id="${layer.id}" data-prop="x" value="${layer.x}" />
+                  <input type="number" data-layer-id="${layer.id}" data-prop="y" value="${layer.y}" />
+                  <input type="number" data-layer-id="${layer.id}" data-prop="size" value="${layer.size}" />
+                  <input type="color" data-layer-id="${layer.id}" data-prop="color" value="${layer.color}" />
+                </div>
+                <select data-layer-id="${layer.id}" data-prop="bindKey">
+                  <option value="none" ${layer.bindKey === 'none' ? 'selected' : ''}>Manual</option>
+                  <option value="score" ${layer.bindKey === 'score' ? 'selected' : ''}>Bind Score</option>
+                  <option value="inning" ${layer.bindKey === 'inning' ? 'selected' : ''}>Bind Inning State</option>
+                  <option value="count" ${layer.bindKey === 'count' ? 'selected' : ''}>Bind Count/Outs</option>
+                  <option value="matchup" ${layer.bindKey === 'matchup' ? 'selected' : ''}>Bind Pitcher vs Batter</option>
+                  <option value="lastEvent" ${layer.bindKey === 'lastEvent' ? 'selected' : ''}>Bind Last Event</option>
+                </select>
+              </div>`).join('')}
           </div>
         </div>
       </aside>
@@ -290,11 +291,7 @@ function dataEngineView() {
     <section class="panel">
       <h3>Pitch-by-Pitch Live Timeline</h3>
       <div class="sim-feed">
-        ${mlbSimulationFeed
-          .map(
-            (play, index) => `<div class="feed-row ${index === state.simulationIndex ? 'active' : ''}"><strong>${play.inningState} ${play.inning}</strong><span>${play.pitch.type} ${play.pitch.velocity} mph · ${play.summary}</span><em>BOS ${play.score.BOS} - NYY ${play.score.NYY}</em></div>`,
-          )
-          .join('')}
+        ${mlbSimulationFeed.map((play, index) => `<div class="feed-row ${index === state.simulationIndex ? 'active' : ''}"><strong>${play.inningState} ${play.inning}</strong><span>${play.pitch.type} ${play.pitch.velocity} mph · ${play.summary}</span><em>BOS ${play.score.BOS} - NYY ${play.score.NYY}</em></div>`).join('')}
       </div>
     </section>
   `;
@@ -402,26 +399,7 @@ function resetSimulation() {
   setState({
     simulationIndex: -1,
     liveScore: 'BOS 0 - NYY 0',
-    gameState: {
-      ...state.gameState,
-      inning: 1,
-      inningState: 'Top',
-      score: { BOS: 0, NYY: 0 },
-      balls: 0,
-      strikes: 0,
-      outs: 0,
-      runnersOnBase: 'Bases empty',
-      pitcher: 'Brayan Bello',
-      batter: 'Anthony Volpe',
-      pitchType: '4-Seam Fastball',
-      pitchVelocity: 96,
-      pitchLocation: 'Outer third',
-      batSpeed: 0,
-      exitVelocity: 0,
-      launchAngle: 0,
-      projectedDistance: 0,
-      lastEvent: 'Simulation reset. Ready to start.',
-    },
+    gameState: cloneValue(bootstrap.initialGameState || {}),
   });
 }
 
@@ -431,10 +409,48 @@ function updateLayer(layerId, prop, value) {
   setState({ designTextLayers: layers });
 }
 
+function addTextLayer() {
+  const id = state.nextTextLayerId;
+  const newLayer = {
+    id,
+    name: `Layer ${id}`,
+    text: 'New Text Layer',
+    x: 32,
+    y: 32 + state.designTextLayers.length * 52,
+    size: 32,
+    color: '#ffffff',
+    bindKey: 'none',
+  };
+
+  setState({
+    designTextLayers: [...state.designTextLayers, newLayer],
+    nextTextLayerId: id + 1,
+  });
+}
+
+function removeTextLayer(layerId) {
+  const layers = state.designTextLayers.filter((layer) => layer.id !== Number(layerId));
+  if (layers.length) {
+    setState({ designTextLayers: layers });
+  }
+}
+
 function guessDimensionFromFileName(name) {
   const lowerName = name.toLowerCase();
-  const matched = supportedDimensions.find((dimension) => lowerName.includes(dimension));
-  return matched || '1920x1080';
+  return supportedDimensions.find((dimension) => lowerName.includes(dimension)) || '1920x1080';
+}
+
+function createFolder() {
+  const folderInput = document.getElementById('brandFolderInput');
+  if (!folderInput) return;
+
+  const folderName = folderInput.value.trim();
+  if (!folderName || state.brandedFolders.includes(folderName)) return;
+
+  setState({
+    brandedFolders: [...state.brandedFolders, folderName],
+    brandedAssetsFolderFilter: folderName,
+  });
 }
 
 function wireBrandedAssetInteractions() {
@@ -452,8 +468,10 @@ function wireBrandedAssetInteractions() {
     uploadInput.addEventListener('change', (event) => {
       const files = Array.from(event.target.files || []).filter((file) => file.type === 'image/png');
       if (!files.length) return;
+
       const targetFolder = state.brandedAssetsFolderFilter === 'All folders' ? 'General' : state.brandedAssetsFolderFilter;
       const uploadDimension = document.getElementById('brandUploadDimension')?.value;
+
       const newAssets = files.map((file, index) => ({
         id: Date.now() + index,
         name: file.name,
@@ -462,6 +480,7 @@ function wireBrandedAssetInteractions() {
         createdAt: new Date().toISOString(),
         src: URL.createObjectURL(file),
       }));
+
       setState({ brandedAssets: [...newAssets, ...state.brandedAssets] });
     });
   }
@@ -475,17 +494,11 @@ function wireBrandedAssetInteractions() {
   const sortSelect = document.getElementById('brandAssetSort');
   if (sortSelect) sortSelect.addEventListener('change', (event) => setState({ brandedAssetsSort: event.target.value }));
 
+  const createFolderButton = document.getElementById('brandCreateFolder');
+  if (createFolderButton) createFolderButton.addEventListener('click', createFolder);
+
   const folderForm = document.getElementById('brandFolderForm');
-  if (folderForm) {
-    folderForm.addEventListener('submit', (event) => {
-      event.preventDefault();
-      const folderInput = document.getElementById('brandFolderInput');
-      const folderName = folderInput.value.trim();
-      if (!folderName || state.brandedFolders.includes(folderName)) return;
-      setState({ brandedFolders: [...state.brandedFolders, folderName], brandedAssetsFolderFilter: folderName });
-      folderInput.value = '';
-    });
-  }
+  if (folderForm) folderForm.addEventListener('submit', (event) => { event.preventDefault(); createFolder(); });
 
   document.querySelectorAll('[data-asset-id]').forEach((row) => {
     row.addEventListener('click', () => setState({ designSelectedAssetId: Number(row.dataset.assetId), activeTab: 'Design' }));
@@ -495,6 +508,13 @@ function wireBrandedAssetInteractions() {
 function wireDesignInteractions() {
   document.querySelectorAll('[data-design-asset-id]').forEach((button) => {
     button.addEventListener('click', () => setState({ designSelectedAssetId: Number(button.dataset.designAssetId) }));
+  });
+
+  const addLayerButton = document.getElementById('addTextLayer');
+  if (addLayerButton) addLayerButton.addEventListener('click', addTextLayer);
+
+  document.querySelectorAll('[data-remove-layer-id]').forEach((button) => {
+    button.addEventListener('click', () => removeTextLayer(button.dataset.removeLayerId));
   });
 
   document.querySelectorAll('[data-layer-id]').forEach((control) => {
