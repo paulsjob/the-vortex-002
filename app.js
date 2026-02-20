@@ -88,6 +88,18 @@ function saveExplorer(explorer) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(explorer));
 }
 
+const bootstrap = window.RENDERLESS_BOOTSTRAP || {};
+const supportedDimensions = bootstrap.supportedDimensions || ['1920x1080', '1080x1920', '1080x1080', '1080x1350'];
+const mlbSimulationFeed = bootstrap.mlbSimulationFeed || [];
+
+function cloneValue(value) {
+  if (typeof structuredClone === 'function') return structuredClone(value);
+  return JSON.parse(JSON.stringify(value));
+}
+
+const seedAssets = cloneValue(bootstrap.brandedAssets || []);
+const inferredFolders = Array.from(new Set(seedAssets.map((asset) => asset.folder)));
+
 const state = {
   activeTab: 'Dashboard',
   liveScore: 'BOS 0 - NYY 0',
@@ -128,12 +140,40 @@ function setState(patch) {
 }
 
 function renderTabs() {
-  tabsEl.innerHTML = tabs
-    .map((tab) => `<button class="tab-btn ${state.activeTab === tab ? 'active' : ''}" data-tab="${tab}">${tab}</button>`)
-    .join('');
+  tabsEl.innerHTML = tabs.map((tab) => `<button class="tab-btn ${state.activeTab === tab ? 'active' : ''}" data-tab="${tab}">${tab}</button>`).join('');
+  tabsEl.querySelectorAll('.tab-btn').forEach((btn) => btn.addEventListener('click', () => setState({ activeTab: btn.dataset.tab })));
+}
 
-  tabsEl.querySelectorAll('.tab-btn').forEach((btn) => {
-    btn.addEventListener('click', () => setState({ activeTab: btn.dataset.tab }));
+function getAssetById(id) {
+  return state.brandedAssets.find((asset) => asset.id === Number(id));
+}
+
+function getDimensionRatio(dimension) {
+  const [w, h] = dimension.split('x').map(Number);
+  return w / h;
+}
+
+function getFilteredAndSortedAssets() {
+  const filtered = state.brandedAssets.filter((asset) => {
+    const folderMatch = state.brandedAssetsFolderFilter === 'All folders' || asset.folder === state.brandedAssetsFolderFilter;
+    const dimensionMatch = state.brandedAssetsDimensionFilter === 'All dimensions' || asset.dimension === state.brandedAssetsDimensionFilter;
+    return folderMatch && dimensionMatch;
+  });
+
+  return filtered.sort((a, b) => {
+    if (state.brandedAssetsSort === 'name-asc') return a.name.localeCompare(b.name);
+    if (state.brandedAssetsSort === 'name-desc') return b.name.localeCompare(a.name);
+    if (state.brandedAssetsSort === 'oldest') return new Date(a.createdAt) - new Date(b.createdAt);
+    if (state.brandedAssetsSort === 'dimension') return a.dimension.localeCompare(b.dimension);
+    return new Date(b.createdAt) - new Date(a.createdAt);
+  });
+
+  return filtered.sort((a, b) => {
+    if (state.brandedAssetsSort === 'name-asc') return a.name.localeCompare(b.name);
+    if (state.brandedAssetsSort === 'name-desc') return b.name.localeCompare(a.name);
+    if (state.brandedAssetsSort === 'oldest') return new Date(a.createdAt) - new Date(b.createdAt);
+    if (state.brandedAssetsSort === 'dimension') return a.dimension.localeCompare(b.dimension);
+    return new Date(b.createdAt) - new Date(a.createdAt);
   });
 }
 
@@ -276,7 +316,10 @@ function dashboardView() {
       </div>
     </section>
     <section class="panel">
-      <h3>Global Asset Library</h3>
+      <div class="asset-header">
+        <h3>Global Asset Library</h3>
+        <button id="toggleBrandedAssets" class="utility-btn">Branded Assets</button>
+      </div>
       <div class="asset-icons">
         <button id="toggleBrandedAssets" class="asset asset-btn ${state.brandedAssetsOpen ? 'active' : ''}">${icons.branded}<span>Branded Assets</span></button>
         <div class="asset">${icons.logos}<span>Logos</span></div>
@@ -431,12 +474,18 @@ function outputView() {
 
 function renderView() {
   switch (state.activeTab) {
-    case 'Dashboard': return dashboardView();
-    case 'Design': return designView();
-    case 'Data Engine': return dataEngineView();
-    case 'Control Room': return controlRoomView();
-    case 'Output': return outputView();
-    default: return dashboardView();
+    case 'Dashboard':
+      return dashboardView();
+    case 'Design':
+      return designView();
+    case 'Data Engine':
+      return dataEngineView();
+    case 'Control Room':
+      return controlRoomView();
+    case 'Output':
+      return outputView();
+    default:
+      return dashboardView();
   }
 }
 
