@@ -1,4 +1,92 @@
 const tabs = ['Dashboard', 'Design', 'Data Engine', 'Control Room', 'Output'];
+const STORAGE_KEY = 'renderless.fileExplorer.v1';
+
+const bootstrap = window.RENDERLESS_BOOTSTRAP || {};
+const mlbSimulationFeed = bootstrap.mlbSimulationFeed || [];
+
+function cloneValue(value) {
+  if (typeof structuredClone === 'function') return structuredClone(value);
+  return JSON.parse(JSON.stringify(value));
+}
+
+function slugId(prefix = 'id') {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function makeFolder(name, parentId = null, permissions = null) {
+  return {
+    id: slugId('folder'),
+    type: 'folder',
+    name,
+    parentId,
+    children: [],
+    permissions: permissions || { owners: ['admin@renderless.ai'], editors: ['design@renderless.ai'], viewers: [] },
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function makeFile({ name, parentId, src, dimension }) {
+  return {
+    id: slugId('file'),
+    type: 'file',
+    name,
+    parentId,
+    src,
+    dimension,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function buildDefaultExplorer() {
+  const root = makeFolder('Branded Assets', null, {
+    owners: ['admin@renderless.ai'],
+    editors: ['design@renderless.ai', 'social@renderless.ai'],
+    viewers: ['sales@renderless.ai'],
+  });
+  root.id = 'root';
+
+  const foldersByName = new Map();
+  const nodes = [root];
+
+  (bootstrap.brandedAssets || []).forEach((asset) => {
+    const topFolderName = asset.folder || 'General';
+    if (!foldersByName.has(topFolderName)) {
+      const folder = makeFolder(topFolderName, 'root', cloneValue(root.permissions));
+      foldersByName.set(topFolderName, folder);
+      root.children.push(folder.id);
+      nodes.push(folder);
+    }
+
+    const folder = foldersByName.get(topFolderName);
+    const file = makeFile({
+      name: asset.name,
+      parentId: folder.id,
+      src: asset.src,
+      dimension: asset.dimension,
+    });
+    folder.children.push(file.id);
+    nodes.push(file);
+  });
+
+  return { rootId: 'root', nodes };
+}
+
+function loadExplorer() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+    if (parsed?.rootId && Array.isArray(parsed.nodes) && parsed.nodes.length) {
+      return parsed;
+    }
+  } catch (error) {
+    // fall back to defaults
+  }
+
+  return buildDefaultExplorer();
+}
+
+function saveExplorer(explorer) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(explorer));
+}
 
 const bootstrap = window.RENDERLESS_BOOTSTRAP || {};
 const supportedDimensions = bootstrap.supportedDimensions || ['1920x1080', '1080x1920', '1080x1080', '1080x1350'];
@@ -17,12 +105,9 @@ const state = {
   liveScore: 'BOS 0 - NYY 0',
   isStreaming: false,
   brandedAssetsOpen: true,
-  brandedAssetsFolderFilter: 'All folders',
-  brandedAssetsDimensionFilter: 'All dimensions',
-  brandedAssetsSort: 'newest',
-  brandedAssets: seedAssets,
-  brandedFolders: ['General', ...inferredFolders],
-  designSelectedAssetId: seedAssets[0]?.id || null,
+  explorer: loadExplorer(),
+  currentFolderId: 'root',
+  designSelectedAssetId: null,
   designTextLayers: [
     { id: 1, name: 'Headline', text: 'Final Score Update', x: 32, y: 36, size: 56, color: '#ffffff', bindKey: 'none' },
     { id: 2, name: 'Subhead', text: 'Waiting to start MLB simulation.', x: 32, y: 110, size: 40, color: '#bfdbfe', bindKey: 'lastEvent' },
@@ -50,6 +135,7 @@ const viewContainer = document.getElementById('viewContainer');
 
 function setState(patch) {
   Object.assign(state, patch);
+  saveExplorer(state.explorer);
   render();
 }
 
@@ -91,134 +177,130 @@ function getFilteredAndSortedAssets() {
   });
 }
 
-function brandedAssetsRows(assets) {
-  return assets.map((asset) => `
-    <button class="brand-list-row" data-asset-id="${asset.id}">
-      <span class="cell name">${asset.name}</span>
-      <span class="cell folder">${asset.folder}</span>
-      <span class="cell dim">${asset.dimension}</span>
-      <span class="cell date">${new Date(asset.createdAt).toLocaleDateString()}</span>
-    </button>`).join('');
+function getNodeById(id) {
+  return state.explorer.nodes.find((node) => node.id === id);
 }
 
-function brandedAssetsGrid(assets) {
-  return assets.map((asset) => `
-    <article class="brand-asset-card" data-asset-id="${asset.id}">
-      <img src="${asset.src}" alt="${asset.name}" />
-      <div>
-        <strong>${asset.name}</strong>
-        <p class="muted">${asset.folder} · ${asset.dimension}</p>
-      </div>
-    </article>`).join('');
+function getCurrentFolder() {
+  return getNodeById(state.currentFolderId) || getNodeById(state.explorer.rootId);
 }
 
-function brandedAssetsManager() {
-  const assets = getFilteredAndSortedAssets();
+function getChildren(folderId) {
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder') return [];
+  return folder.children.map((id) => getNodeById(id)).filter(Boolean);
+}
+
+function getAllFiles() {
+  return state.explorer.nodes.filter((node) => node.type === 'file');
+}
+
+function getFolderPath(folderId) {
+  const path = [];
+  let current = getNodeById(folderId);
+  while (current) {
+    path.unshift(current);
+    current = current.parentId ? getNodeById(current.parentId) : null;
+  }
+  return path;
+}
+
+function updateNode(nodeId, mutator) {
+  const nextExplorer = cloneValue(state.explorer);
+  const node = nextExplorer.nodes.find((item) => item.id === nodeId);
+  if (!node) return;
+  mutator(node, nextExplorer);
+  setState({ explorer: nextExplorer });
+}
+
+function createSubfolder(folderName) {
+  const trimmed = folderName.trim();
+  if (!trimmed) return;
+
+  const currentFolder = getCurrentFolder();
+  if (!currentFolder || currentFolder.type !== 'folder') return;
+
+  const existing = getChildren(currentFolder.id).find((child) => child.type === 'folder' && child.name.toLowerCase() === trimmed.toLowerCase());
+  if (existing) return;
+
+  const nextExplorer = cloneValue(state.explorer);
+  const nextCurrent = nextExplorer.nodes.find((node) => node.id === currentFolder.id);
+  const newFolder = makeFolder(trimmed, nextCurrent.id, cloneValue(nextCurrent.permissions));
+  nextCurrent.children.push(newFolder.id);
+  nextExplorer.nodes.push(newFolder);
+
+  setState({
+    explorer: nextExplorer,
+    currentFolderId: newFolder.id,
+  });
+}
+
+function setFolderPermissions(folderId, key, rawValue) {
+  const values = rawValue
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  updateNode(folderId, (node) => {
+    node.permissions[key] = values;
+  });
+}
+
+function navigateToFolder(folderId) {
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder') return;
+  setState({ currentFolderId: folderId });
+}
+
+function renderFolderTree(folderId, depth = 0) {
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder') return '';
+  const childFolders = getChildren(folderId).filter((child) => child.type === 'folder');
 
   return `
-    <div class="brand-manager ${state.brandedAssetsOpen ? 'open' : ''}">
-      <div class="brand-manager-header">
-        <h4>Branded Assets Locker</h4>
-        <p class="muted">Upload PNG files, organize by folder/dimension, and move fast in list view.</p>
-      </div>
-      <div class="brand-controls">
-        <label class="control-group">Upload PNG<input id="brandAssetUpload" type="file" accept="image/png" multiple /></label>
-        <label class="control-group">Folder
-          <select id="brandFolderFilter">
-            <option value="All folders" ${state.brandedAssetsFolderFilter === 'All folders' ? 'selected' : ''}>All folders</option>
-            ${state.brandedFolders.map((folder) => `<option value="${folder}" ${state.brandedAssetsFolderFilter === folder ? 'selected' : ''}>${folder}</option>`).join('')}
-          </select>
-        </label>
-        <label class="control-group">Dimension
-          <select id="brandDimensionFilter">
-            <option value="All dimensions" ${state.brandedAssetsDimensionFilter === 'All dimensions' ? 'selected' : ''}>All dimensions</option>
-            ${supportedDimensions.map((dimension) => `<option value="${dimension}" ${state.brandedAssetsDimensionFilter === dimension ? 'selected' : ''}>${dimension}</option>`).join('')}
-          </select>
-        </label>
-        <label class="control-group">Sort
-          <select id="brandAssetSort">
-            <option value="newest" ${state.brandedAssetsSort === 'newest' ? 'selected' : ''}>Newest first</option>
-            <option value="oldest" ${state.brandedAssetsSort === 'oldest' ? 'selected' : ''}>Oldest first</option>
-            <option value="name-asc" ${state.brandedAssetsSort === 'name-asc' ? 'selected' : ''}>Name A-Z</option>
-            <option value="name-desc" ${state.brandedAssetsSort === 'name-desc' ? 'selected' : ''}>Name Z-A</option>
-            <option value="dimension" ${state.brandedAssetsSort === 'dimension' ? 'selected' : ''}>Dimension</option>
-          </select>
-        </label>
-        <label class="control-group">Upload Dimension
-          <select id="brandUploadDimension">${supportedDimensions.map((dimension) => `<option value="${dimension}">${dimension}</option>`).join('')}</select>
-        </label>
-        <form id="brandFolderForm" class="folder-form">
-          <input id="brandFolderInput" placeholder="New folder name" maxlength="24" />
-          <button id="brandCreateFolder" type="button">Create Folder</button>
-        </form>
-      </div>
-      <div class="view-mode-row">
-        <button id="brandListView" class="pill-btn ${state.brandedAssetsView === 'list' ? 'active' : ''}">List View</button>
-        <button id="brandGridView" class="pill-btn ${state.brandedAssetsView === 'grid' ? 'active' : ''}">Grid View</button>
-      </div>
-      <div class="brand-assets-wrap ${state.brandedAssetsView}">
-        ${assets.length
-          ? (state.brandedAssetsView === 'list'
-              ? `<div class="brand-list-header"><span>Name</span><span>Folder</span><span>Dimension</span><span>Date Added</span></div>${brandedAssetsRows(assets)}`
-              : brandedAssetsGrid(assets))
-          : '<p class="muted">No assets found for this filter.</p>'}
-      </div>
+    <div class="tree-node" style="--depth:${depth}">
+      <button class="tree-folder ${state.currentFolderId === folder.id ? 'active' : ''}" data-open-folder-id="${folder.id}">${folder.name}</button>
+      ${childFolders.map((child) => renderFolderTree(child.id, depth + 1)).join('')}
     </div>
   `;
 }
 
-function brandedAssetsRows(assets) {
-  return assets.map((asset) => `
-    <button class="brand-list-row" data-asset-id="${asset.id}">
-      <span class="cell name">${asset.name}</span>
-      <span class="cell folder">${asset.folder}</span>
-      <span class="cell dim">${asset.dimension}</span>
-      <span class="cell date">${new Date(asset.createdAt).toLocaleDateString()}</span>
-    </button>`).join('');
-}
-
-function brandedAssetsManager() {
-  const assets = getFilteredAndSortedAssets();
+function fileExplorerView() {
+  const currentFolder = getCurrentFolder();
+  const children = getChildren(currentFolder.id);
+  const folders = children.filter((item) => item.type === 'folder');
+  const files = children.filter((item) => item.type === 'file');
+  const breadcrumbs = getFolderPath(currentFolder.id);
 
   return `
-    <div class="brand-manager ${state.brandedAssetsOpen ? 'open' : ''}">
-      <div class="brand-manager-header">
-        <h4>Branded Assets Locker</h4>
-      </div>
-      <div class="brand-controls compact">
-        <label class="control-group">Upload PNG<input id="brandAssetUpload" type="file" accept="image/png" multiple /></label>
-        <label class="control-group">Folder
-          <select id="brandFolderFilter">
-            <option value="All folders" ${state.brandedAssetsFolderFilter === 'All folders' ? 'selected' : ''}>All folders</option>
-            ${state.brandedFolders.map((folder) => `<option value="${folder}" ${state.brandedAssetsFolderFilter === folder ? 'selected' : ''}>${folder}</option>`).join('')}
-          </select>
-        </label>
-        <label class="control-group">Dimension
-          <select id="brandDimensionFilter">
-            <option value="All dimensions" ${state.brandedAssetsDimensionFilter === 'All dimensions' ? 'selected' : ''}>All dimensions</option>
-            ${supportedDimensions.map((dimension) => `<option value="${dimension}" ${state.brandedAssetsDimensionFilter === dimension ? 'selected' : ''}>${dimension}</option>`).join('')}
-          </select>
-        </label>
-        <label class="control-group">Sort
-          <select id="brandAssetSort">
-            <option value="newest" ${state.brandedAssetsSort === 'newest' ? 'selected' : ''}>Newest first</option>
-            <option value="oldest" ${state.brandedAssetsSort === 'oldest' ? 'selected' : ''}>Oldest first</option>
-            <option value="name-asc" ${state.brandedAssetsSort === 'name-asc' ? 'selected' : ''}>Name A-Z</option>
-            <option value="name-desc" ${state.brandedAssetsSort === 'name-desc' ? 'selected' : ''}>Name Z-A</option>
-            <option value="dimension" ${state.brandedAssetsSort === 'dimension' ? 'selected' : ''}>Dimension</option>
-          </select>
-        </label>
-      </div>
-      <form id="brandFolderForm" class="folder-form full-row">
-        <label class="control-group">Upload Dimension
-          <select id="brandUploadDimension">${supportedDimensions.map((dimension) => `<option value="${dimension}">${dimension}</option>`).join('')}</select>
-        </label>
-        <input id="brandFolderInput" placeholder="New folder name" maxlength="24" />
-        <button id="brandCreateFolder" type="submit">Create Folder</button>
-      </form>
-      <div class="brand-assets-wrap list">
-        ${assets.length ? `<div class="brand-list-header"><span>Name</span><span>Folder</span><span>Dimension</span><span>Date Added</span></div>${brandedAssetsRows(assets)}` : '<p class="muted">No assets found for this filter.</p>'}
-      </div>
+    <div class="explorer-layout">
+      <aside class="explorer-tree panel">
+        <h4>Folders</h4>
+        ${renderFolderTree(state.explorer.rootId)}
+      </aside>
+      <section class="explorer-main panel">
+        <div class="explorer-toolbar">
+          <div class="breadcrumbs">${breadcrumbs.map((crumb, index) => `<button class="crumb" data-crumb-id="${crumb.id}">${crumb.name}${index < breadcrumbs.length - 1 ? ' /' : ''}</button>`).join('')}</div>
+          <div class="toolbar-actions">
+            <input id="newFolderInput" placeholder="New folder" />
+            <button id="createFolderBtn" class="pill-btn">Create Folder</button>
+            <label class="upload-btn">Upload PNG<input id="brandAssetUpload" type="file" accept="image/png" multiple /></label>
+          </div>
+        </div>
+        <div class="explorer-list">
+          <div class="explorer-head"><span>Name</span><span>Type</span><span>Dimension</span><span>Modified</span></div>
+          ${folders.map((folder) => `<button class="explorer-row folder-row" data-open-folder-id="${folder.id}"><span>📁 ${folder.name}</span><span>Folder</span><span>--</span><span>${new Date(folder.createdAt).toLocaleDateString()}</span></button>`).join('')}
+          ${files.map((file) => `<button class="explorer-row file-row" data-asset-id="${file.id}"><span>🖼️ ${file.name}</span><span>PNG</span><span>${file.dimension}</span><span>${new Date(file.createdAt).toLocaleDateString()}</span></button>`).join('')}
+          ${!folders.length && !files.length ? '<p class="muted">This folder is empty. Create subfolders or upload PNG files.</p>' : ''}
+        </div>
+      </section>
+      <aside class="explorer-permissions panel">
+        <h4>Folder Permissions</h4>
+        <p class="muted">Access to a parent folder grants access to everything inside it.</p>
+        <label class="control-group">Owners<input id="ownersInput" value="${(currentFolder.permissions?.owners || []).join(', ')}" /></label>
+        <label class="control-group">Editors<input id="editorsInput" value="${(currentFolder.permissions?.editors || []).join(', ')}" /></label>
+        <label class="control-group">Viewers<input id="viewersInput" value="${(currentFolder.permissions?.viewers || []).join(', ')}" /></label>
+      </aside>
     </div>
   `;
 }
@@ -247,7 +329,7 @@ function dashboardView() {
         <div class="asset">${icons.logos}<span>Bug</span></div>
         <div class="asset">${icons.fonts}<span>Templates</span></div>
       </div>
-      ${brandedAssetsManager()}
+      <div class="brand-manager ${state.brandedAssetsOpen ? 'open' : ''}">${fileExplorerView()}</div>
     </section>
   `;
 }
@@ -263,7 +345,8 @@ function getBoundText(layer) {
 }
 
 function designView() {
-  const selectedAsset = getAssetById(state.designSelectedAssetId) || state.brandedAssets[0];
+  const allFiles = getAllFiles();
+  const selectedAsset = allFiles.find((file) => file.id === state.designSelectedAssetId) || allFiles[0];
   const ratio = selectedAsset ? getDimensionRatio(selectedAsset.dimension) : 16 / 9;
 
   return `
@@ -281,7 +364,7 @@ function designView() {
         <div class="panel mini-panel">
           <h3>Branded Assets Locker</h3>
           <div class="design-asset-list">
-            ${state.brandedAssets.map((asset) => `<button class="design-asset-item ${state.designSelectedAssetId === asset.id ? 'active' : ''}" data-design-asset-id="${asset.id}">${asset.name}<span>${asset.dimension}</span></button>`).join('')}
+            ${allFiles.map((asset) => `<button class="design-asset-item ${state.designSelectedAssetId === asset.id ? 'active' : ''}" data-design-asset-id="${asset.id}">${asset.name}<span>${asset.dimension}</span></button>`).join('')}
           </div>
         </div>
         <div class="panel mini-panel">
@@ -456,11 +539,7 @@ function stopSimulation() {
 
 function resetSimulation() {
   stopSimulation();
-  setState({
-    simulationIndex: -1,
-    liveScore: 'BOS 0 - NYY 0',
-    gameState: cloneValue(bootstrap.initialGameState || {}),
-  });
+  setState({ simulationIndex: -1, liveScore: 'BOS 0 - NYY 0', gameState: cloneValue(bootstrap.initialGameState || {}) });
 }
 
 function updateLayer(layerId, prop, value) {
@@ -480,69 +559,96 @@ function removeTextLayer(layerId) {
   if (layers.length) setState({ designTextLayers: layers });
 }
 
-function guessDimensionFromFileName(name) {
-  const lowerName = name.toLowerCase();
-  return supportedDimensions.find((dimension) => lowerName.includes(dimension)) || '1920x1080';
+function detectImageSize(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight, src: reader.result });
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
-function createFolder() {
-  const folderInput = document.getElementById('brandFolderInput');
-  if (!folderInput) return;
-  const folderName = folderInput.value.trim();
-  if (!folderName || state.brandedFolders.includes(folderName)) return;
+async function uploadToCurrentFolder(files) {
+  const folder = getCurrentFolder();
+  if (!folder || folder.type !== 'folder') return;
 
-  setState({
-    brandedFolders: [...state.brandedFolders, folderName],
-    brandedAssetsFolderFilter: folderName,
-  });
+  const nextExplorer = cloneValue(state.explorer);
+  const nextFolder = nextExplorer.nodes.find((node) => node.id === folder.id);
+
+  for (const file of files) {
+    const metadata = await detectImageSize(file);
+    const dimension = `${metadata.width}x${metadata.height}`;
+    const newFile = makeFile({
+      name: file.name,
+      parentId: nextFolder.id,
+      src: metadata.src,
+      dimension,
+    });
+
+    nextFolder.children.push(newFile.id);
+    nextExplorer.nodes.push(newFile);
+  }
+
+  setState({ explorer: nextExplorer });
 }
 
 function wireBrandedAssetInteractions() {
   const toggleButton = document.getElementById('toggleBrandedAssets');
   if (toggleButton) toggleButton.addEventListener('click', () => setState({ brandedAssetsOpen: !state.brandedAssetsOpen }));
 
-  const uploadInput = document.getElementById('brandAssetUpload');
-  if (uploadInput) {
-    uploadInput.addEventListener('change', (event) => {
-      const files = Array.from(event.target.files || []).filter((file) => file.type === 'image/png');
-      if (!files.length) return;
+  const createFolderBtn = document.getElementById('createFolderBtn');
+  const newFolderInput = document.getElementById('newFolderInput');
+  if (createFolderBtn && newFolderInput) {
+    createFolderBtn.addEventListener('click', () => createSubfolder(newFolderInput.value));
+  }
 
-      const targetFolder = state.brandedAssetsFolderFilter === 'All folders' ? 'General' : state.brandedAssetsFolderFilter;
-      const uploadDimension = document.getElementById('brandUploadDimension')?.value;
-
-      const newAssets = files.map((file, index) => ({
-        id: Date.now() + index,
-        name: file.name,
-        folder: targetFolder,
-        dimension: uploadDimension || guessDimensionFromFileName(file.name),
-        createdAt: new Date().toISOString(),
-        src: URL.createObjectURL(file),
-      }));
-
-      setState({ brandedAssets: [...newAssets, ...state.brandedAssets] });
+  const folderForm = document.getElementById('brandFolderForm');
+  if (folderForm) {
+    folderForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const input = document.getElementById('brandFolderInput');
+      createSubfolder(input.value);
     });
   }
 
-  const folderFilter = document.getElementById('brandFolderFilter');
-  if (folderFilter) folderFilter.addEventListener('change', (event) => setState({ brandedAssetsFolderFilter: event.target.value }));
+  const uploadInput = document.getElementById('brandAssetUpload');
+  if (uploadInput) {
+    uploadInput.addEventListener('change', async (event) => {
+      const files = Array.from(event.target.files || []).filter((file) => file.type === 'image/png');
+      if (!files.length) return;
+      await uploadToCurrentFolder(files);
+    });
+  }
 
-  const dimensionFilter = document.getElementById('brandDimensionFilter');
-  if (dimensionFilter) dimensionFilter.addEventListener('change', (event) => setState({ brandedAssetsDimensionFilter: event.target.value }));
+  document.querySelectorAll('[data-open-folder-id]').forEach((el) => {
+    el.addEventListener('click', () => navigateToFolder(el.dataset.openFolderId));
+    el.addEventListener('dblclick', () => navigateToFolder(el.dataset.openFolderId));
+  });
 
-  const sortSelect = document.getElementById('brandAssetSort');
-  if (sortSelect) sortSelect.addEventListener('change', (event) => setState({ brandedAssetsSort: event.target.value }));
-
-  const folderForm = document.getElementById('brandFolderForm');
-  if (folderForm) folderForm.addEventListener('submit', (event) => { event.preventDefault(); createFolder(); });
+  document.querySelectorAll('[data-crumb-id]').forEach((el) => {
+    el.addEventListener('click', () => navigateToFolder(el.dataset.crumbId));
+  });
 
   document.querySelectorAll('[data-asset-id]').forEach((row) => {
-    row.addEventListener('click', () => setState({ designSelectedAssetId: Number(row.dataset.assetId), activeTab: 'Design' }));
+    row.addEventListener('click', () => setState({ designSelectedAssetId: row.dataset.assetId, activeTab: 'Design' }));
   });
+
+  const currentFolder = getCurrentFolder();
+  const ownersInput = document.getElementById('ownersInput');
+  const editorsInput = document.getElementById('editorsInput');
+  const viewersInput = document.getElementById('viewersInput');
+
+  if (ownersInput) ownersInput.addEventListener('change', () => setFolderPermissions(currentFolder.id, 'owners', ownersInput.value));
+  if (editorsInput) editorsInput.addEventListener('change', () => setFolderPermissions(currentFolder.id, 'editors', editorsInput.value));
+  if (viewersInput) viewersInput.addEventListener('change', () => setFolderPermissions(currentFolder.id, 'viewers', viewersInput.value));
 }
 
 function wireDesignInteractions() {
   document.querySelectorAll('[data-design-asset-id]').forEach((button) => {
-    button.addEventListener('click', () => setState({ designSelectedAssetId: Number(button.dataset.designAssetId) }));
+    button.addEventListener('click', () => setState({ designSelectedAssetId: button.dataset.designAssetId }));
   });
 
   const addLayerButton = document.getElementById('addTextLayer');
