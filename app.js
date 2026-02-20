@@ -1,6 +1,8 @@
 const tabs = ['Dashboard', 'Design', 'Data Engine', 'Control Room', 'Output'];
 const STORAGE_KEY = 'renderless.fileExplorer.v1';
 const TEMPLATE_STORAGE_KEY = 'renderless.templates.v1';
+const ASSET_DB_NAME = 'renderless.assetBinary.v1';
+const ASSET_DB_STORE = 'images';
 const MAX_PERSISTED_DATA_URL_LENGTH = 120000;
 
 const bootstrapData = window.RENDERLESS_BOOTSTRAP || {};
@@ -91,39 +93,37 @@ function buildPersistableExplorer(explorer) {
   let trimmedCount = 0;
 
   copy.nodes = copy.nodes.map((node) => {
-    if (node.type !== 'file' || typeof node.src !== 'string') return node;
-    if (!node.src.startsWith('data:image/')) return node;
-    if (node.src.length <= MAX_PERSISTED_DATA_URL_LENGTH) return node;
+    if (node.type !== 'file') return node;
+    const nextNode = { ...node };
 
-    trimmedCount += 1;
-    return { ...node, src: '', volatile: true };
+    if (typeof nextNode.src === 'string' && nextNode.src.startsWith('data:image/')) {
+      if (nextNode.src.length > MAX_PERSISTED_DATA_URL_LENGTH) trimmedCount += 1;
+      nextNode.srcRef = nextNode.srcRef || nextNode.id;
+      nextNode.src = '';
+      nextNode.volatile = true;
+    }
+
+    if (typeof nextNode.src === 'string' && nextNode.src.startsWith('blob:')) {
+      nextNode.srcRef = nextNode.srcRef || nextNode.id;
+      nextNode.src = '';
+    }
+
+    return nextNode;
   });
 
   return { explorer: copy, trimmedCount };
 }
 
 function saveExplorer(explorer) {
+  const { explorer: persistableExplorer, trimmedCount } = buildPersistableExplorer(explorer);
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(explorer));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(persistableExplorer));
+    if (trimmedCount > 0) {
+      return { ok: true, message: `Stored ${trimmedCount} uploaded file${trimmedCount > 1 ? 's' : ''} in local asset cache.` };
+    }
     return { ok: true, message: '' };
   } catch (error) {
-    if (error?.name !== 'QuotaExceededError') return { ok: false, message: 'Could not save asset library locally.' };
-
-    const { explorer: trimmedExplorer, trimmedCount } = buildPersistableExplorer(explorer);
-
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmedExplorer));
-      if (trimmedCount > 0) {
-        return {
-          ok: true,
-          message: `Storage is full. ${trimmedCount} large uploaded file${trimmedCount > 1 ? 's were' : ' was'} kept for this session only.`,
-        };
-      }
-
-      return { ok: false, message: 'Storage is full. Recent changes could not be saved locally.' };
-    } catch (persistError) {
-      return { ok: false, message: 'Storage is full. Recent changes could not be saved locally.' };
-    }
+    return { ok: false, message: 'Could not save asset library locally.' };
   }
 }
 
@@ -148,6 +148,90 @@ function saveTemplates(templates) {
 
 function formatTemplateTimestamp(value) {
   return new Date(value).toLocaleString();
+}
+
+const runtimeAssetUrlCache = new Map();
+
+function openAssetDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(ASSET_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(ASSET_DB_STORE)) db.createObjectStore(ASSET_DB_STORE);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function dataUrlToBlob(dataUrl) {
+  const [meta, body] = dataUrl.split(',');
+  const mime = (meta.match(/data:(.*?);base64/) || [])[1] || 'application/octet-stream';
+  const binary = atob(body);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return new Blob([bytes], { type: mime });
+}
+
+async function storeAssetDataUrl(assetId, dataUrl) {
+  if (!assetId || !dataUrl?.startsWith('data:image/')) return false;
+  try {
+    const db = await openAssetDb();
+    const blob = dataUrlToBlob(dataUrl);
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(ASSET_DB_STORE, 'readwrite');
+      tx.objectStore(ASSET_DB_STORE).put(blob, assetId);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+async function loadAssetObjectUrl(assetId) {
+  if (!assetId) return '';
+  if (runtimeAssetUrlCache.has(assetId)) return runtimeAssetUrlCache.get(assetId);
+
+  try {
+    const db = await openAssetDb();
+    const blob = await new Promise((resolve, reject) => {
+      const tx = db.transaction(ASSET_DB_STORE, 'readonly');
+      const request = tx.objectStore(ASSET_DB_STORE).get(assetId);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+    });
+    db.close();
+    if (!blob) return '';
+
+    const objectUrl = URL.createObjectURL(blob);
+    runtimeAssetUrlCache.set(assetId, objectUrl);
+    return objectUrl;
+  } catch (error) {
+    return '';
+  }
+}
+
+function hydrateAssetSource(assetId) {
+  const file = getNodeById(assetId);
+  if (!file || file.type !== 'file' || file.src) return;
+
+  loadAssetObjectUrl(file.srcRef || file.id).then((objectUrl) => {
+    if (!objectUrl) return;
+    const target = getNodeById(assetId);
+    if (!target) return;
+    target.src = objectUrl;
+    render();
+  });
+}
+
+function getRenderableAssetSrc(file) {
+  if (!file) return '';
+  if (file.src) return file.src;
+  hydrateAssetSource(file.id);
+  return '';
 }
 
 const state = {
@@ -640,13 +724,14 @@ function renderFolderTree(folderId, depth = 0) {
 
   return `
     <div class="tree-node" style="--depth:${depth}">
-      <button class="tree-folder ${state.currentFolderId === folder.id ? 'active' : ''}" data-open-folder-id="${folder.id}">${folder.name}</button>
+      <button class="tree-folder ${state.currentFolderId === folder.id ? 'active' : ''}" data-open-folder-id="${folder.id}" data-rename-folder-id="${folder.id}" title="Double-click to open. Right-click to rename.">${folder.name}</button>
       ${childFolders.map((child) => renderFolderTree(child.id, depth + 1)).join('')}
     </div>
   `;
 }
 
-function fileExplorerView() {
+function fileExplorerView(options = {}) {
+  const showPermissions = options.showPermissions !== false;
   const currentFolder = getCurrentFolder();
   const children = getChildren(currentFolder.id);
   const folders = children.filter((item) => item.type === 'folder');
@@ -657,7 +742,7 @@ function fileExplorerView() {
   const breadcrumbs = getFolderPath(currentFolder.id);
 
   return `
-    <div class="explorer-layout">
+    <div class="explorer-layout ${showPermissions ? '' : 'no-permissions'}">
       <aside class="explorer-tree panel">
         <h4>Folders</h4>
         ${renderFolderTree(state.explorer.rootId)}
@@ -668,26 +753,25 @@ function fileExplorerView() {
           <div class="toolbar-actions">
             <input id="assetSearchInput" value="${state.assetSearchQuery}" placeholder="Search assets" />
             <button id="createFolderBtn" class="action-btn">Create Folder</button>
-            <button id="renameFolderBtn" class="action-btn" ${currentFolder.id === state.explorer.rootId ? 'disabled' : ''}>Rename Folder</button>
             <label class="action-btn upload-btn">Upload<input id="brandAssetUpload" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" multiple /></label>
           </div>
           ${state.storageNotice ? `<p class="storage-warning">${state.storageNotice}</p>` : ''}
         </div>
         <div class="explorer-list">
           <div class="explorer-head"><span>Name</span><span>Type</span><span>Dimension</span><span>Modified</span></div>
-          ${folders.map((folder) => `<div class="explorer-row folder-row"><button class="row-main" data-open-folder-id="${folder.id}"><span>📁 ${folder.name}</span><span>Folder</span><span>--</span><span>${new Date(folder.createdAt).toLocaleDateString()}</span></button><button class="row-action" data-rename-folder-id="${folder.id}">Rename</button></div>`).join('')}
+          ${folders.map((folder) => `<button class="explorer-row folder-row" data-open-folder-id="${folder.id}" data-rename-folder-id="${folder.id}" title="Double-click to open. Right-click to rename."><span>📁 ${folder.name}</span><span>Folder</span><span>--</span><span>${new Date(folder.createdAt).toLocaleDateString()}</span></button>`).join('')}
           ${files.map((file) => `<button class="explorer-row file-row" data-asset-id="${file.id}"><span>🖼️ ${file.name}</span><span>${getFileKind(file.name)}</span><span>${file.dimension}</span><span>${new Date(file.createdAt).toLocaleDateString()}</span></button>`).join('')}
           ${state.templates.length ? `<div class="template-strip"><h4>Saved Templates</h4>${state.templates.filter((template) => !fileSearch || template.name.toLowerCase().includes(fileSearch)).map((template) => `<button class="explorer-row template-row" data-template-id="${template.id}"><span>🧩 ${template.name}</span><span>Template</span><span>${template.dimension}</span><span>${new Date(template.createdAt).toLocaleDateString()}</span></button>`).join('')}</div>` : ''}
           ${!folders.length && !files.length && !state.templates.length ? '<p class="muted">No matching assets in this folder.</p>' : ''}
         </div>
       </section>
-      <aside class="explorer-permissions panel">
+      ${showPermissions ? `<aside class="explorer-permissions panel">
         <h4>Folder Permissions</h4>
         <p class="muted">Access to a parent folder grants access to everything inside it.</p>
         <label class="control-group">Owners<input id="ownersInput" value="${(currentFolder.permissions?.owners || []).join(', ')}" /></label>
         <label class="control-group">Editors<input id="editorsInput" value="${(currentFolder.permissions?.editors || []).join(', ')}" /></label>
         <label class="control-group">Viewers<input id="viewersInput" value="${(currentFolder.permissions?.viewers || []).join(', ')}" /></label>
-      </aside>
+      </aside>` : ''}
     </div>
   `;
 }
@@ -716,7 +800,7 @@ function dashboardView() {
         <div class="asset">${icons.logos}<span>Bug</span></div>
         <div class="asset">${icons.fonts}<span>Templates</span></div>
       </div>
-      <div class="brand-manager ${state.brandedAssetsOpen ? 'open' : ''}">${fileExplorerView()}</div>
+      <div class="brand-manager ${state.brandedAssetsOpen ? 'open' : ''}">${fileExplorerView({ showPermissions: true })}</div>
     </section>
   `;
 }
@@ -776,7 +860,7 @@ function designView() {
         <h3>Design Canvas · Linked Branded Asset</h3>
         <div class="design-stage-shell">
           <div class="design-stage" style="--asset-ratio:${ratio};">
-            ${selectedAsset?.src ? `<img src="${selectedAsset.src}" alt="${selectedAsset.name}" class="canvas-bg" />` : '<p class="muted canvas-empty">Selected asset preview is not persisted in local storage.</p>'}
+            ${getRenderableAssetSrc(selectedAsset) ? `<img src="${getRenderableAssetSrc(selectedAsset)}" alt="${selectedAsset.name}" class="canvas-bg" />` : '<p class="muted canvas-empty">Selected asset preview is loading or unavailable.</p>'}
             ${state.designTextLayers.map((layer) => `<span class="text-layer" style="left:${layer.x}px;top:${layer.y}px;font-size:${layer.size}px;color:${layer.color};">${getBoundText(layer)}</span>`).join('')}
           </div>
         </div>
@@ -816,7 +900,7 @@ function designView() {
     </section>
     <section class="panel">
       <h3>Branded Assets Locker</h3>
-      ${fileExplorerView()}
+      ${fileExplorerView({ showPermissions: false })}
     </section>
   `;
 }
@@ -1016,6 +1100,8 @@ async function uploadToCurrentFolder(files) {
       src: metadata.src,
       dimension,
     });
+    newFile.srcRef = newFile.id;
+    await storeAssetDataUrl(newFile.id, metadata.src);
 
     nextFolder.children.push(newFile.id);
     nextExplorer.nodes.push(newFile);
@@ -1041,19 +1127,91 @@ function wireBrandedAssetInteractions() {
     });
   }
 
-  const renameFolderBtn = document.getElementById('renameFolderBtn');
-  if (renameFolderBtn) {
-    renameFolderBtn.addEventListener('click', () => {
-      const currentFolder = getCurrentFolder();
-      if (currentFolder.id === state.explorer.rootId) return;
-      const name = requestFolderName('Rename folder', currentFolder.name);
-      if (name) renameFolder(currentFolder.id, name);
-    });
-  }
-
   const assetSearchInput = document.getElementById('assetSearchInput');
   if (assetSearchInput) {
     assetSearchInput.addEventListener('input', () => setState({ assetSearchQuery: assetSearchInput.value }));
+  }
+
+  const uploadInput = document.getElementById('brandAssetUpload');
+  if (uploadInput) {
+    uploadInput.addEventListener('change', async (event) => {
+      const files = Array.from(event.target.files || []).filter((file) => ['image/png', 'image/jpeg'].includes(file.type) || /\.(png|jpe?g)$/i.test(file.name));
+      if (!files.length) return;
+      await uploadToCurrentFolder(files);
+    });
+  }
+
+  document.querySelectorAll('[data-open-folder-id]').forEach((el) => {
+    el.addEventListener('click', () => navigateToFolder(el.dataset.openFolderId));
+    el.addEventListener('dblclick', () => navigateToFolder(el.dataset.openFolderId));
+  });
+
+  document.querySelectorAll('[data-rename-folder-id]').forEach((el) => {
+    el.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      const folderId = el.dataset.renameFolderId;
+      const folder = getNodeById(folderId);
+      if (!folder) return;
+      const value = window.prompt('Rename folder', folder.name);
+      if (typeof value === 'string' && value.trim()) renameFolder(folderId, value);
+    });
+  });
+
+  document.querySelectorAll('[data-crumb-id]').forEach((el) => {
+    el.addEventListener('click', () => navigateToFolder(el.dataset.crumbId));
+  });
+
+  document.querySelectorAll('[data-asset-id]').forEach((row) => {
+    row.addEventListener('click', () => setState({ designSelectedAssetId: row.dataset.assetId, activeTab: 'Design' }));
+  });
+
+  document.querySelectorAll('[data-template-id]').forEach((row) => {
+    row.addEventListener('click', () => applyTemplateToDesign(row.dataset.templateId));
+  });
+
+  const currentFolder = getCurrentFolder();
+  const ownersInput = document.getElementById('ownersInput');
+  const editorsInput = document.getElementById('editorsInput');
+  const viewersInput = document.getElementById('viewersInput');
+
+  if (ownersInput) ownersInput.addEventListener('change', () => setFolderPermissions(currentFolder.id, 'owners', ownersInput.value));
+  if (editorsInput) editorsInput.addEventListener('change', () => setFolderPermissions(currentFolder.id, 'editors', editorsInput.value));
+  if (viewersInput) viewersInput.addEventListener('change', () => setFolderPermissions(currentFolder.id, 'viewers', viewersInput.value));
+}
+
+function wireDesignInteractions() {
+  document.querySelectorAll('[data-design-asset-id]').forEach((button) => {
+    button.addEventListener('click', () => setState({ designSelectedAssetId: button.dataset.designAssetId }));
+  });
+
+  const saveTemplateBtn = document.getElementById('saveTemplateBtn');
+  if (saveTemplateBtn) saveTemplateBtn.addEventListener('click', saveCurrentDesignTemplate);
+
+  const addLayerButton = document.getElementById('addTextLayer');
+  if (addLayerButton) addLayerButton.addEventListener('click', addTextLayer);
+
+  document.querySelectorAll('[data-remove-layer-id]').forEach((button) => {
+    button.addEventListener('click', () => removeTextLayer(button.dataset.removeLayerId));
+  });
+
+  document.querySelectorAll('[data-layer-id]').forEach((control) => {
+    control.addEventListener('input', () => updateLayer(control.dataset.layerId, control.dataset.prop, control.value));
+    control.addEventListener('change', () => updateLayer(control.dataset.layerId, control.dataset.prop, control.value));
+  });
+}
+
+
+function wireControlRoomInteractions() {
+  document.querySelectorAll('[data-control-template-id]').forEach((button) => {
+    button.addEventListener('click', () => setState({ selectedControlTemplateId: button.dataset.controlTemplateId }));
+  });
+
+  const loadTemplateButton = document.getElementById('loadTemplateToDesignBtn');
+  if (loadTemplateButton) {
+    loadTemplateButton.addEventListener('click', () => {
+      if (!state.selectedControlTemplateId) return;
+      applyTemplateToDesign(state.selectedControlTemplateId);
+    });
   }
 
   const uploadInput = document.getElementById('brandAssetUpload');
@@ -1169,6 +1327,37 @@ function wireInteractions() {
   wireControlRoomInteractions();
 }
 
+function wireDataEngineInteractions() {
+  const toggleSimulationButton = document.getElementById('toggleSimulation');
+  if (toggleSimulationButton) {
+    toggleSimulationButton.addEventListener('click', () => {
+      if (state.simulationRunning) stopSimulation();
+      else startSimulation();
+    });
+  }
+
+  const speedSelect = document.getElementById('simulationSpeed');
+  if (speedSelect) {
+    speedSelect.addEventListener('change', (event) => {
+      const nextSpeed = Number(event.target.value);
+      const wasRunning = state.simulationRunning;
+      stopSimulation();
+      setState({ simulationSpeedMs: nextSpeed });
+      if (wasRunning) startSimulation();
+    });
+  }
+
+  const resetButton = document.getElementById('resetSimulation');
+  if (resetButton) resetButton.addEventListener('click', resetSimulation);
+}
+
+function wireInteractions() {
+  wireBrandedAssetInteractions();
+  wireDesignInteractions();
+  wireDataEngineInteractions();
+  wireControlRoomInteractions();
+}
+
 function render() {
   renderTabs();
   viewContainer.innerHTML = renderView();
@@ -1178,5 +1367,7 @@ function render() {
 }
 
 streamButton.addEventListener('click', () => setState({ isStreaming: !state.isStreaming, activeTab: 'Output' }));
+
+state.explorer.nodes.filter((node) => node.type === 'file' && !node.src && (node.srcRef || node.id)).forEach((node) => hydrateAssetSource(node.id));
 
 render();
