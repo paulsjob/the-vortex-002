@@ -93,9 +93,13 @@ const state = {
   liveScore: 'BOS 0 - NYY 0',
   isStreaming: false,
   brandedAssetsOpen: true,
+  assetSearchQuery: '',
   explorer: loadExplorer(),
   currentFolderId: 'root',
   designSelectedAssetId: null,
+  designSearchQuery: '',
+  designFolderFilter: 'all',
+  designDimensionFilter: 'all',
   designTextLayers: [
     { id: 1, name: 'Headline', text: 'Final Score Update', x: 32, y: 36, size: 56, color: '#ffffff', bindKey: 'none' },
     { id: 2, name: 'Subhead', text: 'Waiting to start MLB simulation.', x: 32, y: 110, size: 40, color: '#bfdbfe', bindKey: 'lastEvent' },
@@ -281,6 +285,96 @@ function createSubfolder(folderName) {
   });
 }
 
+function getNodeById(id) {
+  return state.explorer.nodes.find((node) => node.id === id);
+}
+
+function getCurrentFolder() {
+  return getNodeById(state.currentFolderId) || getNodeById(state.explorer.rootId);
+}
+
+function getChildren(folderId) {
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder') return [];
+  return folder.children.map((id) => getNodeById(id)).filter(Boolean);
+}
+
+function getAllFiles() {
+  return state.explorer.nodes.filter((node) => node.type === 'file');
+}
+
+function getDimensionRatio(dimension = '16x9') {
+  const [w, h] = String(dimension).split('x').map(Number);
+  if (!w || !h) return 16 / 9;
+  return w / h;
+}
+
+function getFileKind(name = '') {
+  const ext = name.split('.').pop().toLowerCase();
+  if (!ext || ext === name.toLowerCase()) return 'FILE';
+  return ext.toUpperCase();
+}
+
+function getFolderName(folderId) {
+  return getNodeById(folderId)?.name || 'Unknown Folder';
+}
+
+function getFolderPath(folderId) {
+  const path = [];
+  let current = getNodeById(folderId);
+  while (current) {
+    path.unshift(current);
+    current = current.parentId ? getNodeById(current.parentId) : null;
+  }
+  return path;
+}
+
+function updateNode(nodeId, mutator) {
+  const nextExplorer = cloneValue(state.explorer);
+  const node = nextExplorer.nodes.find((item) => item.id === nodeId);
+  if (!node) return;
+  mutator(node, nextExplorer);
+  setState({ explorer: nextExplorer });
+}
+
+function createSubfolder(folderName) {
+  const trimmed = folderName.trim();
+  if (!trimmed) return;
+
+  const currentFolder = getCurrentFolder();
+  if (!currentFolder || currentFolder.type !== 'folder') return;
+
+  const existing = getChildren(currentFolder.id).find((child) => child.type === 'folder' && child.name.toLowerCase() === trimmed.toLowerCase());
+  if (existing) return;
+
+  const nextExplorer = cloneValue(state.explorer);
+  const nextCurrent = nextExplorer.nodes.find((node) => node.id === currentFolder.id);
+  const newFolder = makeFolder(trimmed, nextCurrent.id, cloneValue(nextCurrent.permissions));
+  nextCurrent.children.push(newFolder.id);
+  nextExplorer.nodes.push(newFolder);
+
+  setState({
+    explorer: nextExplorer,
+    currentFolderId: newFolder.id,
+  });
+}
+
+function renameFolder(folderId, folderName) {
+  const trimmed = folderName.trim();
+  if (!trimmed) return;
+
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder' || folder.id === state.explorer.rootId) return;
+
+  const siblings = getChildren(folder.parentId || state.explorer.rootId)
+    .filter((item) => item.type === 'folder' && item.id !== folderId);
+  if (siblings.some((item) => item.name.toLowerCase() === trimmed.toLowerCase())) return;
+
+  updateNode(folderId, (node) => {
+    node.name = trimmed;
+  });
+}
+
 function setFolderPermissions(folderId, key, rawValue) {
   const values = rawValue
     .split(',')
@@ -315,7 +409,10 @@ function fileExplorerView() {
   const currentFolder = getCurrentFolder();
   const children = getChildren(currentFolder.id);
   const folders = children.filter((item) => item.type === 'folder');
-  const files = children.filter((item) => item.type === 'file');
+  const fileSearch = state.assetSearchQuery.trim().toLowerCase();
+  const files = children
+    .filter((item) => item.type === 'file')
+    .filter((file) => !fileSearch || file.name.toLowerCase().includes(fileSearch));
   const breadcrumbs = getFolderPath(currentFolder.id);
 
   return `
@@ -328,16 +425,17 @@ function fileExplorerView() {
         <div class="explorer-toolbar">
           <div class="breadcrumbs">${breadcrumbs.map((crumb, index) => `<button class="crumb" data-crumb-id="${crumb.id}">${crumb.name}${index < breadcrumbs.length - 1 ? ' /' : ''}</button>`).join('')}</div>
           <div class="toolbar-actions">
-            <input id="newFolderInput" placeholder="New folder" />
-            <button id="createFolderBtn" class="pill-btn">Create Folder</button>
-            <label class="upload-btn">Upload PNG<input id="brandAssetUpload" type="file" accept="image/png" multiple /></label>
+            <input id="assetSearchInput" value="${state.assetSearchQuery}" placeholder="Search assets" />
+            <button id="createFolderBtn" class="action-btn">Create Folder</button>
+            <button id="renameFolderBtn" class="action-btn" ${currentFolder.id === state.explorer.rootId ? 'disabled' : ''}>Rename Folder</button>
+            <label class="action-btn upload-btn">Upload<input id="brandAssetUpload" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" multiple /></label>
           </div>
         </div>
         <div class="explorer-list">
           <div class="explorer-head"><span>Name</span><span>Type</span><span>Dimension</span><span>Modified</span></div>
-          ${folders.map((folder) => `<button class="explorer-row folder-row" data-open-folder-id="${folder.id}"><span>📁 ${folder.name}</span><span>Folder</span><span>--</span><span>${new Date(folder.createdAt).toLocaleDateString()}</span></button>`).join('')}
-          ${files.map((file) => `<button class="explorer-row file-row" data-asset-id="${file.id}"><span>🖼️ ${file.name}</span><span>PNG</span><span>${file.dimension}</span><span>${new Date(file.createdAt).toLocaleDateString()}</span></button>`).join('')}
-          ${!folders.length && !files.length ? '<p class="muted">This folder is empty. Create subfolders or upload PNG files.</p>' : ''}
+          ${folders.map((folder) => `<div class="explorer-row folder-row"><button class="row-main" data-open-folder-id="${folder.id}"><span>📁 ${folder.name}</span><span>Folder</span><span>--</span><span>${new Date(folder.createdAt).toLocaleDateString()}</span></button><button class="row-action" data-rename-folder-id="${folder.id}">Rename</button></div>`).join('')}
+          ${files.map((file) => `<button class="explorer-row file-row" data-asset-id="${file.id}"><span>🖼️ ${file.name}</span><span>${getFileKind(file.name)}</span><span>${file.dimension}</span><span>${new Date(file.createdAt).toLocaleDateString()}</span></button>`).join('')}
+          ${!folders.length && !files.length ? '<p class="muted">No matching assets in this folder.</p>' : ''}
         </div>
       </section>
       <aside class="explorer-permissions panel">
@@ -394,6 +492,15 @@ function designView() {
   const allFiles = getAllFiles();
   const selectedAsset = allFiles.find((file) => file.id === state.designSelectedAssetId) || allFiles[0];
   const ratio = selectedAsset ? getDimensionRatio(selectedAsset.dimension) : 16 / 9;
+  const search = state.designSearchQuery.trim().toLowerCase();
+  const folderOptions = Array.from(new Set(allFiles.map((file) => getFolderName(file.parentId)))).sort();
+  const dimensionOptions = Array.from(new Set(allFiles.map((file) => file.dimension))).sort();
+  const filteredFiles = allFiles.filter((file) => {
+    const matchSearch = !search || file.name.toLowerCase().includes(search);
+    const matchFolder = state.designFolderFilter === 'all' || getFolderName(file.parentId) === state.designFolderFilter;
+    const matchDimension = state.designDimensionFilter === 'all' || file.dimension === state.designDimensionFilter;
+    return matchSearch && matchFolder && matchDimension;
+  });
 
   return `
     <section class="panel design-layout">
@@ -409,8 +516,20 @@ function designView() {
       <aside class="design-sidebar">
         <div class="panel mini-panel">
           <h3>Branded Assets Locker</h3>
-          <div class="design-asset-list">
-            ${allFiles.map((asset) => `<button class="design-asset-item ${state.designSelectedAssetId === asset.id ? 'active' : ''}" data-design-asset-id="${asset.id}">${asset.name}<span>${asset.dimension}</span></button>`).join('')}
+          <div class="design-finder-toolbar">
+            <input id="designAssetSearch" placeholder="Search assets" value="${state.designSearchQuery}" />
+            <select id="designFolderFilter">
+              <option value="all">All folders</option>
+              ${folderOptions.map((name) => `<option value="${name}" ${state.designFolderFilter === name ? 'selected' : ''}>${name}</option>`).join('')}
+            </select>
+            <select id="designDimensionFilter">
+              <option value="all">All dimensions</option>
+              ${dimensionOptions.map((dim) => `<option value="${dim}" ${state.designDimensionFilter === dim ? 'selected' : ''}>${dim}</option>`).join('')}
+            </select>
+          </div>
+          <div class="design-asset-list finder-list">
+            ${filteredFiles.map((asset) => `<button class="design-asset-item ${state.designSelectedAssetId === asset.id ? 'active' : ''}" data-design-asset-id="${asset.id}"><strong>${asset.name}</strong><span>${getFolderName(asset.parentId)} · ${asset.dimension}</span></button>`).join('')}
+            ${!filteredFiles.length ? '<p class="muted">No assets match your search/filter.</p>' : ''}
           </div>
         </div>
         <div class="panel mini-panel">
@@ -645,25 +764,38 @@ function wireBrandedAssetInteractions() {
   const toggleButton = document.getElementById('toggleBrandedAssets');
   if (toggleButton) toggleButton.addEventListener('click', () => setState({ brandedAssetsOpen: !state.brandedAssetsOpen }));
 
+  const requestFolderName = (title, initialValue = '') => {
+    const value = window.prompt(title, initialValue);
+    return typeof value === 'string' ? value.trim() : '';
+  };
+
   const createFolderBtn = document.getElementById('createFolderBtn');
-  const newFolderInput = document.getElementById('newFolderInput');
-  if (createFolderBtn && newFolderInput) {
-    createFolderBtn.addEventListener('click', () => createSubfolder(newFolderInput.value));
+  if (createFolderBtn) {
+    createFolderBtn.addEventListener('click', () => {
+      const name = requestFolderName('Name this new folder');
+      if (name) createSubfolder(name);
+    });
   }
 
-  const folderForm = document.getElementById('brandFolderForm');
-  if (folderForm) {
-    folderForm.addEventListener('submit', (event) => {
-      event.preventDefault();
-      const input = document.getElementById('brandFolderInput');
-      createSubfolder(input.value);
+  const renameFolderBtn = document.getElementById('renameFolderBtn');
+  if (renameFolderBtn) {
+    renameFolderBtn.addEventListener('click', () => {
+      const currentFolder = getCurrentFolder();
+      if (currentFolder.id === state.explorer.rootId) return;
+      const name = requestFolderName('Rename folder', currentFolder.name);
+      if (name) renameFolder(currentFolder.id, name);
     });
+  }
+
+  const assetSearchInput = document.getElementById('assetSearchInput');
+  if (assetSearchInput) {
+    assetSearchInput.addEventListener('input', () => setState({ assetSearchQuery: assetSearchInput.value }));
   }
 
   const uploadInput = document.getElementById('brandAssetUpload');
   if (uploadInput) {
     uploadInput.addEventListener('change', async (event) => {
-      const files = Array.from(event.target.files || []).filter((file) => file.type === 'image/png');
+      const files = Array.from(event.target.files || []).filter((file) => ['image/png', 'image/jpeg'].includes(file.type) || /\.(png|jpe?g)$/i.test(file.name));
       if (!files.length) return;
       await uploadToCurrentFolder(files);
     });
@@ -672,6 +804,16 @@ function wireBrandedAssetInteractions() {
   document.querySelectorAll('[data-open-folder-id]').forEach((el) => {
     el.addEventListener('click', () => navigateToFolder(el.dataset.openFolderId));
     el.addEventListener('dblclick', () => navigateToFolder(el.dataset.openFolderId));
+  });
+
+  document.querySelectorAll('[data-rename-folder-id]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const folderId = el.dataset.renameFolderId;
+      const folder = getNodeById(folderId);
+      if (!folder) return;
+      const value = window.prompt('Rename folder', folder.name);
+      if (typeof value === 'string' && value.trim()) renameFolder(folderId, value);
+    });
   });
 
   document.querySelectorAll('[data-crumb-id]').forEach((el) => {
@@ -696,6 +838,15 @@ function wireDesignInteractions() {
   document.querySelectorAll('[data-design-asset-id]').forEach((button) => {
     button.addEventListener('click', () => setState({ designSelectedAssetId: button.dataset.designAssetId }));
   });
+
+  const designAssetSearch = document.getElementById('designAssetSearch');
+  if (designAssetSearch) designAssetSearch.addEventListener('input', () => setState({ designSearchQuery: designAssetSearch.value }));
+
+  const designFolderFilter = document.getElementById('designFolderFilter');
+  if (designFolderFilter) designFolderFilter.addEventListener('change', () => setState({ designFolderFilter: designFolderFilter.value }));
+
+  const designDimensionFilter = document.getElementById('designDimensionFilter');
+  if (designDimensionFilter) designDimensionFilter.addEventListener('change', () => setState({ designDimensionFilter: designDimensionFilter.value }));
 
   const addLayerButton = document.getElementById('addTextLayer');
   if (addLayerButton) addLayerButton.addEventListener('click', addTextLayer);
