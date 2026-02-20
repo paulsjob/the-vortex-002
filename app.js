@@ -1,8 +1,8 @@
 const tabs = ['Dashboard', 'Design', 'Data Engine', 'Control Room', 'Output'];
 const STORAGE_KEY = 'renderless.fileExplorer.v1';
 
-const bootstrap = window.RENDERLESS_BOOTSTRAP || {};
-const mlbSimulationFeed = bootstrap.mlbSimulationFeed || [];
+const bootstrapData = window.RENDERLESS_BOOTSTRAP || {};
+const mlbSimulationFeed = bootstrapData.mlbSimulationFeed || [];
 
 function cloneValue(value) {
   if (typeof structuredClone === 'function') return structuredClone(value);
@@ -48,7 +48,7 @@ function buildDefaultExplorer() {
   const foldersByName = new Map();
   const nodes = [root];
 
-  (bootstrap.brandedAssets || []).forEach((asset) => {
+  (bootstrapData.brandedAssets || []).forEach((asset) => {
     const topFolderName = asset.folder || 'General';
     if (!foldersByName.has(topFolderName)) {
       const folder = makeFolder(topFolderName, 'root', cloneValue(root.permissions));
@@ -88,18 +88,6 @@ function saveExplorer(explorer) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(explorer));
 }
 
-const bootstrap = window.RENDERLESS_BOOTSTRAP || {};
-const supportedDimensions = bootstrap.supportedDimensions || ['1920x1080', '1080x1920', '1080x1080', '1080x1350'];
-const mlbSimulationFeed = bootstrap.mlbSimulationFeed || [];
-
-function cloneValue(value) {
-  if (typeof structuredClone === 'function') return structuredClone(value);
-  return JSON.parse(JSON.stringify(value));
-}
-
-const seedAssets = cloneValue(bootstrap.brandedAssets || []);
-const inferredFolders = Array.from(new Set(seedAssets.map((asset) => asset.folder)));
-
 const state = {
   activeTab: 'Dashboard',
   liveScore: 'BOS 0 - NYY 0',
@@ -116,7 +104,7 @@ const state = {
   simulationRunning: false,
   simulationSpeedMs: 1300,
   simulationIndex: -1,
-  gameState: cloneValue(bootstrap.initialGameState || {}),
+  gameState: cloneValue(bootstrapData.initialGameState || {}),
 };
 
 let simulationTimer = null;
@@ -174,6 +162,64 @@ function getFilteredAndSortedAssets() {
     if (state.brandedAssetsSort === 'oldest') return new Date(a.createdAt) - new Date(b.createdAt);
     if (state.brandedAssetsSort === 'dimension') return a.dimension.localeCompare(b.dimension);
     return new Date(b.createdAt) - new Date(a.createdAt);
+  });
+}
+
+function getNodeById(id) {
+  return state.explorer.nodes.find((node) => node.id === id);
+}
+
+function getCurrentFolder() {
+  return getNodeById(state.currentFolderId) || getNodeById(state.explorer.rootId);
+}
+
+function getChildren(folderId) {
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder') return [];
+  return folder.children.map((id) => getNodeById(id)).filter(Boolean);
+}
+
+function getAllFiles() {
+  return state.explorer.nodes.filter((node) => node.type === 'file');
+}
+
+function getFolderPath(folderId) {
+  const path = [];
+  let current = getNodeById(folderId);
+  while (current) {
+    path.unshift(current);
+    current = current.parentId ? getNodeById(current.parentId) : null;
+  }
+  return path;
+}
+
+function updateNode(nodeId, mutator) {
+  const nextExplorer = cloneValue(state.explorer);
+  const node = nextExplorer.nodes.find((item) => item.id === nodeId);
+  if (!node) return;
+  mutator(node, nextExplorer);
+  setState({ explorer: nextExplorer });
+}
+
+function createSubfolder(folderName) {
+  const trimmed = folderName.trim();
+  if (!trimmed) return;
+
+  const currentFolder = getCurrentFolder();
+  if (!currentFolder || currentFolder.type !== 'folder') return;
+
+  const existing = getChildren(currentFolder.id).find((child) => child.type === 'folder' && child.name.toLowerCase() === trimmed.toLowerCase());
+  if (existing) return;
+
+  const nextExplorer = cloneValue(state.explorer);
+  const nextCurrent = nextExplorer.nodes.find((node) => node.id === currentFolder.id);
+  const newFolder = makeFolder(trimmed, nextCurrent.id, cloneValue(nextCurrent.permissions));
+  nextCurrent.children.push(newFolder.id);
+  nextExplorer.nodes.push(newFolder);
+
+  setState({
+    explorer: nextExplorer,
+    currentFolderId: newFolder.id,
   });
 }
 
@@ -539,7 +585,7 @@ function stopSimulation() {
 
 function resetSimulation() {
   stopSimulation();
-  setState({ simulationIndex: -1, liveScore: 'BOS 0 - NYY 0', gameState: cloneValue(bootstrap.initialGameState || {}) });
+  setState({ simulationIndex: -1, liveScore: 'BOS 0 - NYY 0', gameState: cloneValue(bootstrapData.initialGameState || {}) });
 }
 
 function updateLayer(layerId, prop, value) {
