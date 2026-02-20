@@ -1,5 +1,6 @@
 const tabs = ['Dashboard', 'Design', 'Data Engine', 'Control Room', 'Output'];
 const STORAGE_KEY = 'renderless.fileExplorer.v1';
+const TEMPLATE_STORAGE_KEY = 'renderless.templates.v1';
 const MAX_PERSISTED_DATA_URL_LENGTH = 120000;
 
 const bootstrapData = window.RENDERLESS_BOOTSTRAP || {};
@@ -126,6 +127,29 @@ function saveExplorer(explorer) {
   }
 }
 
+function loadTemplates() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(TEMPLATE_STORAGE_KEY) || '[]');
+    if (Array.isArray(parsed)) return parsed;
+  } catch (error) {
+    // fall back to empty templates
+  }
+  return [];
+}
+
+function saveTemplates(templates) {
+  try {
+    localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(templates));
+    return { ok: true, message: '' };
+  } catch (error) {
+    return { ok: false, message: 'Could not save templates locally.' };
+  }
+}
+
+function formatTemplateTimestamp(value) {
+  return new Date(value).toLocaleString();
+}
+
 const state = {
   activeTab: 'Dashboard',
   liveScore: 'BOS 0 - NYY 0',
@@ -138,6 +162,8 @@ const state = {
   designSearchQuery: '',
   designFolderFilter: 'all',
   designDimensionFilter: 'all',
+  templates: loadTemplates(),
+  selectedControlTemplateId: null,
   storageNotice: '',
   designTextLayers: [
     { id: 1, name: 'Headline', text: 'Final Score Update', x: 32, y: 36, size: 56, color: '#ffffff', bindKey: 'none' },
@@ -166,11 +192,17 @@ const viewContainer = document.getElementById('viewContainer');
 
 function setState(patch) {
   const shouldPersistExplorer = Object.prototype.hasOwnProperty.call(patch, 'explorer');
+  const shouldPersistTemplates = Object.prototype.hasOwnProperty.call(patch, 'templates');
   Object.assign(state, patch);
 
   if (shouldPersistExplorer) {
     const persistResult = saveExplorer(state.explorer);
     state.storageNotice = persistResult.message || '';
+  }
+
+  if (shouldPersistTemplates) {
+    const persistTemplates = saveTemplates(state.templates);
+    if (!persistTemplates.ok) state.storageNotice = persistTemplates.message;
   }
 
   render();
@@ -585,6 +617,172 @@ function fileExplorerView() {
   `;
 }
 
+function getNodeById(id) {
+  return state.explorer.nodes.find((node) => node.id === id);
+}
+
+function getCurrentFolder() {
+  return getNodeById(state.currentFolderId) || getNodeById(state.explorer.rootId);
+}
+
+function getChildren(folderId) {
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder') return [];
+  return folder.children.map((id) => getNodeById(id)).filter(Boolean);
+}
+
+function getAllFiles() {
+  return state.explorer.nodes.filter((node) => node.type === 'file');
+}
+
+function getDimensionRatio(dimension = '16x9') {
+  const [w, h] = String(dimension).split('x').map(Number);
+  if (!w || !h) return 16 / 9;
+  return w / h;
+}
+
+function getFileKind(name = '') {
+  const ext = name.split('.').pop().toLowerCase();
+  if (!ext || ext === name.toLowerCase()) return 'FILE';
+  return ext.toUpperCase();
+}
+
+function getFolderName(folderId) {
+  return getNodeById(folderId)?.name || 'Unknown Folder';
+}
+
+function getFolderPath(folderId) {
+  const path = [];
+  let current = getNodeById(folderId);
+  while (current) {
+    path.unshift(current);
+    current = current.parentId ? getNodeById(current.parentId) : null;
+  }
+  return path;
+}
+
+function updateNode(nodeId, mutator) {
+  const nextExplorer = cloneValue(state.explorer);
+  const node = nextExplorer.nodes.find((item) => item.id === nodeId);
+  if (!node) return;
+  mutator(node, nextExplorer);
+  setState({ explorer: nextExplorer });
+}
+
+function createSubfolder(folderName) {
+  const trimmed = folderName.trim();
+  if (!trimmed) return;
+
+  const currentFolder = getCurrentFolder();
+  if (!currentFolder || currentFolder.type !== 'folder') return;
+
+  const existing = getChildren(currentFolder.id).find((child) => child.type === 'folder' && child.name.toLowerCase() === trimmed.toLowerCase());
+  if (existing) return;
+
+  const nextExplorer = cloneValue(state.explorer);
+  const nextCurrent = nextExplorer.nodes.find((node) => node.id === currentFolder.id);
+  const newFolder = makeFolder(trimmed, nextCurrent.id, cloneValue(nextCurrent.permissions));
+  nextCurrent.children.push(newFolder.id);
+  nextExplorer.nodes.push(newFolder);
+
+  setState({
+    explorer: nextExplorer,
+    currentFolderId: newFolder.id,
+  });
+}
+
+function renameFolder(folderId, folderName) {
+  const trimmed = folderName.trim();
+  if (!trimmed) return;
+
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder' || folder.id === state.explorer.rootId) return;
+
+  const siblings = getChildren(folder.parentId || state.explorer.rootId)
+    .filter((item) => item.type === 'folder' && item.id !== folderId);
+  if (siblings.some((item) => item.name.toLowerCase() === trimmed.toLowerCase())) return;
+
+  updateNode(folderId, (node) => {
+    node.name = trimmed;
+  });
+}
+
+function setFolderPermissions(folderId, key, rawValue) {
+  const values = rawValue
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  updateNode(folderId, (node) => {
+    node.permissions[key] = values;
+  });
+}
+
+function navigateToFolder(folderId) {
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder') return;
+  setState({ currentFolderId: folderId });
+}
+
+function renderFolderTree(folderId, depth = 0) {
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder') return '';
+  const childFolders = getChildren(folderId).filter((child) => child.type === 'folder');
+
+  return `
+    <div class="tree-node" style="--depth:${depth}">
+      <button class="tree-folder ${state.currentFolderId === folder.id ? 'active' : ''}" data-open-folder-id="${folder.id}">${folder.name}</button>
+      ${childFolders.map((child) => renderFolderTree(child.id, depth + 1)).join('')}
+    </div>
+  `;
+}
+
+function fileExplorerView() {
+  const currentFolder = getCurrentFolder();
+  const children = getChildren(currentFolder.id);
+  const folders = children.filter((item) => item.type === 'folder');
+  const fileSearch = state.assetSearchQuery.trim().toLowerCase();
+  const files = children
+    .filter((item) => item.type === 'file')
+    .filter((file) => !fileSearch || file.name.toLowerCase().includes(fileSearch));
+  const breadcrumbs = getFolderPath(currentFolder.id);
+
+  return `
+    <div class="explorer-layout">
+      <aside class="explorer-tree panel">
+        <h4>Folders</h4>
+        ${renderFolderTree(state.explorer.rootId)}
+      </aside>
+      <section class="explorer-main panel">
+        <div class="explorer-toolbar">
+          <div class="breadcrumbs">${breadcrumbs.map((crumb, index) => `<button class="crumb" data-crumb-id="${crumb.id}">${crumb.name}${index < breadcrumbs.length - 1 ? ' /' : ''}</button>`).join('')}</div>
+          <div class="toolbar-actions">
+            <input id="assetSearchInput" value="${state.assetSearchQuery}" placeholder="Search assets" />
+            <button id="createFolderBtn" class="action-btn">Create Folder</button>
+            <button id="renameFolderBtn" class="action-btn" ${currentFolder.id === state.explorer.rootId ? 'disabled' : ''}>Rename Folder</button>
+            <label class="action-btn upload-btn">Upload<input id="brandAssetUpload" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" multiple /></label>
+          </div>
+          ${state.storageNotice ? `<p class="storage-warning">${state.storageNotice}</p>` : ''}
+        </div>
+        <div class="explorer-list">
+          <div class="explorer-head"><span>Name</span><span>Type</span><span>Dimension</span><span>Modified</span></div>
+          ${folders.map((folder) => `<div class="explorer-row folder-row"><button class="row-main" data-open-folder-id="${folder.id}"><span>📁 ${folder.name}</span><span>Folder</span><span>--</span><span>${new Date(folder.createdAt).toLocaleDateString()}</span></button><button class="row-action" data-rename-folder-id="${folder.id}">Rename</button></div>`).join('')}
+          ${files.map((file) => `<button class="explorer-row file-row" data-asset-id="${file.id}"><span>🖼️ ${file.name}</span><span>${getFileKind(file.name)}</span><span>${file.dimension}</span><span>${new Date(file.createdAt).toLocaleDateString()}</span></button>`).join('')}
+          ${state.templates.length ? `<div class="template-strip"><h4>Saved Templates</h4>${state.templates.filter((template) => !fileSearch || template.name.toLowerCase().includes(fileSearch)).map((template) => `<button class="explorer-row template-row" data-template-id="${template.id}"><span>🧩 ${template.name}</span><span>Template</span><span>${template.dimension}</span><span>${new Date(template.createdAt).toLocaleDateString()}</span></button>`).join('')}</div>` : ''}
+          ${!folders.length && !files.length && !state.templates.length ? '<p class="muted">No matching assets in this folder.</p>' : ''}
+        </div>
+      </section>
+      <aside class="explorer-permissions panel">
+        <h4>Folder Permissions</h4>
+        <p class="muted">Access to a parent folder grants access to everything inside it.</p>
+        <label class="control-group">Owners<input id="ownersInput" value="${(currentFolder.permissions?.owners || []).join(', ')}" /></label>
+        <label class="control-group">Editors<input id="editorsInput" value="${(currentFolder.permissions?.editors || []).join(', ')}" /></label>
+        <label class="control-group">Viewers<input id="viewersInput" value="${(currentFolder.permissions?.viewers || []).join(', ')}" /></label>
+      </aside>
+    </div>
+  `;
+}
+
 function dashboardView() {
   return `
     <section class="panel">
@@ -612,6 +810,40 @@ function dashboardView() {
       <div class="brand-manager ${state.brandedAssetsOpen ? 'open' : ''}">${fileExplorerView()}</div>
     </section>
   `;
+}
+
+
+function saveCurrentDesignTemplate() {
+  const allFiles = getAllFiles();
+  const selectedAsset = allFiles.find((file) => file.id === state.designSelectedAssetId) || allFiles[0];
+  if (!selectedAsset) return;
+
+  const name = window.prompt('Template name', `Template ${state.templates.length + 1}`);
+  if (!name || !name.trim()) return;
+
+  const template = {
+    id: slugId('template'),
+    name: name.trim(),
+    assetId: selectedAsset.id,
+    assetName: selectedAsset.name,
+    dimension: selectedAsset.dimension,
+    textLayers: cloneValue(state.designTextLayers),
+    createdAt: new Date().toISOString(),
+  };
+
+  const nextTemplates = [template, ...state.templates.filter((item) => item.name.toLowerCase() !== template.name.toLowerCase())];
+  setState({ templates: nextTemplates, selectedControlTemplateId: template.id });
+}
+
+function applyTemplateToDesign(templateId) {
+  const template = state.templates.find((item) => item.id === templateId);
+  if (!template) return;
+  setState({
+    activeTab: 'Design',
+    designSelectedAssetId: template.assetId,
+    designTextLayers: cloneValue(template.textLayers),
+    nextTextLayerId: Math.max(1, ...template.textLayers.map((layer) => Number(layer.id) || 0)) + 1,
+  });
 }
 
 function getBoundText(layer) {
@@ -672,7 +904,7 @@ function designView() {
         <div class="panel mini-panel">
           <div class="layer-head">
             <h3>Text Layers & Data Bind</h3>
-            <button id="addTextLayer" class="pill-btn">Add Text Layer</button>
+            <div class="layer-head-actions"><button id="saveTemplateBtn" class="pill-btn">Save Template</button><button id="addTextLayer" class="pill-btn">Add Text Layer</button></div>
           </div>
           <div class="layer-controls">
             ${state.designTextLayers.map((layer) => `
@@ -744,6 +976,8 @@ function dataEngineView() {
 
 function controlRoomView() {
   const shots = ['Home Goal', 'Away Goal', 'Yellow Card', 'Red Card', 'Sub Home', 'Sub Away', 'Full Screen Stats', 'Lower Third', 'Corner Kick', 'VAR Check', 'Final Whistle', 'Replay Transition'];
+  const selectedTemplate = state.templates.find((item) => item.id === state.selectedControlTemplateId) || state.templates[0] || null;
+
   return `
     <section class="panel control-layout">
       <div>
@@ -751,9 +985,17 @@ function controlRoomView() {
         <div class="shotbox">${shots.map((s) => `<button class="shot">${s}</button>`).join('')}</div>
       </div>
       <div class="monitors">
-        <div class="monitor preview"><h4>PREVIEW</h4><div class="monotext">${state.liveScore}</div></div>
+        <div class="monitor preview"><h4>PREVIEW</h4><div class="monotext">${selectedTemplate ? selectedTemplate.name : state.liveScore}</div></div>
         <div class="monitor program"><h4>PROGRAM</h4><div class="monotext">${state.liveScore}</div></div>
       </div>
+    </section>
+    <section class="panel">
+      <h3>Controller Templates</h3>
+      <div class="control-template-list">
+        ${state.templates.map((template) => `<button class="control-template-item ${state.selectedControlTemplateId === template.id ? 'active' : ''}" data-control-template-id="${template.id}"><strong>${template.name}</strong><span>${template.assetName} · ${template.dimension}</span><em>Saved ${formatTemplateTimestamp(template.createdAt)}</em></button>`).join('')}
+        ${!state.templates.length ? '<p class="muted">No templates saved yet. Go to Design and click Save Template.</p>' : ''}
+      </div>
+      ${selectedTemplate ? '<button id="loadTemplateToDesignBtn" class="pill-btn">Load Selected Template in Design</button>' : ''}
     </section>
   `;
 }
@@ -961,6 +1203,10 @@ function wireBrandedAssetInteractions() {
     row.addEventListener('click', () => setState({ designSelectedAssetId: row.dataset.assetId, activeTab: 'Design' }));
   });
 
+  document.querySelectorAll('[data-template-id]').forEach((row) => {
+    row.addEventListener('click', () => applyTemplateToDesign(row.dataset.templateId));
+  });
+
   const currentFolder = getCurrentFolder();
   const ownersInput = document.getElementById('ownersInput');
   const editorsInput = document.getElementById('editorsInput');
@@ -985,6 +1231,9 @@ function wireDesignInteractions() {
   const designDimensionFilter = document.getElementById('designDimensionFilter');
   if (designDimensionFilter) designDimensionFilter.addEventListener('change', () => setState({ designDimensionFilter: designDimensionFilter.value }));
 
+  const saveTemplateBtn = document.getElementById('saveTemplateBtn');
+  if (saveTemplateBtn) saveTemplateBtn.addEventListener('click', saveCurrentDesignTemplate);
+
   const addLayerButton = document.getElementById('addTextLayer');
   if (addLayerButton) addLayerButton.addEventListener('click', addTextLayer);
 
@@ -996,6 +1245,21 @@ function wireDesignInteractions() {
     control.addEventListener('input', () => updateLayer(control.dataset.layerId, control.dataset.prop, control.value));
     control.addEventListener('change', () => updateLayer(control.dataset.layerId, control.dataset.prop, control.value));
   });
+}
+
+
+function wireControlRoomInteractions() {
+  document.querySelectorAll('[data-control-template-id]').forEach((button) => {
+    button.addEventListener('click', () => setState({ selectedControlTemplateId: button.dataset.controlTemplateId }));
+  });
+
+  const loadTemplateButton = document.getElementById('loadTemplateToDesignBtn');
+  if (loadTemplateButton) {
+    loadTemplateButton.addEventListener('click', () => {
+      if (!state.selectedControlTemplateId) return;
+      applyTemplateToDesign(state.selectedControlTemplateId);
+    });
+  }
 }
 
 function wireDataEngineInteractions() {
@@ -1026,6 +1290,7 @@ function wireInteractions() {
   wireBrandedAssetInteractions();
   wireDesignInteractions();
   wireDataEngineInteractions();
+  wireControlRoomInteractions();
 }
 
 function render() {
