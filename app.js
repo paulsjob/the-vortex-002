@@ -1,5 +1,6 @@
 const tabs = ['Dashboard', 'Design', 'Data Engine', 'Control Room', 'Output'];
 const STORAGE_KEY = 'renderless.fileExplorer.v1';
+const MAX_PERSISTED_DATA_URL_LENGTH = 120000;
 
 const bootstrapData = window.RENDERLESS_BOOTSTRAP || {};
 const mlbSimulationFeed = bootstrapData.mlbSimulationFeed || [];
@@ -84,8 +85,45 @@ function loadExplorer() {
   return buildDefaultExplorer();
 }
 
+function buildPersistableExplorer(explorer) {
+  const copy = cloneValue(explorer);
+  let trimmedCount = 0;
+
+  copy.nodes = copy.nodes.map((node) => {
+    if (node.type !== 'file' || typeof node.src !== 'string') return node;
+    if (!node.src.startsWith('data:image/')) return node;
+    if (node.src.length <= MAX_PERSISTED_DATA_URL_LENGTH) return node;
+
+    trimmedCount += 1;
+    return { ...node, src: '', volatile: true };
+  });
+
+  return { explorer: copy, trimmedCount };
+}
+
 function saveExplorer(explorer) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(explorer));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(explorer));
+    return { ok: true, message: '' };
+  } catch (error) {
+    if (error?.name !== 'QuotaExceededError') return { ok: false, message: 'Could not save asset library locally.' };
+
+    const { explorer: trimmedExplorer, trimmedCount } = buildPersistableExplorer(explorer);
+
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmedExplorer));
+      if (trimmedCount > 0) {
+        return {
+          ok: true,
+          message: `Storage is full. ${trimmedCount} large uploaded file${trimmedCount > 1 ? 's were' : ' was'} kept for this session only.`,
+        };
+      }
+
+      return { ok: false, message: 'Storage is full. Recent changes could not be saved locally.' };
+    } catch (persistError) {
+      return { ok: false, message: 'Storage is full. Recent changes could not be saved locally.' };
+    }
+  }
 }
 
 const state = {
@@ -100,6 +138,7 @@ const state = {
   designSearchQuery: '',
   designFolderFilter: 'all',
   designDimensionFilter: 'all',
+  storageNotice: '',
   designTextLayers: [
     { id: 1, name: 'Headline', text: 'Final Score Update', x: 32, y: 36, size: 56, color: '#ffffff', bindKey: 'none' },
     { id: 2, name: 'Subhead', text: 'Waiting to start MLB simulation.', x: 32, y: 110, size: 40, color: '#bfdbfe', bindKey: 'lastEvent' },
@@ -126,8 +165,14 @@ const tabsEl = document.getElementById('tabs');
 const viewContainer = document.getElementById('viewContainer');
 
 function setState(patch) {
+  const shouldPersistExplorer = Object.prototype.hasOwnProperty.call(patch, 'explorer');
   Object.assign(state, patch);
-  saveExplorer(state.explorer);
+
+  if (shouldPersistExplorer) {
+    const persistResult = saveExplorer(state.explorer);
+    state.storageNotice = persistResult.message || '';
+  }
+
   render();
 }
 
@@ -375,6 +420,96 @@ function renameFolder(folderId, folderName) {
   });
 }
 
+function getNodeById(id) {
+  return state.explorer.nodes.find((node) => node.id === id);
+}
+
+function getCurrentFolder() {
+  return getNodeById(state.currentFolderId) || getNodeById(state.explorer.rootId);
+}
+
+function getChildren(folderId) {
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder') return [];
+  return folder.children.map((id) => getNodeById(id)).filter(Boolean);
+}
+
+function getAllFiles() {
+  return state.explorer.nodes.filter((node) => node.type === 'file');
+}
+
+function getDimensionRatio(dimension = '16x9') {
+  const [w, h] = String(dimension).split('x').map(Number);
+  if (!w || !h) return 16 / 9;
+  return w / h;
+}
+
+function getFileKind(name = '') {
+  const ext = name.split('.').pop().toLowerCase();
+  if (!ext || ext === name.toLowerCase()) return 'FILE';
+  return ext.toUpperCase();
+}
+
+function getFolderName(folderId) {
+  return getNodeById(folderId)?.name || 'Unknown Folder';
+}
+
+function getFolderPath(folderId) {
+  const path = [];
+  let current = getNodeById(folderId);
+  while (current) {
+    path.unshift(current);
+    current = current.parentId ? getNodeById(current.parentId) : null;
+  }
+  return path;
+}
+
+function updateNode(nodeId, mutator) {
+  const nextExplorer = cloneValue(state.explorer);
+  const node = nextExplorer.nodes.find((item) => item.id === nodeId);
+  if (!node) return;
+  mutator(node, nextExplorer);
+  setState({ explorer: nextExplorer });
+}
+
+function createSubfolder(folderName) {
+  const trimmed = folderName.trim();
+  if (!trimmed) return;
+
+  const currentFolder = getCurrentFolder();
+  if (!currentFolder || currentFolder.type !== 'folder') return;
+
+  const existing = getChildren(currentFolder.id).find((child) => child.type === 'folder' && child.name.toLowerCase() === trimmed.toLowerCase());
+  if (existing) return;
+
+  const nextExplorer = cloneValue(state.explorer);
+  const nextCurrent = nextExplorer.nodes.find((node) => node.id === currentFolder.id);
+  const newFolder = makeFolder(trimmed, nextCurrent.id, cloneValue(nextCurrent.permissions));
+  nextCurrent.children.push(newFolder.id);
+  nextExplorer.nodes.push(newFolder);
+
+  setState({
+    explorer: nextExplorer,
+    currentFolderId: newFolder.id,
+  });
+}
+
+function renameFolder(folderId, folderName) {
+  const trimmed = folderName.trim();
+  if (!trimmed) return;
+
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder' || folder.id === state.explorer.rootId) return;
+
+  const siblings = getChildren(folder.parentId || state.explorer.rootId)
+    .filter((item) => item.type === 'folder' && item.id !== folderId);
+  if (siblings.some((item) => item.name.toLowerCase() === trimmed.toLowerCase())) return;
+
+  updateNode(folderId, (node) => {
+    node.name = trimmed;
+  });
+}
+
 function setFolderPermissions(folderId, key, rawValue) {
   const values = rawValue
     .split(',')
@@ -430,6 +565,7 @@ function fileExplorerView() {
             <button id="renameFolderBtn" class="action-btn" ${currentFolder.id === state.explorer.rootId ? 'disabled' : ''}>Rename Folder</button>
             <label class="action-btn upload-btn">Upload<input id="brandAssetUpload" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" multiple /></label>
           </div>
+          ${state.storageNotice ? `<p class="storage-warning">${state.storageNotice}</p>` : ''}
         </div>
         <div class="explorer-list">
           <div class="explorer-head"><span>Name</span><span>Type</span><span>Dimension</span><span>Modified</span></div>
@@ -508,7 +644,7 @@ function designView() {
         <h3>Design Canvas · Linked Branded Asset</h3>
         <div class="design-stage-shell">
           <div class="design-stage" style="--asset-ratio:${ratio};">
-            ${selectedAsset ? `<img src="${selectedAsset.src}" alt="${selectedAsset.name}" class="canvas-bg" />` : ''}
+            ${selectedAsset?.src ? `<img src="${selectedAsset.src}" alt="${selectedAsset.name}" class="canvas-bg" />` : '<p class="muted canvas-empty">Selected asset preview is not persisted in local storage.</p>'}
             ${state.designTextLayers.map((layer) => `<span class="text-layer" style="left:${layer.x}px;top:${layer.y}px;font-size:${layer.size}px;color:${layer.color};">${getBoundText(layer)}</span>`).join('')}
           </div>
         </div>
@@ -527,6 +663,7 @@ function designView() {
               ${dimensionOptions.map((dim) => `<option value="${dim}" ${state.designDimensionFilter === dim ? 'selected' : ''}>${dim}</option>`).join('')}
             </select>
           </div>
+          ${state.storageNotice ? `<p class="storage-warning">${state.storageNotice}</p>` : ''}
           <div class="design-asset-list finder-list">
             ${filteredFiles.map((asset) => `<button class="design-asset-item ${state.designSelectedAssetId === asset.id ? 'active' : ''}" data-design-asset-id="${asset.id}"><strong>${asset.name}</strong><span>${getFolderName(asset.parentId)} · ${asset.dimension}</span></button>`).join('')}
             ${!filteredFiles.length ? '<p class="muted">No assets match your search/filter.</p>' : ''}

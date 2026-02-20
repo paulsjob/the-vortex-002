@@ -169,6 +169,20 @@ body {
 .log { height: 240px; border: 1px solid #166534; border-radius: 10px; background: #03150c; color: #4ade80; font-family: 'JetBrains Mono', monospace; padding: 10px; overflow: auto; line-height: 1.45; }
 .muted { color: var(--muted); }
 
+.storage-warning {
+  margin: 0;
+  color: #fbbf24;
+  font-size: .82rem;
+}
+.canvas-empty {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 12px;
+}
+
 @media (max-width: 1400px) {
   .explorer-layout { grid-template-columns: 1fr; }
 }
