@@ -359,13 +359,326 @@ function setState(patch) {
 }
 
 function renderTabs() {
-  tabsEl.innerHTML = tabs
-    .map((tab) => `<button class="tab-btn ${state.activeTab === tab ? 'active' : ''}" data-tab="${tab}">${tab}</button>`)
-    .join('');
+  tabsEl.innerHTML = tabs.map((tab) => `<button class="tab-btn ${state.activeTab === tab ? 'active' : ''}" data-tab="${tab}">${tab}</button>`).join('');
+  tabsEl.querySelectorAll('.tab-btn').forEach((btn) => btn.addEventListener('click', () => setState({ activeTab: btn.dataset.tab })));
+}
 
-  tabsEl.querySelectorAll('.tab-btn').forEach((btn) => {
-    btn.addEventListener('click', () => setState({ activeTab: btn.dataset.tab }));
+function getAssetById(id) {
+  return state.brandedAssets.find((asset) => asset.id === Number(id));
+}
+
+function getDimensionRatio(dimension) {
+  const [w, h] = dimension.split('x').map(Number);
+  return w / h;
+}
+
+function getFilteredAndSortedAssets() {
+  const filtered = state.brandedAssets.filter((asset) => {
+    const folderMatch = state.brandedAssetsFolderFilter === 'All folders' || asset.folder === state.brandedAssetsFolderFilter;
+    const dimensionMatch = state.brandedAssetsDimensionFilter === 'All dimensions' || asset.dimension === state.brandedAssetsDimensionFilter;
+    return folderMatch && dimensionMatch;
   });
+
+  return filtered.sort((a, b) => {
+    if (state.brandedAssetsSort === 'name-asc') return a.name.localeCompare(b.name);
+    if (state.brandedAssetsSort === 'name-desc') return b.name.localeCompare(a.name);
+    if (state.brandedAssetsSort === 'oldest') return new Date(a.createdAt) - new Date(b.createdAt);
+    if (state.brandedAssetsSort === 'dimension') return a.dimension.localeCompare(b.dimension);
+    return new Date(b.createdAt) - new Date(a.createdAt);
+  });
+
+  return filtered.sort((a, b) => {
+    if (state.brandedAssetsSort === 'name-asc') return a.name.localeCompare(b.name);
+    if (state.brandedAssetsSort === 'name-desc') return b.name.localeCompare(a.name);
+    if (state.brandedAssetsSort === 'oldest') return new Date(a.createdAt) - new Date(b.createdAt);
+    if (state.brandedAssetsSort === 'dimension') return a.dimension.localeCompare(b.dimension);
+    return new Date(b.createdAt) - new Date(a.createdAt);
+  });
+}
+
+function getNodeById(id) {
+  return state.explorer.nodes.find((node) => node.id === id);
+}
+
+function getCurrentFolder() {
+  return getNodeById(state.currentFolderId) || getNodeById(state.explorer.rootId);
+}
+
+function getChildren(folderId) {
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder') return [];
+  return folder.children.map((id) => getNodeById(id)).filter(Boolean);
+}
+
+function getAllFiles() {
+  return state.explorer.nodes.filter((node) => node.type === 'file');
+}
+
+function getFolderPath(folderId) {
+  const path = [];
+  let current = getNodeById(folderId);
+  while (current) {
+    path.unshift(current);
+    current = current.parentId ? getNodeById(current.parentId) : null;
+  }
+  return path;
+}
+
+function updateNode(nodeId, mutator) {
+  const nextExplorer = cloneValue(state.explorer);
+  const node = nextExplorer.nodes.find((item) => item.id === nodeId);
+  if (!node) return;
+  mutator(node, nextExplorer);
+  setState({ explorer: nextExplorer });
+}
+
+function createSubfolder(folderName) {
+  const trimmed = folderName.trim();
+  if (!trimmed) return;
+
+  const currentFolder = getCurrentFolder();
+  if (!currentFolder || currentFolder.type !== 'folder') return;
+
+  const existing = getChildren(currentFolder.id).find((child) => child.type === 'folder' && child.name.toLowerCase() === trimmed.toLowerCase());
+  if (existing) return;
+
+  const nextExplorer = cloneValue(state.explorer);
+  const nextCurrent = nextExplorer.nodes.find((node) => node.id === currentFolder.id);
+  const newFolder = makeFolder(trimmed, nextCurrent.id, cloneValue(nextCurrent.permissions));
+  nextCurrent.children.push(newFolder.id);
+  nextExplorer.nodes.push(newFolder);
+
+  setState({
+    explorer: nextExplorer,
+    currentFolderId: newFolder.id,
+  });
+}
+
+function getNodeById(id) {
+  return state.explorer.nodes.find((node) => node.id === id);
+}
+
+function getCurrentFolder() {
+  return getNodeById(state.currentFolderId) || getNodeById(state.explorer.rootId);
+}
+
+function getChildren(folderId) {
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder') return [];
+  return folder.children.map((id) => getNodeById(id)).filter(Boolean);
+}
+
+function getAllFiles() {
+  return state.explorer.nodes.filter((node) => node.type === 'file');
+}
+
+function getDimensionRatio(dimension = '16x9') {
+  const [w, h] = String(dimension).split('x').map(Number);
+  if (!w || !h) return 16 / 9;
+  return w / h;
+}
+
+
+function getTemplateDimensions(size = '1920x1080') {
+  const [width, height] = String(size).split('x').map(Number);
+  if (!width || !height) return { width: 1920, height: 1080 };
+  return { width, height };
+}
+
+function toStagePercent(value, max) {
+  if (!max) return 0;
+  return (Number(value) / max) * 100;
+}
+
+function getFileKind(name = '') {
+  const ext = name.split('.').pop().toLowerCase();
+  if (!ext || ext === name.toLowerCase()) return 'FILE';
+  return ext.toUpperCase();
+}
+
+function getFolderName(folderId) {
+  return getNodeById(folderId)?.name || 'Unknown Folder';
+}
+
+function getFolderPath(folderId) {
+  const path = [];
+  let current = getNodeById(folderId);
+  while (current) {
+    path.unshift(current);
+    current = current.parentId ? getNodeById(current.parentId) : null;
+  }
+  return path;
+}
+
+function updateNode(nodeId, mutator) {
+  const nextExplorer = cloneValue(state.explorer);
+  const node = nextExplorer.nodes.find((item) => item.id === nodeId);
+  if (!node) return;
+  mutator(node, nextExplorer);
+  setState({ explorer: nextExplorer });
+}
+
+function createSubfolder(folderName) {
+  const trimmed = folderName.trim();
+  if (!trimmed) return;
+
+  const currentFolder = getCurrentFolder();
+  if (!currentFolder || currentFolder.type !== 'folder') return;
+
+  const existing = getChildren(currentFolder.id).find((child) => child.type === 'folder' && child.name.toLowerCase() === trimmed.toLowerCase());
+  if (existing) return;
+
+  const nextExplorer = cloneValue(state.explorer);
+  const nextCurrent = nextExplorer.nodes.find((node) => node.id === currentFolder.id);
+  const newFolder = makeFolder(trimmed, nextCurrent.id, cloneValue(nextCurrent.permissions));
+  nextCurrent.children.push(newFolder.id);
+  nextExplorer.nodes.push(newFolder);
+
+  setState({
+    explorer: nextExplorer,
+    currentFolderId: newFolder.id,
+  });
+}
+
+function renameFolder(folderId, folderName) {
+  const trimmed = folderName.trim();
+  if (!trimmed) return;
+
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder' || folder.id === state.explorer.rootId) return;
+
+  const siblings = getChildren(folder.parentId || state.explorer.rootId)
+    .filter((item) => item.type === 'folder' && item.id !== folderId);
+  if (siblings.some((item) => item.name.toLowerCase() === trimmed.toLowerCase())) return;
+
+  updateNode(folderId, (node) => {
+    node.name = trimmed;
+  });
+}
+
+function startFolderRename(folderId) {
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder' || folder.id === state.explorer.rootId) return;
+  setState({ renamingFolderId: folderId, renamingFolderValue: folder.name });
+}
+
+function commitFolderRename(folderId) {
+  if (!folderId || state.renamingFolderId !== folderId) return;
+  renameFolder(folderId, state.renamingFolderValue);
+  setState({ renamingFolderId: null, renamingFolderValue: '' });
+}
+
+function cancelFolderRename() {
+  if (!state.renamingFolderId) return;
+  setState({ renamingFolderId: null, renamingFolderValue: '' });
+}
+
+function deleteFolder(folderId) {
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder' || folder.id === state.explorer.rootId) return;
+
+  const nextExplorer = cloneValue(state.explorer);
+  const idsToDelete = new Set();
+
+  const collect = (id) => {
+    idsToDelete.add(id);
+    const node = nextExplorer.nodes.find((item) => item.id === id);
+    if (!node || node.type !== 'folder') return;
+    node.children.forEach((childId) => collect(childId));
+  };
+  collect(folderId);
+
+  nextExplorer.nodes
+    .filter((node) => node.type === 'file' && idsToDelete.has(node.id))
+    .forEach((file) => deleteAssetData(file.srcRef || file.id));
+
+  nextExplorer.nodes = nextExplorer.nodes.filter((node) => !idsToDelete.has(node.id));
+  nextExplorer.nodes.forEach((node) => {
+    if (node.type === 'folder') node.children = node.children.filter((id) => !idsToDelete.has(id));
+  });
+
+  const fallbackFolderId = folder.parentId || nextExplorer.rootId;
+  setState({ explorer: nextExplorer, currentFolderId: fallbackFolderId, renamingFolderId: null, renamingFolderValue: '' });
+}
+
+function setFolderPermissions(folderId, key, rawValue) {
+  const values = rawValue
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  updateNode(folderId, (node) => {
+    node.permissions[key] = values;
+  });
+}
+
+function navigateToFolder(folderId) {
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder') return;
+  setState({ currentFolderId: folderId });
+}
+
+function renderFolderTree(folderId, depth = 0) {
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder') return '';
+  const childFolders = getChildren(folderId).filter((child) => child.type === 'folder');
+  const isRenaming = state.renamingFolderId === folder.id;
+
+  return `
+    <div class="tree-node" style="--depth:${depth}">
+      ${isRenaming
+        ? `<input class="tree-folder rename-input" data-rename-input-id="${folder.id}" value="${state.renamingFolderValue}" />`
+        : `<button class="tree-folder ${state.currentFolderId === folder.id ? 'active' : ''}" data-open-folder-id="${folder.id}" data-rename-folder-id="${folder.id}" title="Double-click to rename.">${folder.name}</button>`}
+      ${childFolders.map((child) => renderFolderTree(child.id, depth + 1)).join('')}
+    </div>
+  `;
+}
+
+function fileExplorerView(options = {}) {
+  const showPermissions = options.showPermissions !== false;
+  const currentFolder = getCurrentFolder();
+  const children = getChildren(currentFolder.id);
+  const folders = children.filter((item) => item.type === 'folder');
+  const fileSearch = state.assetSearchQuery.trim().toLowerCase();
+  const files = children
+    .filter((item) => item.type === 'file')
+    .filter((file) => !fileSearch || file.name.toLowerCase().includes(fileSearch));
+  const breadcrumbs = getFolderPath(currentFolder.id);
+
+  return `
+    <div class="explorer-layout ${showPermissions ? '' : 'no-permissions'}">
+      <aside class="explorer-tree panel">
+        <h4>Folders</h4>
+        ${renderFolderTree(state.explorer.rootId)}
+      </aside>
+      <section class="explorer-main panel">
+        <div class="explorer-toolbar">
+          <div class="breadcrumbs">${breadcrumbs.map((crumb, index) => `<button class="crumb" data-crumb-id="${crumb.id}">${crumb.name}${index < breadcrumbs.length - 1 ? ' /' : ''}</button>`).join('')}</div>
+          <div class="toolbar-actions">
+            <input id="assetSearchInput" value="${state.assetSearchQuery}" placeholder="Search assets" />
+            <button id="createFolderBtn" class="action-btn">Create Folder</button>
+            <button id="deleteFolderBtn" class="action-btn" ${currentFolder.id === state.explorer.rootId ? 'disabled' : ''}>Delete Folder</button>
+            <label class="action-btn upload-btn">Upload<input id="brandAssetUpload" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" multiple /></label>
+          </div>
+          ${state.storageNotice ? `<p class="storage-warning">${state.storageNotice}</p>` : ''}
+        </div>
+        <div class="explorer-list">
+          <div class="explorer-head"><span>Name</span><span>Type</span><span>Dimension</span><span>Modified</span></div>
+          ${folders.map((folder) => state.renamingFolderId === folder.id ? `<div class="explorer-row folder-row"><input class="rename-input" data-rename-input-id="${folder.id}" value="${state.renamingFolderValue}" /><span>Folder</span><span>--</span><span>${new Date(folder.createdAt).toLocaleDateString()}</span></div>` : `<button class="explorer-row folder-row" data-open-folder-id="${folder.id}" data-rename-folder-id="${folder.id}" title="Double-click to rename."><span>📁 ${folder.name}</span><span>Folder</span><span>--</span><span>${new Date(folder.createdAt).toLocaleDateString()}</span></button>`).join('')}
+          ${files.map((file) => `<button class="explorer-row file-row" data-asset-id="${file.id}"><span>🖼️ ${file.name}</span><span>${getFileKind(file.name)}</span><span>${file.dimension}</span><span>${new Date(file.createdAt).toLocaleDateString()}</span></button>`).join('')}
+          ${state.templates.length ? `<div class="template-strip"><h4>Saved Templates</h4>${state.templates.filter((template) => !fileSearch || template.name.toLowerCase().includes(fileSearch)).map((template) => `<button class="explorer-row template-row" data-template-id="${template.id}"><span>🧩 ${template.name}</span><span>Template</span><span>${template.templateSize || template.dimension}</span><span>${new Date(template.createdAt).toLocaleDateString()}</span></button>`).join('')}</div>` : ''}
+          ${!folders.length && !files.length && !state.templates.length ? '<p class="muted">No matching assets in this folder.</p>' : ''}
+        </div>
+      </section>
+      ${showPermissions ? `<aside class="explorer-permissions panel">
+        <h4>Folder Permissions</h4>
+        <p class="muted">Access to a parent folder grants access to everything inside it.</p>
+        <label class="control-group">Owners<input id="ownersInput" value="${(currentFolder.permissions?.owners || []).join(', ')}" /></label>
+        <label class="control-group">Editors<input id="editorsInput" value="${(currentFolder.permissions?.editors || []).join(', ')}" /></label>
+        <label class="control-group">Viewers<input id="viewersInput" value="${(currentFolder.permissions?.viewers || []).join(', ')}" /></label>
+      </aside>` : ''}
+    </div>
+  `;
 }
 
 function getNodeById(id) {
@@ -611,7 +924,10 @@ function dashboardView() {
       </div>
     </section>
     <section class="panel">
-      <h3>Global Asset Library</h3>
+      <div class="asset-header">
+        <h3>Global Asset Library</h3>
+        <button id="toggleBrandedAssets" class="utility-btn">Branded Assets</button>
+      </div>
       <div class="asset-icons">
         <button id="toggleBrandedAssets" class="asset asset-btn ${state.brandedAssetsOpen ? 'active' : ''}">${icons.branded}<span>Branded Assets</span></button>
         <div class="asset">${icons.logos}<span>Logos</span></div>
@@ -877,6 +1193,14 @@ function controlRoomView() {
         </div>
       </div>
     </section>
+    <section class="panel">
+      <h3>Controller Templates</h3>
+      <div class="control-template-list">
+        ${state.templates.map((template) => `<button class="control-template-item ${state.selectedControlTemplateId === template.id ? 'active' : ''}" data-control-template-id="${template.id}"><strong>${template.name}</strong><span>${template.assetName} · ${template.templateSize || template.dimension}</span><em>Saved ${formatTemplateTimestamp(template.createdAt)}</em></button>`).join('')}
+        ${!state.templates.length ? '<p class="muted">No templates saved yet. Go to Design and click Save Template.</p>' : ''}
+      </div>
+      ${selectedTemplate ? '<button id="loadTemplateToDesignBtn" class="pill-btn">Load Selected Template in Design</button>' : ''}
+    </section>
   `;
 }
 
@@ -898,13 +1222,379 @@ function outputView() {
 
 function renderView() {
   switch (state.activeTab) {
-    case 'Dashboard': return dashboardView();
-    case 'Design': return designView();
-    case 'Data Engine': return dataEngineView();
-    case 'Control Room': return controlRoomView();
-    case 'Output': return outputView();
-    default: return dashboardView();
+    case 'Dashboard':
+      return dashboardView();
+    case 'Design':
+      return designView();
+    case 'Data Engine':
+      return dataEngineView();
+    case 'Control Room':
+      return controlRoomView();
+    case 'Output':
+      return outputView();
+    default:
+      return dashboardView();
   }
+}
+
+function runSimulationStep() {
+  const nextIndex = state.simulationIndex + 1;
+  if (nextIndex >= mlbSimulationFeed.length) {
+    stopSimulation();
+    return;
+  }
+
+  const play = mlbSimulationFeed[nextIndex];
+  setState({
+    simulationIndex: nextIndex,
+    liveScore: `BOS ${play.score.BOS} - NYY ${play.score.NYY}`,
+    gameState: {
+      ...state.gameState,
+      inning: play.inning,
+      inningState: play.inningState,
+      score: play.score,
+      balls: play.count.balls,
+      strikes: play.count.strikes,
+      outs: play.count.outs,
+      runnersOnBase: play.runnersOnBase,
+      pitcher: play.pitcher,
+      batter: play.batter,
+      pitchType: play.pitch.type,
+      pitchVelocity: play.pitch.velocity,
+      pitchLocation: play.pitch.location,
+      batSpeed: play.hit.batSpeed,
+      exitVelocity: play.hit.exitVelocity,
+      launchAngle: play.hit.launchAngle,
+      projectedDistance: play.hit.projectedDistance,
+      lastEvent: play.summary,
+    },
+  });
+}
+
+function startSimulation() {
+  if (simulationTimer) return;
+  setState({ simulationRunning: true });
+  simulationTimer = setInterval(runSimulationStep, state.simulationSpeedMs);
+}
+
+function stopSimulation() {
+  if (simulationTimer) {
+    clearInterval(simulationTimer);
+    simulationTimer = null;
+  }
+  if (state.simulationRunning) setState({ simulationRunning: false });
+}
+
+function resetSimulation() {
+  stopSimulation();
+  setState({ simulationIndex: -1, liveScore: 'BOS 0 - NYY 0', gameState: cloneValue(bootstrapData.initialGameState || {}) });
+}
+
+function updateLayer(layerId, prop, value) {
+  const castValue = prop === 'x' || prop === 'y' || prop === 'size' ? Number(value) : value;
+  const layers = state.designTextLayers.map((layer) => (layer.id === Number(layerId) ? { ...getTextLayerWithTransform(layer), [prop]: castValue } : layer));
+  setState({ designTextLayers: layers });
+}
+
+function updateLayerTransform(layerId, prop, value) {
+  const numeric = Number(value);
+  const layers = state.designTextLayers.map((layer) => {
+    if (layer.id !== Number(layerId)) return layer;
+    const enriched = getTextLayerWithTransform(layer);
+    const next = { ...enriched.transform, [prop]: Number.isNaN(numeric) ? 0 : numeric };
+    if (prop === 'scaleX' && enriched.transform.scaleLinked) next.scaleY = next.scaleX;
+    return { ...enriched, transform: next };
+  });
+  setState({ designTextLayers: layers });
+}
+
+function toggleLayerScaleLock(layerId) {
+  const layers = state.designTextLayers.map((layer) => {
+    if (layer.id !== Number(layerId)) return layer;
+    const enriched = getTextLayerWithTransform(layer);
+    const next = { ...enriched.transform, scaleLinked: !enriched.transform.scaleLinked };
+    if (next.scaleLinked) next.scaleY = next.scaleX;
+    return { ...enriched, transform: next };
+  });
+  setState({ designTextLayers: layers });
+}
+
+function resetLayerTransform(layerId) {
+  const layers = state.designTextLayers.map((layer) => (layer.id === Number(layerId)
+    ? { ...getTextLayerWithTransform(layer), transform: defaultTransform('text', layer) }
+    : layer));
+  setState({ designTextLayers: layers });
+}
+
+function updateAssetTransform(prop, value) {
+  const numeric = Number(value);
+  const current = getAssetLayer();
+  const next = { ...current.transform, [prop]: Number.isNaN(numeric) ? 0 : numeric };
+  if (prop === 'scaleX' && current.transform.scaleLinked) next.scaleY = next.scaleX;
+  setState({ designAssetLayer: { ...current, transform: next } });
+}
+
+function toggleAssetScaleLock() {
+  const current = getAssetLayer();
+  const next = { ...current.transform, scaleLinked: !current.transform.scaleLinked };
+  if (next.scaleLinked) next.scaleY = next.scaleX;
+  setState({ designAssetLayer: { ...current, transform: next } });
+}
+
+function resetAssetTransform() {
+  const current = getAssetLayer();
+  setState({ designAssetLayer: { ...current, transform: defaultTransform('asset') } });
+}
+
+function addTextLayer() {
+  const id = state.nextTextLayerId;
+  const newLayer = { id, name: `Layer ${id}`, text: 'New Text Layer', x: 32, y: 32 + state.designTextLayers.length * 48, size: 32, color: '#ffffff', bindKey: 'none', transform: defaultTransform('text', { x: 32, y: 32 + state.designTextLayers.length * 48 }) };
+  setState({ designTextLayers: [...state.designTextLayers, newLayer], nextTextLayerId: id + 1, designLayerOrder: [...getOrderedLayerKeys(), `text-${id}`] });
+}
+
+function removeTextLayer(layerId) {
+  const key = `text-${layerId}`;
+  const layers = state.designTextLayers.filter((layer) => layer.id !== Number(layerId));
+  if (layers.length) setState({ designTextLayers: layers, designLayerOrder: getOrderedLayerKeys().filter((item) => item !== key) });
+}
+
+function moveLayer(layerKey, direction) {
+  const order = [...getOrderedLayerKeys()];
+  const idx = order.findIndex((key) => key === layerKey);
+  if (idx < 0) return;
+  const target = direction === 'up' ? idx - 1 : idx + 1;
+  if (target < 0 || target >= order.length) return;
+  const [item] = order.splice(idx, 1);
+  order.splice(target, 0, item);
+  setState({ designLayerOrder: order });
+}
+
+
+function toggleLayerCollapsed(layerKey) {
+  setState({
+    designCollapsedLayers: {
+      ...state.designCollapsedLayers,
+      [layerKey]: !state.designCollapsedLayers[layerKey],
+    },
+  });
+}
+
+function setDesignTemplateSize(size) {
+  if (!TEMPLATE_SIZES.some((item) => item.id === size)) return;
+  setState({ designTemplateSize: size });
+}
+
+function detectImageSize(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight, src: reader.result });
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadToCurrentFolder(files) {
+  const folder = getCurrentFolder();
+  if (!folder || folder.type !== 'folder') return;
+
+  const nextExplorer = cloneValue(state.explorer);
+  const nextFolder = nextExplorer.nodes.find((node) => node.id === folder.id);
+
+  for (const file of files) {
+    const metadata = await detectImageSize(file);
+    const dimension = `${metadata.width}x${metadata.height}`;
+    const newFile = makeFile({
+      name: file.name,
+      parentId: nextFolder.id,
+      src: metadata.src,
+      dimension,
+    });
+    newFile.srcRef = newFile.id;
+    await storeAssetDataUrl(newFile.id, metadata.src);
+
+    nextFolder.children.push(newFile.id);
+    nextExplorer.nodes.push(newFile);
+  }
+
+  setState({ explorer: nextExplorer });
+}
+
+function wireBrandedAssetInteractions() {
+  const toggleButton = document.getElementById('toggleBrandedAssets');
+  if (toggleButton) toggleButton.addEventListener('click', () => setState({ brandedAssetsOpen: !state.brandedAssetsOpen }));
+
+  const requestFolderName = (title, initialValue = '') => {
+    const value = window.prompt(title, initialValue);
+    return typeof value === 'string' ? value.trim() : '';
+  };
+
+  const createFolderBtn = document.getElementById('createFolderBtn');
+  if (createFolderBtn) {
+    createFolderBtn.addEventListener('click', () => {
+      const name = requestFolderName('Name this new folder');
+      if (name) createSubfolder(name);
+    });
+  }
+
+  const assetSearchInput = document.getElementById('assetSearchInput');
+  if (assetSearchInput) {
+    assetSearchInput.addEventListener('input', () => setState({ assetSearchQuery: assetSearchInput.value }));
+  }
+
+  const deleteFolderBtn = document.getElementById('deleteFolderBtn');
+  if (deleteFolderBtn) {
+    deleteFolderBtn.addEventListener('click', () => deleteFolder(state.currentFolderId));
+  }
+
+  const uploadInput = document.getElementById('brandAssetUpload');
+  if (uploadInput) {
+    uploadInput.addEventListener('change', async (event) => {
+      const files = Array.from(event.target.files || []).filter((file) => ['image/png', 'image/jpeg'].includes(file.type) || /\.(png|jpe?g)$/i.test(file.name));
+      if (!files.length) return;
+      await uploadToCurrentFolder(files);
+    });
+  }
+
+  document.querySelectorAll('[data-open-folder-id]').forEach((el) => {
+    el.addEventListener('click', () => navigateToFolder(el.dataset.openFolderId));
+  });
+
+  document.querySelectorAll('[data-rename-folder-id]').forEach((el) => {
+    el.addEventListener('dblclick', (event) => {
+      event.preventDefault();
+      startFolderRename(el.dataset.renameFolderId);
+    });
+  });
+
+  document.querySelectorAll('[data-rename-input-id]').forEach((input) => {
+    input.focus();
+    input.select();
+    input.addEventListener('input', () => setState({ renamingFolderValue: input.value }));
+    input.addEventListener('blur', () => commitFolderRename(input.dataset.renameInputId));
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') commitFolderRename(input.dataset.renameInputId);
+      if (event.key === 'Escape') cancelFolderRename();
+    });
+  });
+
+  document.querySelectorAll('[data-crumb-id]').forEach((el) => {
+    el.addEventListener('click', () => navigateToFolder(el.dataset.crumbId));
+  });
+
+  document.querySelectorAll('[data-asset-id]').forEach((row) => {
+    row.addEventListener('click', () => setState({ designSelectedAssetId: row.dataset.assetId, activeTab: 'Design' }));
+  });
+
+  document.querySelectorAll('[data-template-id]').forEach((row) => {
+    row.addEventListener('click', () => applyTemplateToDesign(row.dataset.templateId));
+  });
+
+  const currentFolder = getCurrentFolder();
+  const ownersInput = document.getElementById('ownersInput');
+  const editorsInput = document.getElementById('editorsInput');
+  const viewersInput = document.getElementById('viewersInput');
+
+  if (ownersInput) ownersInput.addEventListener('change', () => setFolderPermissions(currentFolder.id, 'owners', ownersInput.value));
+  if (editorsInput) editorsInput.addEventListener('change', () => setFolderPermissions(currentFolder.id, 'editors', editorsInput.value));
+  if (viewersInput) viewersInput.addEventListener('change', () => setFolderPermissions(currentFolder.id, 'viewers', viewersInput.value));
+}
+
+function wireDesignInteractions() {
+  document.querySelectorAll('[data-design-asset-id]').forEach((button) => {
+    button.addEventListener('click', () => setState({ designSelectedAssetId: button.dataset.designAssetId }));
+  });
+
+  const newTemplateBtn = document.getElementById('newTemplateBtn');
+  if (newTemplateBtn) newTemplateBtn.addEventListener('click', saveCurrentDesignTemplate);
+
+  const saveTemplateBtn = document.getElementById('saveTemplateBtn');
+  if (saveTemplateBtn) saveTemplateBtn.addEventListener('click', saveCurrentDesignTemplate);
+
+  const addLayerButton = document.getElementById('addTextLayer');
+  if (addLayerButton) addLayerButton.addEventListener('click', addTextLayer);
+
+  document.querySelectorAll('[data-remove-layer-id]').forEach((button) => {
+    button.addEventListener('click', () => removeTextLayer(button.dataset.removeLayerId));
+  });
+
+  document.querySelectorAll('[data-layer-id]').forEach((control) => {
+    control.addEventListener('change', () => updateLayer(control.dataset.layerId, control.dataset.prop, control.value));
+  });
+
+  document.querySelectorAll('[data-move-layer-key]').forEach((button) => {
+    button.addEventListener('click', () => moveLayer(button.dataset.moveLayerKey, button.dataset.dir));
+  });
+
+  document.querySelectorAll('[data-transform-layer-id]').forEach((control) => {
+    control.addEventListener('change', () => updateLayerTransform(control.dataset.transformLayerId, control.dataset.transformProp, control.value));
+  });
+
+  document.querySelectorAll('[data-toggle-layer-scale-lock]').forEach((button) => {
+    button.addEventListener('click', () => toggleLayerScaleLock(button.dataset.toggleLayerScaleLock));
+  });
+
+  document.querySelectorAll('[data-reset-layer-transform]').forEach((button) => {
+    button.addEventListener('click', () => resetLayerTransform(button.dataset.resetLayerTransform));
+  });
+
+  document.querySelectorAll('[data-asset-transform-prop]').forEach((control) => {
+    control.addEventListener('change', () => updateAssetTransform(control.dataset.assetTransformProp, control.value));
+  });
+
+  const assetScaleLock = document.querySelector('[data-toggle-asset-scale-lock]');
+  if (assetScaleLock) assetScaleLock.addEventListener('click', toggleAssetScaleLock);
+
+  const assetReset = document.querySelector('[data-reset-asset-transform]');
+  if (assetReset) assetReset.addEventListener('click', resetAssetTransform);
+
+  const templateSizeSelect = document.getElementById('designTemplateSize');
+  if (templateSizeSelect) templateSizeSelect.addEventListener('change', () => setDesignTemplateSize(templateSizeSelect.value));
+
+  document.querySelectorAll('[data-toggle-layer-collapse]').forEach((button) => {
+    button.addEventListener('click', () => toggleLayerCollapsed(button.dataset.toggleLayerCollapse));
+  });
+}
+
+
+function wireControlRoomInteractions() {
+  document.querySelectorAll('[data-control-template-id]').forEach((button) => {
+    button.addEventListener('click', () => setState({ selectedControlTemplateId: button.dataset.controlTemplateId }));
+  });
+
+  const loadTemplateButton = document.getElementById('loadTemplateToDesignBtn');
+  if (loadTemplateButton) {
+    loadTemplateButton.addEventListener('click', () => {
+      if (!state.selectedControlTemplateId) return;
+      applyTemplateToDesign(state.selectedControlTemplateId);
+    });
+  }
+}
+
+function wireDataEngineInteractions() {
+  const toggleSimulationButton = document.getElementById('toggleSimulation');
+  if (toggleSimulationButton) {
+    toggleSimulationButton.addEventListener('click', () => {
+      if (state.simulationRunning) stopSimulation();
+      else startSimulation();
+    });
+  }
+
+  const speedSelect = document.getElementById('simulationSpeed');
+  if (speedSelect) {
+    speedSelect.addEventListener('change', (event) => {
+      const nextSpeed = Number(event.target.value);
+      const wasRunning = state.simulationRunning;
+      stopSimulation();
+      setState({ simulationSpeedMs: nextSpeed });
+      if (wasRunning) startSimulation();
+    });
+  }
+
+  const resetButton = document.getElementById('resetSimulation');
+  if (resetButton) resetButton.addEventListener('click', resetSimulation);
 }
 
 function runSimulationStep() {
