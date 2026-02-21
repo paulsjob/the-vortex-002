@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useAssetStore } from '../../store/useAssetStore';
 import type { ExplorerNode } from '../../types/domain';
 
@@ -10,6 +10,7 @@ export function AssetExplorer({ kind, title }: Props) {
   const expanded = kind === 'branded' ? store.expandedBranded : store.expandedTemplates;
   const [currentFolderId, setCurrentFolderId] = useState(explorer.rootId);
   const [query, setQuery] = useState('');
+  const uploadRef = useRef<HTMLInputElement | null>(null);
 
   const getNode = (id: string) => explorer.nodes.find((n) => n.id === id);
   const children = useMemo(() => {
@@ -21,7 +22,9 @@ export function AssetExplorer({ kind, title }: Props) {
   const renderTree = (folderId: string, depth = 0): JSX.Element | null => {
     const folder = getNode(folderId);
     if (!folder || folder.type !== 'folder') return null;
-    const childFolders = folder.children.map(getNode).filter((n): n is ExplorerNode => !!n && n.type === 'folder') as ExplorerNode[];
+    const childFolders = folder.children
+      .map(getNode)
+      .filter((n): n is ExplorerNode => !!n && n.type === 'folder');
     const isOpen = expanded[folderId] ?? depth === 0;
     return (
       <div key={folderId} style={{ marginLeft: depth * 12 }} className="space-y-1">
@@ -43,13 +46,32 @@ export function AssetExplorer({ kind, title }: Props) {
         {renderTree(explorer.rootId)}
       </aside>
       <div className="rounded-lg border border-slate-800 bg-slate-950 p-3">
-        <div className="mb-3 flex gap-2">
+        <div className="mb-3 flex flex-wrap gap-2">
           <input value={query} onChange={(e) => setQuery(e.target.value)} className="flex-1 rounded border border-slate-700 bg-slate-900 px-2 py-1" placeholder={`Search ${title.toLowerCase()}`} />
-          <button className="rounded bg-blue-700 px-3 py-1" onClick={() => {
-            const name = window.prompt('Name this new folder')?.trim();
-            if (name) store.addFolder(name, currentFolderId, kind);
-          }}>Create Folder</button>
+          <button
+            className="rounded bg-blue-700 px-3 py-1"
+            onClick={() => {
+              const name = window.prompt('Name this new folder')?.trim();
+              if (name) store.addFolder(name, currentFolderId, kind);
+            }}
+          >
+            Create Folder
+          </button>
           <button className="rounded bg-red-800 px-3 py-1" onClick={() => store.deleteFolder(currentFolderId, kind)} disabled={currentFolderId === explorer.rootId}>Delete Folder</button>
+          <button className="rounded bg-emerald-700 px-3 py-1" onClick={() => uploadRef.current?.click()}>Upload</button>
+          <input
+            ref={uploadRef}
+            type="file"
+            accept="image/png,image/jpeg,.png,.jpg,.jpeg"
+            multiple
+            className="hidden"
+            onChange={async (event) => {
+              const files = Array.from(event.target.files || []);
+              if (!files.length) return;
+              await store.uploadFiles(files, currentFolderId, kind);
+              event.currentTarget.value = '';
+            }}
+          />
         </div>
         <div className="grid gap-2 text-sm">
           <div className="grid grid-cols-4 text-slate-400"><span>Name</span><span>Type</span><span>Dimension</span><span>Modified</span></div>
@@ -61,11 +83,13 @@ export function AssetExplorer({ kind, title }: Props) {
               <span>{new Date(item.createdAt).toLocaleDateString()}</span>
             </div>
           ))}
+          {!children.length && <p className="text-slate-500">This folder is empty.</p>}
         </div>
       </div>
       <aside className="rounded-lg border border-slate-800 bg-slate-950 p-3">
         <h4 className="mb-2 font-semibold">Permissions</h4>
         <p className="text-xs text-slate-400">Folder sharing protocol matches Branded Assets.</p>
+        <p className="mt-2 text-xs text-slate-500">Uploads are persisted in localStorage as data URLs for local testing.</p>
       </aside>
     </section>
   );
