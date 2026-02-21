@@ -1,5 +1,6 @@
 const tabs = ['Dashboard', 'Design', 'Data Engine', 'Control Room', 'Output'];
 const STORAGE_KEY = 'renderless.fileExplorer.v1';
+const TEMPLATE_LIBRARY_STORAGE_KEY = 'renderless.templateLibrary.v1';
 const TEMPLATE_STORAGE_KEY = 'renderless.templates.v1';
 const ASSET_DB_NAME = 'renderless.assetBinary.v1';
 const ASSET_DB_STORE = 'images';
@@ -81,6 +82,26 @@ function buildDefaultExplorer() {
   return { rootId: 'root', nodes };
 }
 
+
+function buildDefaultTemplateExplorer() {
+  const root = makeFolder('Templates', null, {
+    owners: ['admin@renderless.ai'],
+    editors: ['design@renderless.ai', 'social@renderless.ai'],
+    viewers: ['sales@renderless.ai'],
+  });
+  root.id = 'template-root';
+  return { rootId: 'template-root', nodes: [root] };
+}
+
+function loadTemplateExplorer() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(TEMPLATE_LIBRARY_STORAGE_KEY) || 'null');
+    if (parsed?.rootId && Array.isArray(parsed.nodes) && parsed.nodes.length) return parsed;
+  } catch (error) {
+    // fall back to defaults
+  }
+  return buildDefaultTemplateExplorer();
+}
 function loadExplorer() {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
@@ -130,6 +151,20 @@ function saveExplorer(explorer) {
     return { ok: true, message: '' };
   } catch (error) {
     return { ok: false, message: 'Could not save asset library locally.' };
+  }
+}
+
+
+function saveTemplateExplorer(explorer) {
+  const { explorer: persistableExplorer, trimmedCount } = buildPersistableExplorer(explorer);
+  try {
+    localStorage.setItem(TEMPLATE_LIBRARY_STORAGE_KEY, JSON.stringify(persistableExplorer));
+    if (trimmedCount > 0) {
+      return { ok: true, message: `Stored ${trimmedCount} uploaded file${trimmedCount > 1 ? 's' : ''} in local asset cache.` };
+    }
+    return { ok: true, message: '' };
+  } catch (error) {
+    return { ok: false, message: 'Could not save template library locally.' };
   }
 }
 
@@ -298,9 +333,13 @@ const state = {
   liveScore: 'BOS 0 - NYY 0',
   isStreaming: false,
   brandedAssetsOpen: true,
+  templatesLibraryOpen: false,
   assetSearchQuery: '',
+  templateSearchQuery: '',
   explorer: loadExplorer(),
+  templateExplorer: loadTemplateExplorer(),
   currentFolderId: 'root',
+  templateCurrentFolderId: 'template-root',
   designSelectedAssetId: null,
   designSearchQuery: '',
   designFolderFilter: 'all',
@@ -311,12 +350,15 @@ const state = {
   storageNotice: '',
   renamingFolderId: null,
   renamingFolderValue: '',
+  templateRenamingFolderId: null,
+  templateRenamingFolderValue: '',
   designTextLayers: [],
   designAssetLayer: null,
   designLayerOrder: [],
   designTemplateSize: '1920x1080',
   designCollapsedLayers: {},
   designTreeExpanded: { root: true },
+  templateTreeExpanded: { 'template-root': true },
   designRenamingLayerKey: null,
   designRenamingLayerValue: '',
   nextTextLayerId: 1,
@@ -342,12 +384,18 @@ const viewContainer = document.getElementById('viewContainer');
 
 function setState(patch) {
   const shouldPersistExplorer = Object.prototype.hasOwnProperty.call(patch, 'explorer');
+  const shouldPersistTemplateExplorer = Object.prototype.hasOwnProperty.call(patch, 'templateExplorer');
   const shouldPersistTemplates = Object.prototype.hasOwnProperty.call(patch, 'templates');
   Object.assign(state, patch);
 
   if (shouldPersistExplorer) {
     const persistResult = saveExplorer(state.explorer);
     state.storageNotice = persistResult.message || '';
+  }
+
+  if (shouldPersistTemplateExplorer) {
+    const persistTemplateLibrary = saveTemplateExplorer(state.templateExplorer);
+    state.storageNotice = persistTemplateLibrary.message || state.storageNotice;
   }
 
   if (shouldPersistTemplates) {
@@ -839,10 +887,294 @@ function setFolderPermissions(folderId, key, rawValue) {
   });
 }
 
+function getNodeById(id) {
+  return state.explorer.nodes.find((node) => node.id === id);
+}
+
+function getCurrentFolder() {
+  return getNodeById(state.currentFolderId) || getNodeById(state.explorer.rootId);
+}
+
+function getChildren(folderId) {
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder') return [];
+  return folder.children.map((id) => getNodeById(id)).filter(Boolean);
+}
+
+function getAllFiles() {
+  return state.explorer.nodes.filter((node) => node.type === 'file');
+}
+
+function getDimensionRatio(dimension = '16x9') {
+  const [w, h] = String(dimension).split('x').map(Number);
+  if (!w || !h) return 16 / 9;
+  return w / h;
+}
+
+
+function getTemplateDimensions(size = '1920x1080') {
+  const [width, height] = String(size).split('x').map(Number);
+  if (!width || !height) return { width: 1920, height: 1080 };
+  return { width, height };
+}
+
+function toStagePercent(value, max) {
+  if (!max) return 0;
+  return (Number(value) / max) * 100;
+}
+
+function getFileKind(name = '') {
+  const ext = name.split('.').pop().toLowerCase();
+  if (!ext || ext === name.toLowerCase()) return 'FILE';
+  return ext.toUpperCase();
+}
+
+function getFolderName(folderId) {
+  return getNodeById(folderId)?.name || 'Unknown Folder';
+}
+
+function getFolderPath(folderId) {
+  const path = [];
+  let current = getNodeById(folderId);
+  while (current) {
+    path.unshift(current);
+    current = current.parentId ? getNodeById(current.parentId) : null;
+  }
+  return path;
+}
+
+
+function getTemplateNodeById(id) {
+  return state.templateExplorer.nodes.find((node) => node.id === id);
+}
+
+function getTemplateCurrentFolder() {
+  return getTemplateNodeById(state.templateCurrentFolderId) || getTemplateNodeById(state.templateExplorer.rootId);
+}
+
+function getTemplateChildren(folderId) {
+  const folder = getTemplateNodeById(folderId);
+  if (!folder || folder.type !== 'folder') return [];
+  return folder.children.map((id) => getTemplateNodeById(id)).filter(Boolean);
+}
+
+function getTemplateFolderPath(folderId) {
+  const path = [];
+  let current = getTemplateNodeById(folderId);
+  while (current) {
+    path.unshift(current);
+    current = current.parentId ? getTemplateNodeById(current.parentId) : null;
+  }
+  return path;
+}
+
+function updateNode(nodeId, mutator) {
+  const nextExplorer = cloneValue(state.explorer);
+  const node = nextExplorer.nodes.find((item) => item.id === nodeId);
+  if (!node) return;
+  mutator(node, nextExplorer);
+  setState({ explorer: nextExplorer });
+}
+
+function createSubfolder(folderName) {
+  const trimmed = folderName.trim();
+  if (!trimmed) return;
+
+  const currentFolder = getCurrentFolder();
+  if (!currentFolder || currentFolder.type !== 'folder') return;
+
+  const existing = getChildren(currentFolder.id).find((child) => child.type === 'folder' && child.name.toLowerCase() === trimmed.toLowerCase());
+  if (existing) return;
+
+  const nextExplorer = cloneValue(state.explorer);
+  const nextCurrent = nextExplorer.nodes.find((node) => node.id === currentFolder.id);
+  const newFolder = makeFolder(trimmed, nextCurrent.id, cloneValue(nextCurrent.permissions));
+  nextCurrent.children.push(newFolder.id);
+  nextExplorer.nodes.push(newFolder);
+
+  setState({
+    explorer: nextExplorer,
+    currentFolderId: newFolder.id,
+  });
+}
+
+function renameFolder(folderId, folderName) {
+  const trimmed = folderName.trim();
+  if (!trimmed) return;
+
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder' || folder.id === state.explorer.rootId) return;
+
+  const siblings = getChildren(folder.parentId || state.explorer.rootId)
+    .filter((item) => item.type === 'folder' && item.id !== folderId);
+  if (siblings.some((item) => item.name.toLowerCase() === trimmed.toLowerCase())) return;
+
+  updateNode(folderId, (node) => {
+    node.name = trimmed;
+  });
+}
+
+function startFolderRename(folderId) {
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder' || folder.id === state.explorer.rootId) return;
+  setState({ renamingFolderId: folderId, renamingFolderValue: folder.name });
+}
+
+function commitFolderRename(folderId) {
+  if (!folderId || state.renamingFolderId !== folderId) return;
+  renameFolder(folderId, state.renamingFolderValue);
+  setState({ renamingFolderId: null, renamingFolderValue: '' });
+}
+
+function cancelFolderRename() {
+  if (!state.renamingFolderId) return;
+  setState({ renamingFolderId: null, renamingFolderValue: '' });
+}
+
+function deleteFolder(folderId) {
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder' || folder.id === state.explorer.rootId) return;
+
+  const nextExplorer = cloneValue(state.explorer);
+  const idsToDelete = new Set();
+
+  const collect = (id) => {
+    idsToDelete.add(id);
+    const node = nextExplorer.nodes.find((item) => item.id === id);
+    if (!node || node.type !== 'folder') return;
+    node.children.forEach((childId) => collect(childId));
+  };
+  collect(folderId);
+
+  nextExplorer.nodes
+    .filter((node) => node.type === 'file' && idsToDelete.has(node.id))
+    .forEach((file) => deleteAssetData(file.srcRef || file.id));
+
+  nextExplorer.nodes = nextExplorer.nodes.filter((node) => !idsToDelete.has(node.id));
+  nextExplorer.nodes.forEach((node) => {
+    if (node.type === 'folder') node.children = node.children.filter((id) => !idsToDelete.has(id));
+  });
+
+  const fallbackFolderId = folder.parentId || nextExplorer.rootId;
+  setState({ explorer: nextExplorer, currentFolderId: fallbackFolderId, renamingFolderId: null, renamingFolderValue: '' });
+}
+
+function setFolderPermissions(folderId, key, rawValue) {
+  const values = rawValue
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  updateNode(folderId, (node) => {
+    node.permissions[key] = values;
+  });
+}
+
 function navigateToFolder(folderId) {
   const folder = getNodeById(folderId);
   if (!folder || folder.type !== 'folder') return;
   setState({ currentFolderId: folderId });
+}
+
+
+function updateTemplateNode(nodeId, mutator) {
+  const nextExplorer = cloneValue(state.templateExplorer);
+  const node = nextExplorer.nodes.find((item) => item.id === nodeId);
+  if (!node) return;
+  mutator(node, nextExplorer);
+  setState({ templateExplorer: nextExplorer });
+}
+
+function createTemplateSubfolder(folderName) {
+  const trimmed = folderName.trim();
+  if (!trimmed) return;
+
+  const currentFolder = getTemplateCurrentFolder();
+  if (!currentFolder || currentFolder.type !== 'folder') return;
+
+  const existing = getTemplateChildren(currentFolder.id).find((child) => child.type === 'folder' && child.name.toLowerCase() === trimmed.toLowerCase());
+  if (existing) return;
+
+  const nextExplorer = cloneValue(state.templateExplorer);
+  const nextCurrent = nextExplorer.nodes.find((node) => node.id === currentFolder.id);
+  const newFolder = makeFolder(trimmed, nextCurrent.id, cloneValue(nextCurrent.permissions));
+  nextCurrent.children.push(newFolder.id);
+  nextExplorer.nodes.push(newFolder);
+
+  setState({
+    templateExplorer: nextExplorer,
+    templateCurrentFolderId: newFolder.id,
+  });
+}
+
+function renameTemplateFolder(folderId, folderName) {
+  const trimmed = folderName.trim();
+  if (!trimmed) return;
+
+  const folder = getTemplateNodeById(folderId);
+  if (!folder || folder.type !== 'folder' || folder.id === state.templateExplorer.rootId) return;
+
+  const siblings = getTemplateChildren(folder.parentId || state.templateExplorer.rootId)
+    .filter((item) => item.type === 'folder' && item.id !== folderId);
+  if (siblings.some((item) => item.name.toLowerCase() === trimmed.toLowerCase())) return;
+
+  updateTemplateNode(folderId, (node) => {
+    node.name = trimmed;
+  });
+}
+
+function startTemplateFolderRename(folderId) {
+  const folder = getTemplateNodeById(folderId);
+  if (!folder || folder.type !== 'folder' || folder.id === state.templateExplorer.rootId) return;
+  setState({ templateRenamingFolderId: folderId, templateRenamingFolderValue: folder.name });
+}
+
+function commitTemplateFolderRename(folderId) {
+  if (!folderId || state.templateRenamingFolderId !== folderId) return;
+  renameTemplateFolder(folderId, state.templateRenamingFolderValue);
+  setState({ templateRenamingFolderId: null, templateRenamingFolderValue: '' });
+}
+
+function cancelTemplateFolderRename() {
+  if (!state.templateRenamingFolderId) return;
+  setState({ templateRenamingFolderId: null, templateRenamingFolderValue: '' });
+}
+
+function deleteTemplateFolder(folderId) {
+  const folder = getTemplateNodeById(folderId);
+  if (!folder || folder.type !== 'folder' || folder.id === state.templateExplorer.rootId) return;
+
+  const nextExplorer = cloneValue(state.templateExplorer);
+  const idsToDelete = new Set();
+
+  const collect = (id) => {
+    idsToDelete.add(id);
+    const node = nextExplorer.nodes.find((item) => item.id === id);
+    if (!node || node.type !== 'folder') return;
+    node.children.forEach((childId) => collect(childId));
+  };
+  collect(folderId);
+
+  nextExplorer.nodes = nextExplorer.nodes.filter((node) => !idsToDelete.has(node.id));
+  nextExplorer.nodes.forEach((node) => {
+    if (node.type === 'folder') node.children = node.children.filter((id) => !idsToDelete.has(id));
+  });
+
+  const fallbackFolderId = folder.parentId || nextExplorer.rootId;
+  setState({ templateExplorer: nextExplorer, templateCurrentFolderId: fallbackFolderId, templateRenamingFolderId: null, templateRenamingFolderValue: '' });
+}
+
+function setTemplateFolderPermissions(folderId, key, rawValue) {
+  const values = rawValue.split(',').map((item) => item.trim()).filter(Boolean);
+  updateTemplateNode(folderId, (node) => {
+    node.permissions[key] = values;
+  });
+}
+
+function navigateToTemplateFolder(folderId) {
+  const folder = getTemplateNodeById(folderId);
+  if (!folder || folder.type !== 'folder') return;
+  setState({ templateCurrentFolderId: folderId });
 }
 
 function renderFolderTree(folderId, depth = 0) {
@@ -862,6 +1194,73 @@ function renderFolderTree(folderId, depth = 0) {
         : `<button class="tree-folder ${state.currentFolderId === folder.id ? 'active' : ''}" data-open-folder-id="${folder.id}" data-rename-folder-id="${folder.id}" title="Double-click to rename.">${folder.name}</button>`}
       </div>
       ${expanded ? childFolders.map((child) => renderFolderTree(child.id, depth + 1)).join('') : ''}
+    </div>
+  `;
+}
+
+function renderTemplateFolderTree(folderId, depth = 0) {
+  const folder = getTemplateNodeById(folderId);
+  if (!folder || folder.type !== 'folder') return '';
+  const childFolders = getTemplateChildren(folderId).filter((child) => child.type === 'folder');
+  const hasChildren = childFolders.length > 0;
+  const expanded = state.templateTreeExpanded[folder.id] || depth === 0;
+  const isRenaming = state.templateRenamingFolderId === folder.id;
+
+  return `
+    <div class="tree-node" style="--depth:${depth}">
+      <div class="tree-row">
+        ${hasChildren ? `<button class="tree-toggle" data-template-toggle-tree-id="${folder.id}">${expanded ? '▾' : '▸'}</button>` : '<span class="tree-toggle-placeholder"></span>'}
+        ${isRenaming
+        ? `<input class="tree-folder rename-input" data-template-rename-input-id="${folder.id}" value="${state.templateRenamingFolderValue}" />`
+        : `<button class="tree-folder ${state.templateCurrentFolderId === folder.id ? 'active' : ''}" data-template-open-folder-id="${folder.id}" data-template-rename-folder-id="${folder.id}" title="Double-click to rename.">${folder.name}</button>`}
+      </div>
+      ${expanded ? childFolders.map((child) => renderTemplateFolderTree(child.id, depth + 1)).join('') : ''}
+    </div>
+  `;
+}
+
+function templateLibraryView(options = {}) {
+  const showPermissions = options.showPermissions !== false;
+  const currentFolder = getTemplateCurrentFolder();
+  const children = getTemplateChildren(currentFolder.id);
+  const folders = children.filter((item) => item.type === 'folder');
+  const fileSearch = state.templateSearchQuery.trim().toLowerCase();
+  const files = children
+    .filter((item) => item.type === 'file')
+    .filter((file) => !fileSearch || file.name.toLowerCase().includes(fileSearch));
+  const breadcrumbs = getTemplateFolderPath(currentFolder.id);
+
+  return `
+    <div class="explorer-layout ${showPermissions ? '' : 'no-permissions'}">
+      <aside class="explorer-tree panel">
+        <h4>Folders</h4>
+        ${renderTemplateFolderTree(state.templateExplorer.rootId)}
+      </aside>
+      <section class="explorer-main panel">
+        <div class="explorer-toolbar">
+          <div class="breadcrumbs">${breadcrumbs.map((crumb, index) => `<button class="crumb" data-template-crumb-id="${crumb.id}">${crumb.name}${index < breadcrumbs.length - 1 ? ' /' : ''}</button>`).join('')}</div>
+          <div class="toolbar-actions">
+            <input id="templateSearchInput" value="${state.templateSearchQuery}" placeholder="Search templates" />
+            <button id="templateCreateFolderBtn" class="action-btn">Create Folder</button>
+            <button id="templateDeleteFolderBtn" class="action-btn" ${currentFolder.id === state.templateExplorer.rootId ? 'disabled' : ''}>Delete Folder</button>
+            <label class="action-btn upload-btn">Upload<input id="templateAssetUpload" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" multiple /></label>
+          </div>
+          ${state.storageNotice ? `<p class="storage-warning">${state.storageNotice}</p>` : ''}
+        </div>
+        <div class="explorer-list">
+          <div class="explorer-head"><span>Name</span><span>Type</span><span>Dimension</span><span>Modified</span></div>
+          ${folders.map((folder) => state.templateRenamingFolderId === folder.id ? `<div class="explorer-row"><input class="rename-input" data-template-rename-input-id="${folder.id}" value="${state.templateRenamingFolderValue}" /><span>Folder</span><span>${getTemplateChildren(folder.id).length} item(s)</span><span>${new Date(folder.createdAt).toLocaleDateString()}</span></div>` : `<button class="explorer-row" data-template-open-folder-id="${folder.id}" data-template-rename-folder-id="${folder.id}" title="Double-click to rename."><span>📁 ${folder.name}</span><span>Folder</span><span>${getTemplateChildren(folder.id).length} item(s)</span><span>${new Date(folder.createdAt).toLocaleDateString()}</span></button>`).join('')}
+          ${files.map((file) => `<div class="explorer-row"><span>🖼️ ${file.name}</span><span>${getFileKind(file.name)}</span><span>${file.dimension}</span><span>${new Date(file.createdAt).toLocaleDateString()}</span></div>`).join('')}
+          ${!folders.length && !files.length ? '<p class="muted">No matching assets in this folder.</p>' : ''}
+        </div>
+      </section>
+      ${showPermissions ? `<aside class="explorer-permissions panel">
+        <h4>Folder Permissions</h4>
+        <p class="muted">Access to a parent folder grants access to everything inside it.</p>
+        <label class="control-group">Owners<input id="templateOwnersInput" value="${(currentFolder.permissions?.owners || []).join(', ')}" /></label>
+        <label class="control-group">Editors<input id="templateEditorsInput" value="${(currentFolder.permissions?.editors || []).join(', ')}" /></label>
+        <label class="control-group">Viewers<input id="templateViewersInput" value="${(currentFolder.permissions?.viewers || []).join(', ')}" /></label>
+      </aside>` : ''}
     </div>
   `;
 }
@@ -930,14 +1329,15 @@ function dashboardView() {
       </div>
       <div class="asset-icons">
         <button id="toggleBrandedAssets" class="asset asset-btn ${state.brandedAssetsOpen ? 'active' : ''}">${icons.branded}<span>Branded Assets</span></button>
+        <button id="toggleTemplateLibrary" class="asset asset-btn ${state.templatesLibraryOpen ? 'active' : ''}">${icons.fonts}<span>Templates</span></button>
         <div class="asset">${icons.logos}<span>Logos</span></div>
         <div class="asset">${icons.fonts}<span>Fonts</span></div>
         <div class="asset">${icons.palette}<span>Palette</span></div>
         <div class="asset">${icons.animation}<span>Anim</span></div>
         <div class="asset">${icons.logos}<span>Bug</span></div>
-        <div class="asset">${icons.fonts}<span>Templates</span></div>
       </div>
       <div class="brand-manager ${state.brandedAssetsOpen ? 'open' : ''}">${fileExplorerView({ showPermissions: true })}</div>
+      <div class="brand-manager ${state.templatesLibraryOpen ? 'open' : ''}">${templateLibraryView({ showPermissions: true })}</div>
     </section>
   `;
 }
@@ -1192,13 +1592,6 @@ function controlRoomView() {
           ${renderControlTemplateStage(programTemplate, 'PROGRAM')}
         </div>
       </div>
-    </section>
-    <section class="panel">
-      <h3>Controller Templates</h3>
-      <div class="control-template-list">
-        ${state.templates.map((template) => `<button class="control-template-item ${state.selectedControlTemplateId === template.id ? 'active' : ''}" data-control-template-id="${template.id}"><strong>${template.name}</strong><span>${template.assetName} · ${template.templateSize || template.dimension}</span><em>Saved ${formatTemplateTimestamp(template.createdAt)}</em></button>`).join('')}
-        ${!state.templates.length ? '<p class="muted">No templates saved yet. Go to Design and click Save Template.</p>' : ''}
-      </div>
       ${selectedTemplate ? '<button id="loadTemplateToDesignBtn" class="pill-btn">Load Selected Template in Design</button>' : ''}
     </section>
   `;
@@ -1235,366 +1628,6 @@ function renderView() {
     default:
       return dashboardView();
   }
-}
-
-function runSimulationStep() {
-  const nextIndex = state.simulationIndex + 1;
-  if (nextIndex >= mlbSimulationFeed.length) {
-    stopSimulation();
-    return;
-  }
-
-  const play = mlbSimulationFeed[nextIndex];
-  setState({
-    simulationIndex: nextIndex,
-    liveScore: `BOS ${play.score.BOS} - NYY ${play.score.NYY}`,
-    gameState: {
-      ...state.gameState,
-      inning: play.inning,
-      inningState: play.inningState,
-      score: play.score,
-      balls: play.count.balls,
-      strikes: play.count.strikes,
-      outs: play.count.outs,
-      runnersOnBase: play.runnersOnBase,
-      pitcher: play.pitcher,
-      batter: play.batter,
-      pitchType: play.pitch.type,
-      pitchVelocity: play.pitch.velocity,
-      pitchLocation: play.pitch.location,
-      batSpeed: play.hit.batSpeed,
-      exitVelocity: play.hit.exitVelocity,
-      launchAngle: play.hit.launchAngle,
-      projectedDistance: play.hit.projectedDistance,
-      lastEvent: play.summary,
-    },
-  });
-}
-
-function startSimulation() {
-  if (simulationTimer) return;
-  setState({ simulationRunning: true });
-  simulationTimer = setInterval(runSimulationStep, state.simulationSpeedMs);
-}
-
-function stopSimulation() {
-  if (simulationTimer) {
-    clearInterval(simulationTimer);
-    simulationTimer = null;
-  }
-  if (state.simulationRunning) setState({ simulationRunning: false });
-}
-
-function resetSimulation() {
-  stopSimulation();
-  setState({ simulationIndex: -1, liveScore: 'BOS 0 - NYY 0', gameState: cloneValue(bootstrapData.initialGameState || {}) });
-}
-
-function updateLayer(layerId, prop, value) {
-  const castValue = prop === 'x' || prop === 'y' || prop === 'size' ? Number(value) : value;
-  const layers = state.designTextLayers.map((layer) => (layer.id === Number(layerId) ? { ...getTextLayerWithTransform(layer), [prop]: castValue } : layer));
-  setState({ designTextLayers: layers });
-}
-
-function updateLayerTransform(layerId, prop, value) {
-  const numeric = Number(value);
-  const layers = state.designTextLayers.map((layer) => {
-    if (layer.id !== Number(layerId)) return layer;
-    const enriched = getTextLayerWithTransform(layer);
-    const next = { ...enriched.transform, [prop]: Number.isNaN(numeric) ? 0 : numeric };
-    if (prop === 'scaleX' && enriched.transform.scaleLinked) next.scaleY = next.scaleX;
-    return { ...enriched, transform: next };
-  });
-  setState({ designTextLayers: layers });
-}
-
-function toggleLayerScaleLock(layerId) {
-  const layers = state.designTextLayers.map((layer) => {
-    if (layer.id !== Number(layerId)) return layer;
-    const enriched = getTextLayerWithTransform(layer);
-    const next = { ...enriched.transform, scaleLinked: !enriched.transform.scaleLinked };
-    if (next.scaleLinked) next.scaleY = next.scaleX;
-    return { ...enriched, transform: next };
-  });
-  setState({ designTextLayers: layers });
-}
-
-function resetLayerTransform(layerId) {
-  const layers = state.designTextLayers.map((layer) => (layer.id === Number(layerId)
-    ? { ...getTextLayerWithTransform(layer), transform: defaultTransform('text', layer) }
-    : layer));
-  setState({ designTextLayers: layers });
-}
-
-function updateAssetTransform(prop, value) {
-  const numeric = Number(value);
-  const current = getAssetLayer();
-  const next = { ...current.transform, [prop]: Number.isNaN(numeric) ? 0 : numeric };
-  if (prop === 'scaleX' && current.transform.scaleLinked) next.scaleY = next.scaleX;
-  setState({ designAssetLayer: { ...current, transform: next } });
-}
-
-function toggleAssetScaleLock() {
-  const current = getAssetLayer();
-  const next = { ...current.transform, scaleLinked: !current.transform.scaleLinked };
-  if (next.scaleLinked) next.scaleY = next.scaleX;
-  setState({ designAssetLayer: { ...current, transform: next } });
-}
-
-function resetAssetTransform() {
-  const current = getAssetLayer();
-  setState({ designAssetLayer: { ...current, transform: defaultTransform('asset') } });
-}
-
-function addTextLayer() {
-  const id = state.nextTextLayerId;
-  const newLayer = { id, name: `Layer ${id}`, text: 'New Text Layer', x: 32, y: 32 + state.designTextLayers.length * 48, size: 32, color: '#ffffff', bindKey: 'none', transform: defaultTransform('text', { x: 32, y: 32 + state.designTextLayers.length * 48 }) };
-  setState({ designTextLayers: [...state.designTextLayers, newLayer], nextTextLayerId: id + 1, designLayerOrder: [...getOrderedLayerKeys(), `text-${id}`] });
-}
-
-function removeTextLayer(layerId) {
-  const key = `text-${layerId}`;
-  const layers = state.designTextLayers.filter((layer) => layer.id !== Number(layerId));
-  if (layers.length) setState({ designTextLayers: layers, designLayerOrder: getOrderedLayerKeys().filter((item) => item !== key) });
-}
-
-function moveLayer(layerKey, direction) {
-  const order = [...getOrderedLayerKeys()];
-  const idx = order.findIndex((key) => key === layerKey);
-  if (idx < 0) return;
-  const target = direction === 'up' ? idx - 1 : idx + 1;
-  if (target < 0 || target >= order.length) return;
-  const [item] = order.splice(idx, 1);
-  order.splice(target, 0, item);
-  setState({ designLayerOrder: order });
-}
-
-
-function toggleLayerCollapsed(layerKey) {
-  setState({
-    designCollapsedLayers: {
-      ...state.designCollapsedLayers,
-      [layerKey]: !state.designCollapsedLayers[layerKey],
-    },
-  });
-}
-
-function setDesignTemplateSize(size) {
-  if (!TEMPLATE_SIZES.some((item) => item.id === size)) return;
-  setState({ designTemplateSize: size });
-}
-
-function detectImageSize(file) {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const img = new Image();
-      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight, src: reader.result });
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-async function uploadToCurrentFolder(files) {
-  const folder = getCurrentFolder();
-  if (!folder || folder.type !== 'folder') return;
-
-  const nextExplorer = cloneValue(state.explorer);
-  const nextFolder = nextExplorer.nodes.find((node) => node.id === folder.id);
-
-  for (const file of files) {
-    const metadata = await detectImageSize(file);
-    const dimension = `${metadata.width}x${metadata.height}`;
-    const newFile = makeFile({
-      name: file.name,
-      parentId: nextFolder.id,
-      src: metadata.src,
-      dimension,
-    });
-    newFile.srcRef = newFile.id;
-    await storeAssetDataUrl(newFile.id, metadata.src);
-
-    nextFolder.children.push(newFile.id);
-    nextExplorer.nodes.push(newFile);
-  }
-
-  setState({ explorer: nextExplorer });
-}
-
-function wireBrandedAssetInteractions() {
-  const toggleButton = document.getElementById('toggleBrandedAssets');
-  if (toggleButton) toggleButton.addEventListener('click', () => setState({ brandedAssetsOpen: !state.brandedAssetsOpen }));
-
-  const requestFolderName = (title, initialValue = '') => {
-    const value = window.prompt(title, initialValue);
-    return typeof value === 'string' ? value.trim() : '';
-  };
-
-  const createFolderBtn = document.getElementById('createFolderBtn');
-  if (createFolderBtn) {
-    createFolderBtn.addEventListener('click', () => {
-      const name = requestFolderName('Name this new folder');
-      if (name) createSubfolder(name);
-    });
-  }
-
-  const assetSearchInput = document.getElementById('assetSearchInput');
-  if (assetSearchInput) {
-    assetSearchInput.addEventListener('input', () => setState({ assetSearchQuery: assetSearchInput.value }));
-  }
-
-  const deleteFolderBtn = document.getElementById('deleteFolderBtn');
-  if (deleteFolderBtn) {
-    deleteFolderBtn.addEventListener('click', () => deleteFolder(state.currentFolderId));
-  }
-
-  const uploadInput = document.getElementById('brandAssetUpload');
-  if (uploadInput) {
-    uploadInput.addEventListener('change', async (event) => {
-      const files = Array.from(event.target.files || []).filter((file) => ['image/png', 'image/jpeg'].includes(file.type) || /\.(png|jpe?g)$/i.test(file.name));
-      if (!files.length) return;
-      await uploadToCurrentFolder(files);
-    });
-  }
-
-  document.querySelectorAll('[data-open-folder-id]').forEach((el) => {
-    el.addEventListener('click', () => navigateToFolder(el.dataset.openFolderId));
-  });
-
-  document.querySelectorAll('[data-rename-folder-id]').forEach((el) => {
-    el.addEventListener('dblclick', (event) => {
-      event.preventDefault();
-      startFolderRename(el.dataset.renameFolderId);
-    });
-  });
-
-  document.querySelectorAll('[data-rename-input-id]').forEach((input) => {
-    input.focus();
-    input.select();
-    input.addEventListener('input', () => setState({ renamingFolderValue: input.value }));
-    input.addEventListener('blur', () => commitFolderRename(input.dataset.renameInputId));
-    input.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') commitFolderRename(input.dataset.renameInputId);
-      if (event.key === 'Escape') cancelFolderRename();
-    });
-  });
-
-  document.querySelectorAll('[data-crumb-id]').forEach((el) => {
-    el.addEventListener('click', () => navigateToFolder(el.dataset.crumbId));
-  });
-
-  document.querySelectorAll('[data-asset-id]').forEach((row) => {
-    row.addEventListener('click', () => setState({ designSelectedAssetId: row.dataset.assetId, activeTab: 'Design' }));
-  });
-
-  document.querySelectorAll('[data-template-id]').forEach((row) => {
-    row.addEventListener('click', () => applyTemplateToDesign(row.dataset.templateId));
-  });
-
-  const currentFolder = getCurrentFolder();
-  const ownersInput = document.getElementById('ownersInput');
-  const editorsInput = document.getElementById('editorsInput');
-  const viewersInput = document.getElementById('viewersInput');
-
-  if (ownersInput) ownersInput.addEventListener('change', () => setFolderPermissions(currentFolder.id, 'owners', ownersInput.value));
-  if (editorsInput) editorsInput.addEventListener('change', () => setFolderPermissions(currentFolder.id, 'editors', editorsInput.value));
-  if (viewersInput) viewersInput.addEventListener('change', () => setFolderPermissions(currentFolder.id, 'viewers', viewersInput.value));
-}
-
-function wireDesignInteractions() {
-  document.querySelectorAll('[data-design-asset-id]').forEach((button) => {
-    button.addEventListener('click', () => setState({ designSelectedAssetId: button.dataset.designAssetId }));
-  });
-
-  const newTemplateBtn = document.getElementById('newTemplateBtn');
-  if (newTemplateBtn) newTemplateBtn.addEventListener('click', saveCurrentDesignTemplate);
-
-  const saveTemplateBtn = document.getElementById('saveTemplateBtn');
-  if (saveTemplateBtn) saveTemplateBtn.addEventListener('click', saveCurrentDesignTemplate);
-
-  const addLayerButton = document.getElementById('addTextLayer');
-  if (addLayerButton) addLayerButton.addEventListener('click', addTextLayer);
-
-  document.querySelectorAll('[data-remove-layer-id]').forEach((button) => {
-    button.addEventListener('click', () => removeTextLayer(button.dataset.removeLayerId));
-  });
-
-  document.querySelectorAll('[data-layer-id]').forEach((control) => {
-    control.addEventListener('change', () => updateLayer(control.dataset.layerId, control.dataset.prop, control.value));
-  });
-
-  document.querySelectorAll('[data-move-layer-key]').forEach((button) => {
-    button.addEventListener('click', () => moveLayer(button.dataset.moveLayerKey, button.dataset.dir));
-  });
-
-  document.querySelectorAll('[data-transform-layer-id]').forEach((control) => {
-    control.addEventListener('change', () => updateLayerTransform(control.dataset.transformLayerId, control.dataset.transformProp, control.value));
-  });
-
-  document.querySelectorAll('[data-toggle-layer-scale-lock]').forEach((button) => {
-    button.addEventListener('click', () => toggleLayerScaleLock(button.dataset.toggleLayerScaleLock));
-  });
-
-  document.querySelectorAll('[data-reset-layer-transform]').forEach((button) => {
-    button.addEventListener('click', () => resetLayerTransform(button.dataset.resetLayerTransform));
-  });
-
-  document.querySelectorAll('[data-asset-transform-prop]').forEach((control) => {
-    control.addEventListener('change', () => updateAssetTransform(control.dataset.assetTransformProp, control.value));
-  });
-
-  const assetScaleLock = document.querySelector('[data-toggle-asset-scale-lock]');
-  if (assetScaleLock) assetScaleLock.addEventListener('click', toggleAssetScaleLock);
-
-  const assetReset = document.querySelector('[data-reset-asset-transform]');
-  if (assetReset) assetReset.addEventListener('click', resetAssetTransform);
-
-  const templateSizeSelect = document.getElementById('designTemplateSize');
-  if (templateSizeSelect) templateSizeSelect.addEventListener('change', () => setDesignTemplateSize(templateSizeSelect.value));
-
-  document.querySelectorAll('[data-toggle-layer-collapse]').forEach((button) => {
-    button.addEventListener('click', () => toggleLayerCollapsed(button.dataset.toggleLayerCollapse));
-  });
-}
-
-
-function wireControlRoomInteractions() {
-  document.querySelectorAll('[data-control-template-id]').forEach((button) => {
-    button.addEventListener('click', () => setState({ selectedControlTemplateId: button.dataset.controlTemplateId }));
-  });
-
-  const loadTemplateButton = document.getElementById('loadTemplateToDesignBtn');
-  if (loadTemplateButton) {
-    loadTemplateButton.addEventListener('click', () => {
-      if (!state.selectedControlTemplateId) return;
-      applyTemplateToDesign(state.selectedControlTemplateId);
-    });
-  }
-}
-
-function wireDataEngineInteractions() {
-  const toggleSimulationButton = document.getElementById('toggleSimulation');
-  if (toggleSimulationButton) {
-    toggleSimulationButton.addEventListener('click', () => {
-      if (state.simulationRunning) stopSimulation();
-      else startSimulation();
-    });
-  }
-
-  const speedSelect = document.getElementById('simulationSpeed');
-  if (speedSelect) {
-    speedSelect.addEventListener('change', (event) => {
-      const nextSpeed = Number(event.target.value);
-      const wasRunning = state.simulationRunning;
-      stopSimulation();
-      setState({ simulationSpeedMs: nextSpeed });
-      if (wasRunning) startSimulation();
-    });
-  }
-
-  const resetButton = document.getElementById('resetSimulation');
-  if (resetButton) resetButton.addEventListener('click', resetSimulation);
 }
 
 function runSimulationStep() {
@@ -1842,9 +1875,48 @@ async function uploadToCurrentFolder(files) {
   setState({ explorer: nextExplorer });
 }
 
+
+async function uploadToTemplateCurrentFolder(files) {
+  const folder = getTemplateCurrentFolder();
+  if (!folder || folder.type !== 'folder') return;
+
+  const nextExplorer = cloneValue(state.templateExplorer);
+  const nextFolder = nextExplorer.nodes.find((node) => node.id === folder.id);
+
+  for (const file of files) {
+    const metadata = await detectImageSize(file);
+    const dimension = `${metadata.width}x${metadata.height}`;
+    const newFile = makeFile({
+      name: file.name,
+      parentId: nextFolder.id,
+      src: metadata.src,
+      dimension,
+    });
+    newFile.srcRef = newFile.id;
+    await storeAssetDataUrl(newFile.id, metadata.src);
+
+    nextFolder.children.push(newFile.id);
+    nextExplorer.nodes.push(newFile);
+  }
+
+  setState({ templateExplorer: nextExplorer });
+}
+
+function toggleTemplateTreeFolder(folderId) {
+  setState({
+    templateTreeExpanded: {
+      ...state.templateTreeExpanded,
+      [folderId]: !state.templateTreeExpanded[folderId],
+    },
+  });
+}
+
 function wireBrandedAssetInteractions() {
   const toggleButton = document.getElementById('toggleBrandedAssets');
   if (toggleButton) toggleButton.addEventListener('click', () => setState({ brandedAssetsOpen: !state.brandedAssetsOpen }));
+
+  const toggleTemplateButton = document.getElementById('toggleTemplateLibrary');
+  if (toggleTemplateButton) toggleTemplateButton.addEventListener('click', () => setState({ templatesLibraryOpen: !state.templatesLibraryOpen }));
 
   const requestFolderName = (title, initialValue = '') => {
     const value = window.prompt(title, initialValue);
@@ -1859,15 +1931,29 @@ function wireBrandedAssetInteractions() {
     });
   }
 
+  const templateCreateFolderBtn = document.getElementById('templateCreateFolderBtn');
+  if (templateCreateFolderBtn) {
+    templateCreateFolderBtn.addEventListener('click', () => {
+      const name = requestFolderName('Name this new folder');
+      if (name) createTemplateSubfolder(name);
+    });
+  }
+
   const assetSearchInput = document.getElementById('assetSearchInput');
   if (assetSearchInput) {
     assetSearchInput.addEventListener('input', () => setState({ assetSearchQuery: assetSearchInput.value }));
   }
 
-  const deleteFolderBtn = document.getElementById('deleteFolderBtn');
-  if (deleteFolderBtn) {
-    deleteFolderBtn.addEventListener('click', () => deleteFolder(state.currentFolderId));
+  const templateSearchInput = document.getElementById('templateSearchInput');
+  if (templateSearchInput) {
+    templateSearchInput.addEventListener('input', () => setState({ templateSearchQuery: templateSearchInput.value }));
   }
+
+  const deleteFolderBtn = document.getElementById('deleteFolderBtn');
+  if (deleteFolderBtn) deleteFolderBtn.addEventListener('click', () => deleteFolder(state.currentFolderId));
+
+  const templateDeleteFolderBtn = document.getElementById('templateDeleteFolderBtn');
+  if (templateDeleteFolderBtn) templateDeleteFolderBtn.addEventListener('click', () => deleteTemplateFolder(state.templateCurrentFolderId));
 
   const uploadInput = document.getElementById('brandAssetUpload');
   if (uploadInput) {
@@ -1878,14 +1964,17 @@ function wireBrandedAssetInteractions() {
     });
   }
 
-  document.querySelectorAll('[data-open-folder-id]').forEach((el) => {
-    el.addEventListener('click', () => navigateToFolder(el.dataset.openFolderId));
-  });
+  const templateUploadInput = document.getElementById('templateAssetUpload');
+  if (templateUploadInput) {
+    templateUploadInput.addEventListener('change', async (event) => {
+      const files = Array.from(event.target.files || []).filter((file) => ['image/png', 'image/jpeg'].includes(file.type) || /\.(png|jpe?g)$/i.test(file.name));
+      if (!files.length) return;
+      await uploadToTemplateCurrentFolder(files);
+    });
+  }
 
-  document.querySelectorAll('[data-toggle-tree-id]').forEach((el) => {
-    el.addEventListener('click', () => toggleTreeFolder(el.dataset.toggleTreeId));
-  });
-
+  document.querySelectorAll('[data-open-folder-id]').forEach((el) => el.addEventListener('click', () => navigateToFolder(el.dataset.openFolderId)));
+  document.querySelectorAll('[data-toggle-tree-id]').forEach((el) => el.addEventListener('click', () => toggleTreeFolder(el.dataset.toggleTreeId)));
   document.querySelectorAll('[data-rename-folder-id]').forEach((el) => {
     el.addEventListener('dblclick', (event) => {
       event.preventDefault();
@@ -1904,26 +1993,47 @@ function wireBrandedAssetInteractions() {
     });
   });
 
-  document.querySelectorAll('[data-crumb-id]').forEach((el) => {
-    el.addEventListener('click', () => navigateToFolder(el.dataset.crumbId));
+  document.querySelectorAll('[data-crumb-id]').forEach((el) => el.addEventListener('click', () => navigateToFolder(el.dataset.crumbId)));
+  document.querySelectorAll('[data-asset-id]').forEach((row) => row.addEventListener('click', () => setState({ designSelectedAssetId: row.dataset.assetId, activeTab: 'Design' })));
+  document.querySelectorAll('[data-template-id]').forEach((row) => row.addEventListener('click', () => applyTemplateToDesign(row.dataset.templateId)));
+
+  document.querySelectorAll('[data-template-open-folder-id]').forEach((el) => el.addEventListener('click', () => navigateToTemplateFolder(el.dataset.templateOpenFolderId)));
+  document.querySelectorAll('[data-template-toggle-tree-id]').forEach((el) => el.addEventListener('click', () => toggleTemplateTreeFolder(el.dataset.templateToggleTreeId)));
+  document.querySelectorAll('[data-template-rename-folder-id]').forEach((el) => {
+    el.addEventListener('dblclick', (event) => {
+      event.preventDefault();
+      startTemplateFolderRename(el.dataset.templateRenameFolderId);
+    });
   });
 
-  document.querySelectorAll('[data-asset-id]').forEach((row) => {
-    row.addEventListener('click', () => setState({ designSelectedAssetId: row.dataset.assetId, activeTab: 'Design' }));
+  document.querySelectorAll('[data-template-rename-input-id]').forEach((input) => {
+    input.focus();
+    input.select();
+    input.addEventListener('input', () => setState({ templateRenamingFolderValue: input.value }));
+    input.addEventListener('blur', () => commitTemplateFolderRename(input.dataset.templateRenameInputId));
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') commitTemplateFolderRename(input.dataset.templateRenameInputId);
+      if (event.key === 'Escape') cancelTemplateFolderRename();
+    });
   });
 
-  document.querySelectorAll('[data-template-id]').forEach((row) => {
-    row.addEventListener('click', () => applyTemplateToDesign(row.dataset.templateId));
-  });
+  document.querySelectorAll('[data-template-crumb-id]').forEach((el) => el.addEventListener('click', () => navigateToTemplateFolder(el.dataset.templateCrumbId)));
 
   const currentFolder = getCurrentFolder();
   const ownersInput = document.getElementById('ownersInput');
   const editorsInput = document.getElementById('editorsInput');
   const viewersInput = document.getElementById('viewersInput');
-
   if (ownersInput) ownersInput.addEventListener('change', () => setFolderPermissions(currentFolder.id, 'owners', ownersInput.value));
   if (editorsInput) editorsInput.addEventListener('change', () => setFolderPermissions(currentFolder.id, 'editors', editorsInput.value));
   if (viewersInput) viewersInput.addEventListener('change', () => setFolderPermissions(currentFolder.id, 'viewers', viewersInput.value));
+
+  const templateCurrentFolder = getTemplateCurrentFolder();
+  const templateOwnersInput = document.getElementById('templateOwnersInput');
+  const templateEditorsInput = document.getElementById('templateEditorsInput');
+  const templateViewersInput = document.getElementById('templateViewersInput');
+  if (templateOwnersInput) templateOwnersInput.addEventListener('change', () => setTemplateFolderPermissions(templateCurrentFolder.id, 'owners', templateOwnersInput.value));
+  if (templateEditorsInput) templateEditorsInput.addEventListener('change', () => setTemplateFolderPermissions(templateCurrentFolder.id, 'editors', templateEditorsInput.value));
+  if (templateViewersInput) templateViewersInput.addEventListener('change', () => setTemplateFolderPermissions(templateCurrentFolder.id, 'viewers', templateViewersInput.value));
 }
 
 function wireDesignInteractions() {
