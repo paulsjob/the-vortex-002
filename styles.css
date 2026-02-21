@@ -126,6 +126,15 @@ body {
 .layer-actions { display: inline-flex; gap: 6px; align-items: center; }
 .layer-move { border: 1px solid #334155; border-radius: 7px; background: #0f172a; color: #bfdbfe; padding: 4px 8px; cursor: pointer; }
 
+.transform-block { border: 1px solid #243246; border-radius: 8px; padding: 8px; display: grid; gap: 6px; background: #010914; }
+.transform-head { display: flex; justify-content: space-between; align-items: center; }
+.transform-reset { border: 0; background: transparent; color: #60a5fa; cursor: pointer; font-weight: 600; }
+.transform-row { display: grid; grid-template-columns: 130px 1fr; gap: 8px; align-items: center; color: #cbd5e1; font-size: .85rem; }
+.transform-row > span:last-child { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.transform-input { width: 86px; border: 1px solid #334155; border-radius: 7px; background: #0b1730; color: #60a5fa; padding: 5px 6px; }
+.scale-lock { border: 1px solid #334155; border-radius: 7px; background: #0f172a; color: #93c5fd; padding: 4px 6px; cursor: pointer; }
+.scale-lock.on { border-color: #60a5fa; color: #dbeafe; }
+
 .template-strip { display: grid; gap: 6px; margin-top: 8px; }
 .template-strip h4 { margin: 6px 0 0; font-size: .82rem; color: #93c5fd; text-transform: uppercase; letter-spacing: .04em; }
 .template-row { border-style: dashed; }
@@ -161,7 +170,7 @@ body {
 .layer-title-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .layer-delete { border: 1px solid #7f1d1d; border-radius: 7px; background: #3f1111; color: #fecaca; padding: 4px 8px; cursor: pointer; font-size: .8rem; }
 .layer-card { border: 1px solid #2e3b52; border-radius: 10px; padding: 8px; background: #020617; display: grid; gap: 7px; }
-.layer-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.layer-row { display: grid; grid-template-columns: 1fr auto; gap: 6px; }
 
 .table { width: 100%; border-collapse: collapse; font-family: 'JetBrains Mono', monospace; }
 .table th, .table td { border: 1px solid #2a3141; padding: 10px; text-align: left; vertical-align: top; }
