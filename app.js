@@ -191,6 +191,23 @@ async function storeAssetDataUrl(assetId, dataUrl) {
   }
 }
 
+async function deleteAssetData(assetId) {
+  if (!assetId) return;
+  try {
+    const db = await openAssetDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(ASSET_DB_STORE, 'readwrite');
+      tx.objectStore(ASSET_DB_STORE).delete(assetId);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+    runtimeAssetUrlCache.delete(assetId);
+  } catch (error) {
+    // no-op
+  }
+}
+
 async function loadAssetObjectUrl(assetId) {
   if (!assetId) return '';
   if (runtimeAssetUrlCache.has(assetId)) return runtimeAssetUrlCache.get(assetId);
@@ -249,6 +266,8 @@ const state = {
   templates: loadTemplates(),
   selectedControlTemplateId: null,
   storageNotice: '',
+  renamingFolderId: null,
+  renamingFolderValue: '',
   designTextLayers: [
     { id: 1, name: 'Headline', text: 'Final Score Update', x: 32, y: 36, size: 56, color: '#ffffff', bindKey: 'none' },
     { id: 2, name: 'Subhead', text: 'Waiting to start MLB simulation.', x: 32, y: 110, size: 40, color: '#bfdbfe', bindKey: 'lastEvent' },
@@ -684,6 +703,80 @@ function createSubfolder(folderName) {
   });
 }
 
+function getNodeById(id) {
+  return state.explorer.nodes.find((node) => node.id === id);
+}
+
+function getCurrentFolder() {
+  return getNodeById(state.currentFolderId) || getNodeById(state.explorer.rootId);
+}
+
+function getChildren(folderId) {
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder') return [];
+  return folder.children.map((id) => getNodeById(id)).filter(Boolean);
+}
+
+function getAllFiles() {
+  return state.explorer.nodes.filter((node) => node.type === 'file');
+}
+
+function getDimensionRatio(dimension = '16x9') {
+  const [w, h] = String(dimension).split('x').map(Number);
+  if (!w || !h) return 16 / 9;
+  return w / h;
+}
+
+function getFileKind(name = '') {
+  const ext = name.split('.').pop().toLowerCase();
+  if (!ext || ext === name.toLowerCase()) return 'FILE';
+  return ext.toUpperCase();
+}
+
+function getFolderName(folderId) {
+  return getNodeById(folderId)?.name || 'Unknown Folder';
+}
+
+function getFolderPath(folderId) {
+  const path = [];
+  let current = getNodeById(folderId);
+  while (current) {
+    path.unshift(current);
+    current = current.parentId ? getNodeById(current.parentId) : null;
+  }
+  return path;
+}
+
+function updateNode(nodeId, mutator) {
+  const nextExplorer = cloneValue(state.explorer);
+  const node = nextExplorer.nodes.find((item) => item.id === nodeId);
+  if (!node) return;
+  mutator(node, nextExplorer);
+  setState({ explorer: nextExplorer });
+}
+
+function createSubfolder(folderName) {
+  const trimmed = folderName.trim();
+  if (!trimmed) return;
+
+  const currentFolder = getCurrentFolder();
+  if (!currentFolder || currentFolder.type !== 'folder') return;
+
+  const existing = getChildren(currentFolder.id).find((child) => child.type === 'folder' && child.name.toLowerCase() === trimmed.toLowerCase());
+  if (existing) return;
+
+  const nextExplorer = cloneValue(state.explorer);
+  const nextCurrent = nextExplorer.nodes.find((node) => node.id === currentFolder.id);
+  const newFolder = makeFolder(trimmed, nextCurrent.id, cloneValue(nextCurrent.permissions));
+  nextCurrent.children.push(newFolder.id);
+  nextExplorer.nodes.push(newFolder);
+
+  setState({
+    explorer: nextExplorer,
+    currentFolderId: newFolder.id,
+  });
+}
+
 function renameFolder(folderId, folderName) {
   const trimmed = folderName.trim();
   if (!trimmed) return;
@@ -698,6 +791,51 @@ function renameFolder(folderId, folderName) {
   updateNode(folderId, (node) => {
     node.name = trimmed;
   });
+}
+
+function startFolderRename(folderId) {
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder' || folder.id === state.explorer.rootId) return;
+  setState({ renamingFolderId: folderId, renamingFolderValue: folder.name });
+}
+
+function commitFolderRename(folderId) {
+  if (!folderId || state.renamingFolderId !== folderId) return;
+  renameFolder(folderId, state.renamingFolderValue);
+  setState({ renamingFolderId: null, renamingFolderValue: '' });
+}
+
+function cancelFolderRename() {
+  if (!state.renamingFolderId) return;
+  setState({ renamingFolderId: null, renamingFolderValue: '' });
+}
+
+function deleteFolder(folderId) {
+  const folder = getNodeById(folderId);
+  if (!folder || folder.type !== 'folder' || folder.id === state.explorer.rootId) return;
+
+  const nextExplorer = cloneValue(state.explorer);
+  const idsToDelete = new Set();
+
+  const collect = (id) => {
+    idsToDelete.add(id);
+    const node = nextExplorer.nodes.find((item) => item.id === id);
+    if (!node || node.type !== 'folder') return;
+    node.children.forEach((childId) => collect(childId));
+  };
+  collect(folderId);
+
+  nextExplorer.nodes
+    .filter((node) => node.type === 'file' && idsToDelete.has(node.id))
+    .forEach((file) => deleteAssetData(file.srcRef || file.id));
+
+  nextExplorer.nodes = nextExplorer.nodes.filter((node) => !idsToDelete.has(node.id));
+  nextExplorer.nodes.forEach((node) => {
+    if (node.type === 'folder') node.children = node.children.filter((id) => !idsToDelete.has(id));
+  });
+
+  const fallbackFolderId = folder.parentId || nextExplorer.rootId;
+  setState({ explorer: nextExplorer, currentFolderId: fallbackFolderId, renamingFolderId: null, renamingFolderValue: '' });
 }
 
 function setFolderPermissions(folderId, key, rawValue) {
@@ -721,10 +859,13 @@ function renderFolderTree(folderId, depth = 0) {
   const folder = getNodeById(folderId);
   if (!folder || folder.type !== 'folder') return '';
   const childFolders = getChildren(folderId).filter((child) => child.type === 'folder');
+  const isRenaming = state.renamingFolderId === folder.id;
 
   return `
     <div class="tree-node" style="--depth:${depth}">
-      <button class="tree-folder ${state.currentFolderId === folder.id ? 'active' : ''}" data-open-folder-id="${folder.id}" data-rename-folder-id="${folder.id}" title="Double-click to open. Right-click to rename.">${folder.name}</button>
+      ${isRenaming
+        ? `<input class="tree-folder rename-input" data-rename-input-id="${folder.id}" value="${state.renamingFolderValue}" />`
+        : `<button class="tree-folder ${state.currentFolderId === folder.id ? 'active' : ''}" data-open-folder-id="${folder.id}" data-rename-folder-id="${folder.id}" title="Double-click to rename.">${folder.name}</button>`}
       ${childFolders.map((child) => renderFolderTree(child.id, depth + 1)).join('')}
     </div>
   `;
@@ -753,13 +894,14 @@ function fileExplorerView(options = {}) {
           <div class="toolbar-actions">
             <input id="assetSearchInput" value="${state.assetSearchQuery}" placeholder="Search assets" />
             <button id="createFolderBtn" class="action-btn">Create Folder</button>
+            <button id="deleteFolderBtn" class="action-btn" ${currentFolder.id === state.explorer.rootId ? 'disabled' : ''}>Delete Folder</button>
             <label class="action-btn upload-btn">Upload<input id="brandAssetUpload" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" multiple /></label>
           </div>
           ${state.storageNotice ? `<p class="storage-warning">${state.storageNotice}</p>` : ''}
         </div>
         <div class="explorer-list">
           <div class="explorer-head"><span>Name</span><span>Type</span><span>Dimension</span><span>Modified</span></div>
-          ${folders.map((folder) => `<button class="explorer-row folder-row" data-open-folder-id="${folder.id}" data-rename-folder-id="${folder.id}" title="Double-click to open. Right-click to rename."><span>📁 ${folder.name}</span><span>Folder</span><span>--</span><span>${new Date(folder.createdAt).toLocaleDateString()}</span></button>`).join('')}
+          ${folders.map((folder) => state.renamingFolderId === folder.id ? `<div class="explorer-row folder-row"><input class="rename-input" data-rename-input-id="${folder.id}" value="${state.renamingFolderValue}" /><span>Folder</span><span>--</span><span>${new Date(folder.createdAt).toLocaleDateString()}</span></div>` : `<button class="explorer-row folder-row" data-open-folder-id="${folder.id}" data-rename-folder-id="${folder.id}" title="Double-click to rename."><span>📁 ${folder.name}</span><span>Folder</span><span>--</span><span>${new Date(folder.createdAt).toLocaleDateString()}</span></button>`).join('')}
           ${files.map((file) => `<button class="explorer-row file-row" data-asset-id="${file.id}"><span>🖼️ ${file.name}</span><span>${getFileKind(file.name)}</span><span>${file.dimension}</span><span>${new Date(file.createdAt).toLocaleDateString()}</span></button>`).join('')}
           ${state.templates.length ? `<div class="template-strip"><h4>Saved Templates</h4>${state.templates.filter((template) => !fileSearch || template.name.toLowerCase().includes(fileSearch)).map((template) => `<button class="explorer-row template-row" data-template-id="${template.id}"><span>🧩 ${template.name}</span><span>Template</span><span>${template.dimension}</span><span>${new Date(template.createdAt).toLocaleDateString()}</span></button>`).join('')}</div>` : ''}
           ${!folders.length && !files.length && !state.templates.length ? '<p class="muted">No matching assets in this folder.</p>' : ''}
@@ -857,7 +999,7 @@ function designView() {
   return `
     <section class="panel design-layout">
       <div>
-        <h3>Design Canvas · Linked Branded Asset</h3>
+        <h3>Canvas</h3>
         <div class="design-stage-shell">
           <div class="design-stage" style="--asset-ratio:${ratio};">
             ${getRenderableAssetSrc(selectedAsset) ? `<img src="${getRenderableAssetSrc(selectedAsset)}" alt="${selectedAsset.name}" class="canvas-bg" />` : '<p class="muted canvas-empty">Selected asset preview is loading or unavailable.</p>'}
@@ -868,15 +1010,15 @@ function designView() {
       <aside class="design-sidebar">
         <div class="panel mini-panel">
           <div class="layer-head">
-            <h3>Text Layers & Data Bind</h3>
-            <div class="layer-head-actions"><button id="saveTemplateBtn" class="pill-btn">Save Template</button><button id="addTextLayer" class="pill-btn">Add Text Layer</button></div>
+            <h3>Layer Stack</h3>
+            <div class="layer-head-actions"><button id="newTemplateBtn" class="pill-btn">+New Template</button><button id="saveTemplateBtn" class="pill-btn">Save Template</button><button id="addTextLayer" class="pill-btn">Add Text Layer</button></div>
           </div>
           <div class="layer-controls">
             ${state.designTextLayers.map((layer) => `
               <div class="layer-card">
                 <div class="layer-title-row">
                   <strong>${layer.name}</strong>
-                  <button class="layer-delete" data-remove-layer-id="${layer.id}">Remove</button>
+                  <div class="layer-actions"><button class="layer-move" data-move-layer-id="${layer.id}" data-dir="up">↑</button><button class="layer-move" data-move-layer-id="${layer.id}" data-dir="down">↓</button><button class="layer-delete" data-remove-layer-id="${layer.id}">Remove</button></div>
                 </div>
                 <input data-layer-id="${layer.id}" data-prop="text" value="${layer.text}" />
                 <div class="layer-row">
@@ -1320,11 +1462,247 @@ function wireDataEngineInteractions() {
   if (resetButton) resetButton.addEventListener('click', resetSimulation);
 }
 
-function wireInteractions() {
-  wireBrandedAssetInteractions();
-  wireDesignInteractions();
-  wireDataEngineInteractions();
-  wireControlRoomInteractions();
+function runSimulationStep() {
+  const nextIndex = state.simulationIndex + 1;
+  if (nextIndex >= mlbSimulationFeed.length) {
+    stopSimulation();
+    return;
+  }
+
+  const play = mlbSimulationFeed[nextIndex];
+  setState({
+    simulationIndex: nextIndex,
+    liveScore: `BOS ${play.score.BOS} - NYY ${play.score.NYY}`,
+    gameState: {
+      ...state.gameState,
+      inning: play.inning,
+      inningState: play.inningState,
+      score: play.score,
+      balls: play.count.balls,
+      strikes: play.count.strikes,
+      outs: play.count.outs,
+      runnersOnBase: play.runnersOnBase,
+      pitcher: play.pitcher,
+      batter: play.batter,
+      pitchType: play.pitch.type,
+      pitchVelocity: play.pitch.velocity,
+      pitchLocation: play.pitch.location,
+      batSpeed: play.hit.batSpeed,
+      exitVelocity: play.hit.exitVelocity,
+      launchAngle: play.hit.launchAngle,
+      projectedDistance: play.hit.projectedDistance,
+      lastEvent: play.summary,
+    },
+  });
+}
+
+function startSimulation() {
+  if (simulationTimer) return;
+  setState({ simulationRunning: true });
+  simulationTimer = setInterval(runSimulationStep, state.simulationSpeedMs);
+}
+
+function stopSimulation() {
+  if (simulationTimer) {
+    clearInterval(simulationTimer);
+    simulationTimer = null;
+  }
+  if (state.simulationRunning) setState({ simulationRunning: false });
+}
+
+function resetSimulation() {
+  stopSimulation();
+  setState({ simulationIndex: -1, liveScore: 'BOS 0 - NYY 0', gameState: cloneValue(bootstrapData.initialGameState || {}) });
+}
+
+function updateLayer(layerId, prop, value) {
+  const castValue = prop === 'x' || prop === 'y' || prop === 'size' ? Number(value) : value;
+  const layers = state.designTextLayers.map((layer) => (layer.id === Number(layerId) ? { ...layer, [prop]: castValue } : layer));
+  setState({ designTextLayers: layers });
+}
+
+function addTextLayer() {
+  const id = state.nextTextLayerId;
+  const newLayer = { id, name: `Layer ${id}`, text: 'New Text Layer', x: 32, y: 32 + state.designTextLayers.length * 48, size: 32, color: '#ffffff', bindKey: 'none' };
+  setState({ designTextLayers: [...state.designTextLayers, newLayer], nextTextLayerId: id + 1 });
+}
+
+function removeTextLayer(layerId) {
+  const layers = state.designTextLayers.filter((layer) => layer.id !== Number(layerId));
+  if (layers.length) setState({ designTextLayers: layers });
+}
+
+function moveLayer(layerId, direction) {
+  const idx = state.designTextLayers.findIndex((layer) => layer.id === Number(layerId));
+  if (idx < 0) return;
+  const target = direction === 'up' ? idx - 1 : idx + 1;
+  if (target < 0 || target >= state.designTextLayers.length) return;
+
+  const layers = [...state.designTextLayers];
+  const [item] = layers.splice(idx, 1);
+  layers.splice(target, 0, item);
+  setState({ designTextLayers: layers });
+}
+
+function detectImageSize(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight, src: reader.result });
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadToCurrentFolder(files) {
+  const folder = getCurrentFolder();
+  if (!folder || folder.type !== 'folder') return;
+
+  const nextExplorer = cloneValue(state.explorer);
+  const nextFolder = nextExplorer.nodes.find((node) => node.id === folder.id);
+
+  for (const file of files) {
+    const metadata = await detectImageSize(file);
+    const dimension = `${metadata.width}x${metadata.height}`;
+    const newFile = makeFile({
+      name: file.name,
+      parentId: nextFolder.id,
+      src: metadata.src,
+      dimension,
+    });
+    newFile.srcRef = newFile.id;
+    await storeAssetDataUrl(newFile.id, metadata.src);
+
+    nextFolder.children.push(newFile.id);
+    nextExplorer.nodes.push(newFile);
+  }
+
+  setState({ explorer: nextExplorer });
+}
+
+function wireBrandedAssetInteractions() {
+  const toggleButton = document.getElementById('toggleBrandedAssets');
+  if (toggleButton) toggleButton.addEventListener('click', () => setState({ brandedAssetsOpen: !state.brandedAssetsOpen }));
+
+  const requestFolderName = (title, initialValue = '') => {
+    const value = window.prompt(title, initialValue);
+    return typeof value === 'string' ? value.trim() : '';
+  };
+
+  const createFolderBtn = document.getElementById('createFolderBtn');
+  if (createFolderBtn) {
+    createFolderBtn.addEventListener('click', () => {
+      const name = requestFolderName('Name this new folder');
+      if (name) createSubfolder(name);
+    });
+  }
+
+  const assetSearchInput = document.getElementById('assetSearchInput');
+  if (assetSearchInput) {
+    assetSearchInput.addEventListener('input', () => setState({ assetSearchQuery: assetSearchInput.value }));
+  }
+
+  const deleteFolderBtn = document.getElementById('deleteFolderBtn');
+  if (deleteFolderBtn) {
+    deleteFolderBtn.addEventListener('click', () => deleteFolder(state.currentFolderId));
+  }
+
+  const uploadInput = document.getElementById('brandAssetUpload');
+  if (uploadInput) {
+    uploadInput.addEventListener('change', async (event) => {
+      const files = Array.from(event.target.files || []).filter((file) => ['image/png', 'image/jpeg'].includes(file.type) || /\.(png|jpe?g)$/i.test(file.name));
+      if (!files.length) return;
+      await uploadToCurrentFolder(files);
+    });
+  }
+
+  document.querySelectorAll('[data-open-folder-id]').forEach((el) => {
+    el.addEventListener('click', () => navigateToFolder(el.dataset.openFolderId));
+  });
+
+  document.querySelectorAll('[data-rename-folder-id]').forEach((el) => {
+    el.addEventListener('dblclick', (event) => {
+      event.preventDefault();
+      startFolderRename(el.dataset.renameFolderId);
+    });
+  });
+
+  document.querySelectorAll('[data-rename-input-id]').forEach((input) => {
+    input.focus();
+    input.select();
+    input.addEventListener('input', () => setState({ renamingFolderValue: input.value }));
+    input.addEventListener('blur', () => commitFolderRename(input.dataset.renameInputId));
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') commitFolderRename(input.dataset.renameInputId);
+      if (event.key === 'Escape') cancelFolderRename();
+    });
+  });
+
+  document.querySelectorAll('[data-crumb-id]').forEach((el) => {
+    el.addEventListener('click', () => navigateToFolder(el.dataset.crumbId));
+  });
+
+  document.querySelectorAll('[data-asset-id]').forEach((row) => {
+    row.addEventListener('click', () => setState({ designSelectedAssetId: row.dataset.assetId, activeTab: 'Design' }));
+  });
+
+  document.querySelectorAll('[data-template-id]').forEach((row) => {
+    row.addEventListener('click', () => applyTemplateToDesign(row.dataset.templateId));
+  });
+
+  const currentFolder = getCurrentFolder();
+  const ownersInput = document.getElementById('ownersInput');
+  const editorsInput = document.getElementById('editorsInput');
+  const viewersInput = document.getElementById('viewersInput');
+
+  if (ownersInput) ownersInput.addEventListener('change', () => setFolderPermissions(currentFolder.id, 'owners', ownersInput.value));
+  if (editorsInput) editorsInput.addEventListener('change', () => setFolderPermissions(currentFolder.id, 'editors', editorsInput.value));
+  if (viewersInput) viewersInput.addEventListener('change', () => setFolderPermissions(currentFolder.id, 'viewers', viewersInput.value));
+}
+
+function wireDesignInteractions() {
+  document.querySelectorAll('[data-design-asset-id]').forEach((button) => {
+    button.addEventListener('click', () => setState({ designSelectedAssetId: button.dataset.designAssetId }));
+  });
+
+  const newTemplateBtn = document.getElementById('newTemplateBtn');
+  if (newTemplateBtn) newTemplateBtn.addEventListener('click', saveCurrentDesignTemplate);
+
+  const saveTemplateBtn = document.getElementById('saveTemplateBtn');
+  if (saveTemplateBtn) saveTemplateBtn.addEventListener('click', saveCurrentDesignTemplate);
+
+  const addLayerButton = document.getElementById('addTextLayer');
+  if (addLayerButton) addLayerButton.addEventListener('click', addTextLayer);
+
+  document.querySelectorAll('[data-remove-layer-id]').forEach((button) => {
+    button.addEventListener('click', () => removeTextLayer(button.dataset.removeLayerId));
+  });
+
+  document.querySelectorAll('[data-layer-id]').forEach((control) => {
+    control.addEventListener('input', () => updateLayer(control.dataset.layerId, control.dataset.prop, control.value));
+    control.addEventListener('change', () => updateLayer(control.dataset.layerId, control.dataset.prop, control.value));
+  });
+
+  document.querySelectorAll('[data-move-layer-id]').forEach((button) => {
+    button.addEventListener('click', () => moveLayer(button.dataset.moveLayerId, button.dataset.dir));
+  });
+}
+
+
+function wireControlRoomInteractions() {
+  document.querySelectorAll('[data-control-template-id]').forEach((button) => {
+    button.addEventListener('click', () => setState({ selectedControlTemplateId: button.dataset.controlTemplateId }));
+  });
+
+  const loadTemplateButton = document.getElementById('loadTemplateToDesignBtn');
+  if (loadTemplateButton) {
+    loadTemplateButton.addEventListener('click', () => {
+      if (!state.selectedControlTemplateId) return;
+      applyTemplateToDesign(state.selectedControlTemplateId);
+    });
+  }
 }
 
 function wireDataEngineInteractions() {

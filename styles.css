@@ -115,6 +115,17 @@ body {
 .row-main { display: grid; grid-template-columns: 2.4fr 1fr 1fr 1fr; gap: 8px; align-items: center; border: 0; background: transparent; color: inherit; text-align: left; padding: 4px; cursor: pointer; }
 .row-action { border: 1px solid #334155; border-radius: 7px; background: #0f172a; color: #bfdbfe; padding: 6px 10px; cursor: pointer; }
 
+.rename-input {
+  width: 100%;
+  border: 1px solid #60a5fa;
+  border-radius: 7px;
+  background: #0b1730;
+  color: #dbeafe;
+  padding: 7px 8px;
+}
+.layer-actions { display: inline-flex; gap: 6px; align-items: center; }
+.layer-move { border: 1px solid #334155; border-radius: 7px; background: #0f172a; color: #bfdbfe; padding: 4px 8px; cursor: pointer; }
+
 .template-strip { display: grid; gap: 6px; margin-top: 8px; }
 .template-strip h4 { margin: 6px 0 0; font-size: .82rem; color: #93c5fd; text-transform: uppercase; letter-spacing: .04em; }
 .template-row { border-style: dashed; }
