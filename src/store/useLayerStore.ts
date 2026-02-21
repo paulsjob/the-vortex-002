@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Layer } from '../types/domain';
+import type { SavedTemplate } from './useTemplateStore';
 
 interface LayerTemplate {
   id: string;
@@ -24,6 +25,7 @@ interface LayerStore {
   setZOrder: (id: string, direction: 'up' | 'down') => void;
   setCanvasSize: (canvasWidth: number, canvasHeight: number) => void;
   saveTemplate: (name: string) => void;
+  loadTemplate: (template: SavedTemplate) => void;
 }
 
 export const useLayerStore = create<LayerStore>((set, get) => ({
@@ -55,4 +57,9 @@ export const useLayerStore = create<LayerStore>((set, get) => ({
   saveTemplate: (name) => set((s) => ({
     templates: [{ id: `tpl-${Date.now()}`, name, layerIds: s.layers.map((l) => l.id), canvasWidth: s.canvasWidth, canvasHeight: s.canvasHeight, createdAt: new Date().toISOString() }, ...s.templates],
   })),
+  loadTemplate: (template) => set({
+    canvasWidth: template.canvasWidth,
+    canvasHeight: template.canvasHeight,
+    layers: structuredClone(template.layers),
+  }),
 }));

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AssetExplorer } from '../features/assets/AssetExplorer';
+import { TemplateExplorer } from '../features/assets/TemplateExplorer';
 
 export function DashboardRoute() {
   const [showBranded, setShowBranded] = useState(true);
@@ -16,7 +17,7 @@ export function DashboardRoute() {
       </div>
 
       {showBranded && <AssetExplorer kind="branded" title="Branded Assets" />}
-      {showTemplates && <AssetExplorer kind="templates" title="Templates" />}
+      {showTemplates && <TemplateExplorer />}
     </section>
   );
 }

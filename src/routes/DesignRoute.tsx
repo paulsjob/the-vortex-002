@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useAssetStore } from '../store/useAssetStore';
 import { useLayerStore } from '../store/useLayerStore';
+import { useTemplateStore } from '../store/useTemplateStore';
 import type { ExplorerNode } from '../types/domain';
 
 const TEMPLATE_SIZES = [
@@ -22,8 +23,8 @@ export function DesignRoute() {
     setZOrder,
     deleteLayer,
     renameLayer,
-    saveTemplate,
   } = useLayerStore();
+  const templateStore = useTemplateStore();
 
   const [folderId, setFolderId] = useState(assetStore.brandedExplorer.rootId);
   const [search, setSearch] = useState('');
@@ -87,8 +88,8 @@ export function DesignRoute() {
           <div className="mb-3 flex items-start justify-between gap-2">
             <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">Layer Stack</h3>
             <div className="grid grid-cols-2 gap-2">
-              <button className="rounded bg-blue-700 px-3 py-2 font-semibold" onClick={() => saveTemplate(`Template ${Date.now()}`)}>+New Template</button>
-              <button className="rounded bg-blue-700 px-3 py-2 font-semibold" onClick={() => saveTemplate(`Saved ${Date.now()}`)}>Save Template</button>
+              <button className="rounded bg-blue-700 px-3 py-2 font-semibold" onClick={() => { const name = window.prompt('Template name', `Template ${Date.now()}`)?.trim(); if (name) templateStore.saveTemplate({ name, folderId: templateStore.rootId, canvasWidth, canvasHeight, layers }); }}>+New Template</button>
+              <button className="rounded bg-blue-700 px-3 py-2 font-semibold" onClick={() => { const name = window.prompt('Save template as', `Saved ${Date.now()}`)?.trim(); if (name) templateStore.saveTemplate({ name, folderId: templateStore.rootId, canvasWidth, canvasHeight, layers }); }}>Save Template</button>
               <button className="rounded bg-blue-700 px-3 py-2 font-semibold" onClick={addAssetFromLibrary}>Add Asset Layer</button>
               <button className="rounded bg-blue-700 px-3 py-2 font-semibold" onClick={addText}>Add Text Layer</button>
             </div>
