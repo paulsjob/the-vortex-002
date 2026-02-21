@@ -4,6 +4,12 @@ const TEMPLATE_STORAGE_KEY = 'renderless.templates.v1';
 const ASSET_DB_NAME = 'renderless.assetBinary.v1';
 const ASSET_DB_STORE = 'images';
 const MAX_PERSISTED_DATA_URL_LENGTH = 120000;
+const TEMPLATE_SIZES = [
+  { id: '1920x1080', label: '1920 × 1080' },
+  { id: '1080x1920', label: '1080 × 1920' },
+  { id: '1080x1350', label: '1080 × 1350' },
+  { id: '1080x1080', label: '1080 × 1080' },
+];
 
 const bootstrapData = window.RENDERLESS_BOOTSTRAP || {};
 const mlbSimulationFeed = bootstrapData.mlbSimulationFeed || [];
@@ -253,16 +259,14 @@ function getRenderableAssetSrc(file) {
 
 function defaultTransform(type = 'text', layer = null) {
   if (type === 'asset') {
-    return { anchorX: 0, anchorY: 0, anchorZ: 0, posX: 0, posY: 0, posZ: 0, scaleX: 100, scaleY: 100, scaleLinked: true, rotation: 0, opacity: 100 };
+    return { anchorX: 0, anchorY: 0, posX: 0, posY: 0, scaleX: 100, scaleY: 100, scaleLinked: true, rotation: 0, opacity: 100 };
   }
 
   return {
     anchorX: 0,
     anchorY: 0,
-    anchorZ: 0,
     posX: Number(layer?.x ?? 32),
     posY: Number(layer?.y ?? 32),
-    posZ: 0,
     scaleX: 100,
     scaleY: 100,
     scaleLinked: true,
@@ -311,6 +315,8 @@ const state = {
   ],
   designAssetLayer: { id: 'asset-base', name: 'Stage Asset', transform: defaultTransform('asset') },
   designLayerOrder: ['asset-base', 'text-1', 'text-2'],
+  designTemplateSize: '1920x1080',
+  designCollapsedLayers: {},
   nextTextLayerId: 3,
   simulationRunning: false,
   simulationSpeedMs: 1300,
@@ -464,306 +470,22 @@ function getAllFiles() {
   return state.explorer.nodes.filter((node) => node.type === 'file');
 }
 
-function getFolderPath(folderId) {
-  const path = [];
-  let current = getNodeById(folderId);
-  while (current) {
-    path.unshift(current);
-    current = current.parentId ? getNodeById(current.parentId) : null;
-  }
-  return path;
-}
-
-function updateNode(nodeId, mutator) {
-  const nextExplorer = cloneValue(state.explorer);
-  const node = nextExplorer.nodes.find((item) => item.id === nodeId);
-  if (!node) return;
-  mutator(node, nextExplorer);
-  setState({ explorer: nextExplorer });
-}
-
-function createSubfolder(folderName) {
-  const trimmed = folderName.trim();
-  if (!trimmed) return;
-
-  const currentFolder = getCurrentFolder();
-  if (!currentFolder || currentFolder.type !== 'folder') return;
-
-  const existing = getChildren(currentFolder.id).find((child) => child.type === 'folder' && child.name.toLowerCase() === trimmed.toLowerCase());
-  if (existing) return;
-
-  const nextExplorer = cloneValue(state.explorer);
-  const nextCurrent = nextExplorer.nodes.find((node) => node.id === currentFolder.id);
-  const newFolder = makeFolder(trimmed, nextCurrent.id, cloneValue(nextCurrent.permissions));
-  nextCurrent.children.push(newFolder.id);
-  nextExplorer.nodes.push(newFolder);
-
-  setState({
-    explorer: nextExplorer,
-    currentFolderId: newFolder.id,
-  });
-}
-
-function getNodeById(id) {
-  return state.explorer.nodes.find((node) => node.id === id);
-}
-
-function getCurrentFolder() {
-  return getNodeById(state.currentFolderId) || getNodeById(state.explorer.rootId);
-}
-
-function getChildren(folderId) {
-  const folder = getNodeById(folderId);
-  if (!folder || folder.type !== 'folder') return [];
-  return folder.children.map((id) => getNodeById(id)).filter(Boolean);
-}
-
-function getAllFiles() {
-  return state.explorer.nodes.filter((node) => node.type === 'file');
-}
-
 function getDimensionRatio(dimension = '16x9') {
   const [w, h] = String(dimension).split('x').map(Number);
   if (!w || !h) return 16 / 9;
   return w / h;
 }
 
-function getFileKind(name = '') {
-  const ext = name.split('.').pop().toLowerCase();
-  if (!ext || ext === name.toLowerCase()) return 'FILE';
-  return ext.toUpperCase();
+
+function getTemplateDimensions(size = '1920x1080') {
+  const [width, height] = String(size).split('x').map(Number);
+  if (!width || !height) return { width: 1920, height: 1080 };
+  return { width, height };
 }
 
-function getFolderName(folderId) {
-  return getNodeById(folderId)?.name || 'Unknown Folder';
-}
-
-function getFolderPath(folderId) {
-  const path = [];
-  let current = getNodeById(folderId);
-  while (current) {
-    path.unshift(current);
-    current = current.parentId ? getNodeById(current.parentId) : null;
-  }
-  return path;
-}
-
-function updateNode(nodeId, mutator) {
-  const nextExplorer = cloneValue(state.explorer);
-  const node = nextExplorer.nodes.find((item) => item.id === nodeId);
-  if (!node) return;
-  mutator(node, nextExplorer);
-  setState({ explorer: nextExplorer });
-}
-
-function createSubfolder(folderName) {
-  const trimmed = folderName.trim();
-  if (!trimmed) return;
-
-  const currentFolder = getCurrentFolder();
-  if (!currentFolder || currentFolder.type !== 'folder') return;
-
-  const existing = getChildren(currentFolder.id).find((child) => child.type === 'folder' && child.name.toLowerCase() === trimmed.toLowerCase());
-  if (existing) return;
-
-  const nextExplorer = cloneValue(state.explorer);
-  const nextCurrent = nextExplorer.nodes.find((node) => node.id === currentFolder.id);
-  const newFolder = makeFolder(trimmed, nextCurrent.id, cloneValue(nextCurrent.permissions));
-  nextCurrent.children.push(newFolder.id);
-  nextExplorer.nodes.push(newFolder);
-
-  setState({
-    explorer: nextExplorer,
-    currentFolderId: newFolder.id,
-  });
-}
-
-function renameFolder(folderId, folderName) {
-  const trimmed = folderName.trim();
-  if (!trimmed) return;
-
-  const folder = getNodeById(folderId);
-  if (!folder || folder.type !== 'folder' || folder.id === state.explorer.rootId) return;
-
-  const siblings = getChildren(folder.parentId || state.explorer.rootId)
-    .filter((item) => item.type === 'folder' && item.id !== folderId);
-  if (siblings.some((item) => item.name.toLowerCase() === trimmed.toLowerCase())) return;
-
-  updateNode(folderId, (node) => {
-    node.name = trimmed;
-  });
-}
-
-function getNodeById(id) {
-  return state.explorer.nodes.find((node) => node.id === id);
-}
-
-function getCurrentFolder() {
-  return getNodeById(state.currentFolderId) || getNodeById(state.explorer.rootId);
-}
-
-function getChildren(folderId) {
-  const folder = getNodeById(folderId);
-  if (!folder || folder.type !== 'folder') return [];
-  return folder.children.map((id) => getNodeById(id)).filter(Boolean);
-}
-
-function getAllFiles() {
-  return state.explorer.nodes.filter((node) => node.type === 'file');
-}
-
-function getDimensionRatio(dimension = '16x9') {
-  const [w, h] = String(dimension).split('x').map(Number);
-  if (!w || !h) return 16 / 9;
-  return w / h;
-}
-
-function getFileKind(name = '') {
-  const ext = name.split('.').pop().toLowerCase();
-  if (!ext || ext === name.toLowerCase()) return 'FILE';
-  return ext.toUpperCase();
-}
-
-function getFolderName(folderId) {
-  return getNodeById(folderId)?.name || 'Unknown Folder';
-}
-
-function getFolderPath(folderId) {
-  const path = [];
-  let current = getNodeById(folderId);
-  while (current) {
-    path.unshift(current);
-    current = current.parentId ? getNodeById(current.parentId) : null;
-  }
-  return path;
-}
-
-function updateNode(nodeId, mutator) {
-  const nextExplorer = cloneValue(state.explorer);
-  const node = nextExplorer.nodes.find((item) => item.id === nodeId);
-  if (!node) return;
-  mutator(node, nextExplorer);
-  setState({ explorer: nextExplorer });
-}
-
-function createSubfolder(folderName) {
-  const trimmed = folderName.trim();
-  if (!trimmed) return;
-
-  const currentFolder = getCurrentFolder();
-  if (!currentFolder || currentFolder.type !== 'folder') return;
-
-  const existing = getChildren(currentFolder.id).find((child) => child.type === 'folder' && child.name.toLowerCase() === trimmed.toLowerCase());
-  if (existing) return;
-
-  const nextExplorer = cloneValue(state.explorer);
-  const nextCurrent = nextExplorer.nodes.find((node) => node.id === currentFolder.id);
-  const newFolder = makeFolder(trimmed, nextCurrent.id, cloneValue(nextCurrent.permissions));
-  nextCurrent.children.push(newFolder.id);
-  nextExplorer.nodes.push(newFolder);
-
-  setState({
-    explorer: nextExplorer,
-    currentFolderId: newFolder.id,
-  });
-}
-
-function getNodeById(id) {
-  return state.explorer.nodes.find((node) => node.id === id);
-}
-
-function getCurrentFolder() {
-  return getNodeById(state.currentFolderId) || getNodeById(state.explorer.rootId);
-}
-
-function getChildren(folderId) {
-  const folder = getNodeById(folderId);
-  if (!folder || folder.type !== 'folder') return [];
-  return folder.children.map((id) => getNodeById(id)).filter(Boolean);
-}
-
-function getAllFiles() {
-  return state.explorer.nodes.filter((node) => node.type === 'file');
-}
-
-function getDimensionRatio(dimension = '16x9') {
-  const [w, h] = String(dimension).split('x').map(Number);
-  if (!w || !h) return 16 / 9;
-  return w / h;
-}
-
-function getFileKind(name = '') {
-  const ext = name.split('.').pop().toLowerCase();
-  if (!ext || ext === name.toLowerCase()) return 'FILE';
-  return ext.toUpperCase();
-}
-
-function getFolderName(folderId) {
-  return getNodeById(folderId)?.name || 'Unknown Folder';
-}
-
-function getFolderPath(folderId) {
-  const path = [];
-  let current = getNodeById(folderId);
-  while (current) {
-    path.unshift(current);
-    current = current.parentId ? getNodeById(current.parentId) : null;
-  }
-  return path;
-}
-
-function updateNode(nodeId, mutator) {
-  const nextExplorer = cloneValue(state.explorer);
-  const node = nextExplorer.nodes.find((item) => item.id === nodeId);
-  if (!node) return;
-  mutator(node, nextExplorer);
-  setState({ explorer: nextExplorer });
-}
-
-function createSubfolder(folderName) {
-  const trimmed = folderName.trim();
-  if (!trimmed) return;
-
-  const currentFolder = getCurrentFolder();
-  if (!currentFolder || currentFolder.type !== 'folder') return;
-
-  const existing = getChildren(currentFolder.id).find((child) => child.type === 'folder' && child.name.toLowerCase() === trimmed.toLowerCase());
-  if (existing) return;
-
-  const nextExplorer = cloneValue(state.explorer);
-  const nextCurrent = nextExplorer.nodes.find((node) => node.id === currentFolder.id);
-  const newFolder = makeFolder(trimmed, nextCurrent.id, cloneValue(nextCurrent.permissions));
-  nextCurrent.children.push(newFolder.id);
-  nextExplorer.nodes.push(newFolder);
-
-  setState({
-    explorer: nextExplorer,
-    currentFolderId: newFolder.id,
-  });
-}
-
-function getNodeById(id) {
-  return state.explorer.nodes.find((node) => node.id === id);
-}
-
-function getCurrentFolder() {
-  return getNodeById(state.currentFolderId) || getNodeById(state.explorer.rootId);
-}
-
-function getChildren(folderId) {
-  const folder = getNodeById(folderId);
-  if (!folder || folder.type !== 'folder') return [];
-  return folder.children.map((id) => getNodeById(id)).filter(Boolean);
-}
-
-function getAllFiles() {
-  return state.explorer.nodes.filter((node) => node.type === 'file');
-}
-
-function getDimensionRatio(dimension = '16x9') {
-  const [w, h] = String(dimension).split('x').map(Number);
-  if (!w || !h) return 16 / 9;
-  return w / h;
+function toStagePercent(value, max) {
+  if (!max) return 0;
+  return (Number(value) / max) * 100;
 }
 
 function getFileKind(name = '') {
@@ -942,222 +664,7 @@ function fileExplorerView(options = {}) {
           <div class="explorer-head"><span>Name</span><span>Type</span><span>Dimension</span><span>Modified</span></div>
           ${folders.map((folder) => state.renamingFolderId === folder.id ? `<div class="explorer-row folder-row"><input class="rename-input" data-rename-input-id="${folder.id}" value="${state.renamingFolderValue}" /><span>Folder</span><span>--</span><span>${new Date(folder.createdAt).toLocaleDateString()}</span></div>` : `<button class="explorer-row folder-row" data-open-folder-id="${folder.id}" data-rename-folder-id="${folder.id}" title="Double-click to rename."><span>📁 ${folder.name}</span><span>Folder</span><span>--</span><span>${new Date(folder.createdAt).toLocaleDateString()}</span></button>`).join('')}
           ${files.map((file) => `<button class="explorer-row file-row" data-asset-id="${file.id}"><span>🖼️ ${file.name}</span><span>${getFileKind(file.name)}</span><span>${file.dimension}</span><span>${new Date(file.createdAt).toLocaleDateString()}</span></button>`).join('')}
-          ${state.templates.length ? `<div class="template-strip"><h4>Saved Templates</h4>${state.templates.filter((template) => !fileSearch || template.name.toLowerCase().includes(fileSearch)).map((template) => `<button class="explorer-row template-row" data-template-id="${template.id}"><span>🧩 ${template.name}</span><span>Template</span><span>${template.dimension}</span><span>${new Date(template.createdAt).toLocaleDateString()}</span></button>`).join('')}</div>` : ''}
-          ${!folders.length && !files.length && !state.templates.length ? '<p class="muted">No matching assets in this folder.</p>' : ''}
-        </div>
-      </section>
-      ${showPermissions ? `<aside class="explorer-permissions panel">
-        <h4>Folder Permissions</h4>
-        <p class="muted">Access to a parent folder grants access to everything inside it.</p>
-        <label class="control-group">Owners<input id="ownersInput" value="${(currentFolder.permissions?.owners || []).join(', ')}" /></label>
-        <label class="control-group">Editors<input id="editorsInput" value="${(currentFolder.permissions?.editors || []).join(', ')}" /></label>
-        <label class="control-group">Viewers<input id="viewersInput" value="${(currentFolder.permissions?.viewers || []).join(', ')}" /></label>
-      </aside>` : ''}
-    </div>
-  `;
-}
-
-function getNodeById(id) {
-  return state.explorer.nodes.find((node) => node.id === id);
-}
-
-function getCurrentFolder() {
-  return getNodeById(state.currentFolderId) || getNodeById(state.explorer.rootId);
-}
-
-function getChildren(folderId) {
-  const folder = getNodeById(folderId);
-  if (!folder || folder.type !== 'folder') return [];
-  return folder.children.map((id) => getNodeById(id)).filter(Boolean);
-}
-
-function getAllFiles() {
-  return state.explorer.nodes.filter((node) => node.type === 'file');
-}
-
-function getDimensionRatio(dimension = '16x9') {
-  const [w, h] = String(dimension).split('x').map(Number);
-  if (!w || !h) return 16 / 9;
-  return w / h;
-}
-
-function getFileKind(name = '') {
-  const ext = name.split('.').pop().toLowerCase();
-  if (!ext || ext === name.toLowerCase()) return 'FILE';
-  return ext.toUpperCase();
-}
-
-function getFolderName(folderId) {
-  return getNodeById(folderId)?.name || 'Unknown Folder';
-}
-
-function getFolderPath(folderId) {
-  const path = [];
-  let current = getNodeById(folderId);
-  while (current) {
-    path.unshift(current);
-    current = current.parentId ? getNodeById(current.parentId) : null;
-  }
-  return path;
-}
-
-function updateNode(nodeId, mutator) {
-  const nextExplorer = cloneValue(state.explorer);
-  const node = nextExplorer.nodes.find((item) => item.id === nodeId);
-  if (!node) return;
-  mutator(node, nextExplorer);
-  setState({ explorer: nextExplorer });
-}
-
-function createSubfolder(folderName) {
-  const trimmed = folderName.trim();
-  if (!trimmed) return;
-
-  const currentFolder = getCurrentFolder();
-  if (!currentFolder || currentFolder.type !== 'folder') return;
-
-  const existing = getChildren(currentFolder.id).find((child) => child.type === 'folder' && child.name.toLowerCase() === trimmed.toLowerCase());
-  if (existing) return;
-
-  const nextExplorer = cloneValue(state.explorer);
-  const nextCurrent = nextExplorer.nodes.find((node) => node.id === currentFolder.id);
-  const newFolder = makeFolder(trimmed, nextCurrent.id, cloneValue(nextCurrent.permissions));
-  nextCurrent.children.push(newFolder.id);
-  nextExplorer.nodes.push(newFolder);
-
-  setState({
-    explorer: nextExplorer,
-    currentFolderId: newFolder.id,
-  });
-}
-
-function renameFolder(folderId, folderName) {
-  const trimmed = folderName.trim();
-  if (!trimmed) return;
-
-  const folder = getNodeById(folderId);
-  if (!folder || folder.type !== 'folder' || folder.id === state.explorer.rootId) return;
-
-  const siblings = getChildren(folder.parentId || state.explorer.rootId)
-    .filter((item) => item.type === 'folder' && item.id !== folderId);
-  if (siblings.some((item) => item.name.toLowerCase() === trimmed.toLowerCase())) return;
-
-  updateNode(folderId, (node) => {
-    node.name = trimmed;
-  });
-}
-
-function startFolderRename(folderId) {
-  const folder = getNodeById(folderId);
-  if (!folder || folder.type !== 'folder' || folder.id === state.explorer.rootId) return;
-  setState({ renamingFolderId: folderId, renamingFolderValue: folder.name });
-}
-
-function commitFolderRename(folderId) {
-  if (!folderId || state.renamingFolderId !== folderId) return;
-  renameFolder(folderId, state.renamingFolderValue);
-  setState({ renamingFolderId: null, renamingFolderValue: '' });
-}
-
-function cancelFolderRename() {
-  if (!state.renamingFolderId) return;
-  setState({ renamingFolderId: null, renamingFolderValue: '' });
-}
-
-function deleteFolder(folderId) {
-  const folder = getNodeById(folderId);
-  if (!folder || folder.type !== 'folder' || folder.id === state.explorer.rootId) return;
-
-  const nextExplorer = cloneValue(state.explorer);
-  const idsToDelete = new Set();
-
-  const collect = (id) => {
-    idsToDelete.add(id);
-    const node = nextExplorer.nodes.find((item) => item.id === id);
-    if (!node || node.type !== 'folder') return;
-    node.children.forEach((childId) => collect(childId));
-  };
-  collect(folderId);
-
-  nextExplorer.nodes
-    .filter((node) => node.type === 'file' && idsToDelete.has(node.id))
-    .forEach((file) => deleteAssetData(file.srcRef || file.id));
-
-  nextExplorer.nodes = nextExplorer.nodes.filter((node) => !idsToDelete.has(node.id));
-  nextExplorer.nodes.forEach((node) => {
-    if (node.type === 'folder') node.children = node.children.filter((id) => !idsToDelete.has(id));
-  });
-
-  const fallbackFolderId = folder.parentId || nextExplorer.rootId;
-  setState({ explorer: nextExplorer, currentFolderId: fallbackFolderId, renamingFolderId: null, renamingFolderValue: '' });
-}
-
-function setFolderPermissions(folderId, key, rawValue) {
-  const values = rawValue
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-
-  updateNode(folderId, (node) => {
-    node.permissions[key] = values;
-  });
-}
-
-function navigateToFolder(folderId) {
-  const folder = getNodeById(folderId);
-  if (!folder || folder.type !== 'folder') return;
-  setState({ currentFolderId: folderId });
-}
-
-function renderFolderTree(folderId, depth = 0) {
-  const folder = getNodeById(folderId);
-  if (!folder || folder.type !== 'folder') return '';
-  const childFolders = getChildren(folderId).filter((child) => child.type === 'folder');
-  const isRenaming = state.renamingFolderId === folder.id;
-
-  return `
-    <div class="tree-node" style="--depth:${depth}">
-      ${isRenaming
-        ? `<input class="tree-folder rename-input" data-rename-input-id="${folder.id}" value="${state.renamingFolderValue}" />`
-        : `<button class="tree-folder ${state.currentFolderId === folder.id ? 'active' : ''}" data-open-folder-id="${folder.id}" data-rename-folder-id="${folder.id}" title="Double-click to rename.">${folder.name}</button>`}
-      ${childFolders.map((child) => renderFolderTree(child.id, depth + 1)).join('')}
-    </div>
-  `;
-}
-
-function fileExplorerView(options = {}) {
-  const showPermissions = options.showPermissions !== false;
-  const currentFolder = getCurrentFolder();
-  const children = getChildren(currentFolder.id);
-  const folders = children.filter((item) => item.type === 'folder');
-  const fileSearch = state.assetSearchQuery.trim().toLowerCase();
-  const files = children
-    .filter((item) => item.type === 'file')
-    .filter((file) => !fileSearch || file.name.toLowerCase().includes(fileSearch));
-  const breadcrumbs = getFolderPath(currentFolder.id);
-
-  return `
-    <div class="explorer-layout ${showPermissions ? '' : 'no-permissions'}">
-      <aside class="explorer-tree panel">
-        <h4>Folders</h4>
-        ${renderFolderTree(state.explorer.rootId)}
-      </aside>
-      <section class="explorer-main panel">
-        <div class="explorer-toolbar">
-          <div class="breadcrumbs">${breadcrumbs.map((crumb, index) => `<button class="crumb" data-crumb-id="${crumb.id}">${crumb.name}${index < breadcrumbs.length - 1 ? ' /' : ''}</button>`).join('')}</div>
-          <div class="toolbar-actions">
-            <input id="assetSearchInput" value="${state.assetSearchQuery}" placeholder="Search assets" />
-            <button id="createFolderBtn" class="action-btn">Create Folder</button>
-            <button id="deleteFolderBtn" class="action-btn" ${currentFolder.id === state.explorer.rootId ? 'disabled' : ''}>Delete Folder</button>
-            <label class="action-btn upload-btn">Upload<input id="brandAssetUpload" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" multiple /></label>
-          </div>
-          ${state.storageNotice ? `<p class="storage-warning">${state.storageNotice}</p>` : ''}
-        </div>
-        <div class="explorer-list">
-          <div class="explorer-head"><span>Name</span><span>Type</span><span>Dimension</span><span>Modified</span></div>
-          ${folders.map((folder) => state.renamingFolderId === folder.id ? `<div class="explorer-row folder-row"><input class="rename-input" data-rename-input-id="${folder.id}" value="${state.renamingFolderValue}" /><span>Folder</span><span>--</span><span>${new Date(folder.createdAt).toLocaleDateString()}</span></div>` : `<button class="explorer-row folder-row" data-open-folder-id="${folder.id}" data-rename-folder-id="${folder.id}" title="Double-click to rename."><span>📁 ${folder.name}</span><span>Folder</span><span>--</span><span>${new Date(folder.createdAt).toLocaleDateString()}</span></button>`).join('')}
-          ${files.map((file) => `<button class="explorer-row file-row" data-asset-id="${file.id}"><span>🖼️ ${file.name}</span><span>${getFileKind(file.name)}</span><span>${file.dimension}</span><span>${new Date(file.createdAt).toLocaleDateString()}</span></button>`).join('')}
-          ${state.templates.length ? `<div class="template-strip"><h4>Saved Templates</h4>${state.templates.filter((template) => !fileSearch || template.name.toLowerCase().includes(fileSearch)).map((template) => `<button class="explorer-row template-row" data-template-id="${template.id}"><span>🧩 ${template.name}</span><span>Template</span><span>${template.dimension}</span><span>${new Date(template.createdAt).toLocaleDateString()}</span></button>`).join('')}</div>` : ''}
+          ${state.templates.length ? `<div class="template-strip"><h4>Saved Templates</h4>${state.templates.filter((template) => !fileSearch || template.name.toLowerCase().includes(fileSearch)).map((template) => `<button class="explorer-row template-row" data-template-id="${template.id}"><span>🧩 ${template.name}</span><span>Template</span><span>${template.templateSize || template.dimension}</span><span>${new Date(template.createdAt).toLocaleDateString()}</span></button>`).join('')}</div>` : ''}
           ${!folders.length && !files.length && !state.templates.length ? '<p class="muted">No matching assets in this folder.</p>' : ''}
         </div>
       </section>
@@ -1219,6 +726,7 @@ function saveCurrentDesignTemplate() {
     textLayers: cloneValue(state.designTextLayers.map(getTextLayerWithTransform)),
     layerOrder: cloneValue(getOrderedLayerKeys()),
     assetTransform: cloneValue(getAssetLayer().transform),
+    templateSize: state.designTemplateSize,
     createdAt: new Date().toISOString(),
   };
 
@@ -1235,6 +743,7 @@ function applyTemplateToDesign(templateId) {
     designTextLayers: cloneValue((template.textLayers || []).map(getTextLayerWithTransform)),
     designLayerOrder: cloneValue(template.layerOrder || ['asset-base', ...(template.textLayers || []).map((layer) => `text-${layer.id}`)]),
     designAssetLayer: { ...getAssetLayer(), transform: cloneValue(template.assetTransform || defaultTransform('asset')) },
+    designTemplateSize: template.templateSize || '1920x1080',
     nextTextLayerId: Math.max(1, ...(template.textLayers || []).map((layer) => Number(layer.id) || 0)) + 1,
   });
 }
@@ -1252,43 +761,46 @@ function getBoundText(layer) {
 function designView() {
   const allFiles = getAllFiles();
   const selectedAsset = allFiles.find((file) => file.id === state.designSelectedAssetId) || allFiles[0];
-  const ratio = selectedAsset ? getDimensionRatio(selectedAsset.dimension) : 16 / 9;
   const assetLayer = getAssetLayer();
   const orderedLayerKeys = getOrderedLayerKeys();
+  const { width: templateWidth, height: templateHeight } = getTemplateDimensions(state.designTemplateSize);
+  const ratio = templateWidth / templateHeight;
 
   const canvasLayers = orderedLayerKeys.map((key) => {
     if (key === 'asset-base') {
       const t = assetLayer.transform;
       const src = getRenderableAssetSrc(selectedAsset);
       if (!src) return '<p class="muted canvas-empty">Selected asset preview is loading or unavailable.</p>';
-      return `<img src="${src}" alt="${selectedAsset?.name || 'Asset'}" class="canvas-bg" style="transform-origin: top left; transform: translate(${t.posX - t.anchorX}px, ${t.posY - t.anchorY}px) rotate(${t.rotation}deg) scale(${t.scaleX / 100}, ${t.scaleY / 100}); opacity:${Math.max(0, Math.min(100, t.opacity)) / 100};" />`;
+      return `<img src="${src}" alt="${selectedAsset?.name || 'Asset'}" class="canvas-bg" style="transform-origin: top left; transform: translate(${toStagePercent(t.posX - t.anchorX, templateWidth)}%, ${toStagePercent(t.posY - t.anchorY, templateHeight)}%) rotate(${t.rotation}deg) scale(${t.scaleX / 100}, ${t.scaleY / 100}); opacity:${Math.max(0, Math.min(100, t.opacity)) / 100};" />`;
     }
 
     const id = Number(key.replace('text-', ''));
     const layer = getTextLayerWithTransform(state.designTextLayers.find((item) => item.id === id));
     if (!layer) return '';
     const t = layer.transform;
-    return `<span class="text-layer" style="left:${t.posX}px;top:${t.posY}px;font-size:${layer.size}px;color:${layer.color};transform: translate(${-t.anchorX}px, ${-t.anchorY}px) rotate(${t.rotation}deg) scale(${t.scaleX / 100}, ${t.scaleY / 100});opacity:${Math.max(0, Math.min(100, t.opacity)) / 100};">${getBoundText(layer)}</span>`;
+    return `<span class="text-layer" style="transform-origin: top left; font-size:${layer.size}px;color:${layer.color};transform: translate(${toStagePercent(t.posX - t.anchorX, templateWidth)}%, ${toStagePercent(t.posY - t.anchorY, templateHeight)}%) rotate(${t.rotation}deg) scale(${t.scaleX / 100}, ${t.scaleY / 100});opacity:${Math.max(0, Math.min(100, t.opacity)) / 100};">${getBoundText(layer)}</span>`;
   }).join('');
 
   const layerCards = orderedLayerKeys.map((key) => {
     const isAsset = key === 'asset-base';
+    const collapsed = !!state.designCollapsedLayers[key];
     if (isAsset) {
       const t = assetLayer.transform;
       return `
         <div class="layer-card">
           <div class="layer-title-row">
+            <button class="layer-collapse" data-toggle-layer-collapse="asset-base">${collapsed ? '▸' : '▾'}</button>
             <strong>Asset Layer · ${selectedAsset?.name || 'No asset selected'}</strong>
             <div class="layer-actions"><button class="layer-move" data-move-layer-key="asset-base" data-dir="up">↑</button><button class="layer-move" data-move-layer-key="asset-base" data-dir="down">↓</button></div>
           </div>
-          <div class="transform-block">
+          ${collapsed ? '' : `<div class="transform-block">
             <div class="transform-head"><span>Transform</span><button class="transform-reset" data-reset-asset-transform>Reset</button></div>
-            <label class="transform-row"><span>Anchor Point</span><span><input type="number" class="transform-input" data-asset-transform-prop="anchorX" value="${t.anchorX}" /><input type="number" class="transform-input" data-asset-transform-prop="anchorY" value="${t.anchorY}" /><input type="number" class="transform-input" data-asset-transform-prop="anchorZ" value="${t.anchorZ}" /></span></label>
-            <label class="transform-row"><span>Position</span><span><input type="number" class="transform-input" data-asset-transform-prop="posX" value="${t.posX}" /><input type="number" class="transform-input" data-asset-transform-prop="posY" value="${t.posY}" /><input type="number" class="transform-input" data-asset-transform-prop="posZ" value="${t.posZ}" /></span></label>
+            <label class="transform-row"><span>Anchor Point</span><span><input type="number" class="transform-input" data-asset-transform-prop="anchorX" value="${t.anchorX}" /><input type="number" class="transform-input" data-asset-transform-prop="anchorY" value="${t.anchorY}" /></span></label>
+            <label class="transform-row"><span>Position</span><span><input type="number" class="transform-input" data-asset-transform-prop="posX" value="${t.posX}" /><input type="number" class="transform-input" data-asset-transform-prop="posY" value="${t.posY}" /></span></label>
             <label class="transform-row"><span>Scale</span><span><button class="scale-lock ${t.scaleLinked ? 'on' : ''}" data-toggle-asset-scale-lock>${t.scaleLinked ? '🔗' : '⛓️'}</button><input type="number" class="transform-input" data-asset-transform-prop="scaleX" value="${t.scaleX}" /><input type="number" class="transform-input" data-asset-transform-prop="scaleY" value="${t.scaleY}" ${t.scaleLinked ? 'disabled' : ''} /></span></label>
             <label class="transform-row"><span>Rotation</span><span><input type="number" class="transform-input" data-asset-transform-prop="rotation" value="${t.rotation}" /></span></label>
             <label class="transform-row"><span>Opacity</span><span><input type="number" class="transform-input" data-asset-transform-prop="opacity" value="${t.opacity}" min="0" max="100" /></span></label>
-          </div>
+          </div>`}
         </div>`;
     }
 
@@ -1300,10 +812,11 @@ function designView() {
     return `
       <div class="layer-card">
         <div class="layer-title-row">
+          <button class="layer-collapse" data-toggle-layer-collapse="text-${layer.id}">${collapsed ? '▸' : '▾'}</button>
           <strong>${layer.name}</strong>
           <div class="layer-actions"><button class="layer-move" data-move-layer-key="text-${layer.id}" data-dir="up">↑</button><button class="layer-move" data-move-layer-key="text-${layer.id}" data-dir="down">↓</button><button class="layer-delete" data-remove-layer-id="${layer.id}">Remove</button></div>
         </div>
-        <input data-layer-id="${layer.id}" data-prop="text" value="${layer.text}" />
+        ${collapsed ? '' : `<input data-layer-id="${layer.id}" data-prop="text" value="${layer.text}" />
         <div class="layer-row"><input type="number" data-layer-id="${layer.id}" data-prop="size" value="${layer.size}" /><input type="color" data-layer-id="${layer.id}" data-prop="color" value="${layer.color}" /></div>
         <select data-layer-id="${layer.id}" data-prop="bindKey">
           <option value="none" ${layer.bindKey === 'none' ? 'selected' : ''}>Manual</option>
@@ -1315,19 +828,19 @@ function designView() {
         </select>
         <div class="transform-block">
           <div class="transform-head"><span>Transform</span><button class="transform-reset" data-reset-layer-transform="${layer.id}">Reset</button></div>
-          <label class="transform-row"><span>Anchor Point</span><span><input type="number" class="transform-input" data-transform-layer-id="${layer.id}" data-transform-prop="anchorX" value="${t.anchorX}" /><input type="number" class="transform-input" data-transform-layer-id="${layer.id}" data-transform-prop="anchorY" value="${t.anchorY}" /><input type="number" class="transform-input" data-transform-layer-id="${layer.id}" data-transform-prop="anchorZ" value="${t.anchorZ}" /></span></label>
-          <label class="transform-row"><span>Position</span><span><input type="number" class="transform-input" data-transform-layer-id="${layer.id}" data-transform-prop="posX" value="${t.posX}" /><input type="number" class="transform-input" data-transform-layer-id="${layer.id}" data-transform-prop="posY" value="${t.posY}" /><input type="number" class="transform-input" data-transform-layer-id="${layer.id}" data-transform-prop="posZ" value="${t.posZ}" /></span></label>
+          <label class="transform-row"><span>Anchor Point</span><span><input type="number" class="transform-input" data-transform-layer-id="${layer.id}" data-transform-prop="anchorX" value="${t.anchorX}" /><input type="number" class="transform-input" data-transform-layer-id="${layer.id}" data-transform-prop="anchorY" value="${t.anchorY}" /></span></label>
+          <label class="transform-row"><span>Position</span><span><input type="number" class="transform-input" data-transform-layer-id="${layer.id}" data-transform-prop="posX" value="${t.posX}" /><input type="number" class="transform-input" data-transform-layer-id="${layer.id}" data-transform-prop="posY" value="${t.posY}" /></span></label>
           <label class="transform-row"><span>Scale</span><span><button class="scale-lock ${t.scaleLinked ? 'on' : ''}" data-toggle-layer-scale-lock="${layer.id}">${t.scaleLinked ? '🔗' : '⛓️'}</button><input type="number" class="transform-input" data-transform-layer-id="${layer.id}" data-transform-prop="scaleX" value="${t.scaleX}" /><input type="number" class="transform-input" data-transform-layer-id="${layer.id}" data-transform-prop="scaleY" value="${t.scaleY}" ${t.scaleLinked ? 'disabled' : ''} /></span></label>
           <label class="transform-row"><span>Rotation</span><span><input type="number" class="transform-input" data-transform-layer-id="${layer.id}" data-transform-prop="rotation" value="${t.rotation}" /></span></label>
           <label class="transform-row"><span>Opacity</span><span><input type="number" class="transform-input" data-transform-layer-id="${layer.id}" data-transform-prop="opacity" value="${t.opacity}" min="0" max="100" /></span></label>
-        </div>
+        </div>`}
       </div>`;
   }).join('');
 
   return `
     <section class="panel design-layout">
       <div>
-        <h3>Canvas</h3>
+        <h3>Canvas · ${templateWidth} × ${templateHeight}</h3>
         <div class="design-stage-shell">
           <div class="design-stage" style="--asset-ratio:${ratio};">${canvasLayers}</div>
         </div>
@@ -1338,6 +851,10 @@ function designView() {
             <h3>Layer Stack</h3>
             <div class="layer-head-actions"><button id="newTemplateBtn" class="pill-btn">+New Template</button><button id="saveTemplateBtn" class="pill-btn">Save Template</button><button id="addTextLayer" class="pill-btn">Add Text Layer</button></div>
           </div>
+          <label class="control-group">Template Size
+            <select id="designTemplateSize">${TEMPLATE_SIZES.map((size) => `<option value="${size.id}" ${state.designTemplateSize === size.id ? 'selected' : ''}>${size.label}</option>`).join('')}</select>
+          </label>
+          <p class="muted">Viewport coordinates: top-left 0,0 · center ${Math.round(templateWidth / 2)},${Math.round(templateHeight / 2)} · bottom-right ${templateWidth},${templateHeight}</p>
           <div class="layer-controls">${layerCards}</div>
         </div>
       </aside>
@@ -1405,7 +922,7 @@ function controlRoomView() {
     <section class="panel">
       <h3>Controller Templates</h3>
       <div class="control-template-list">
-        ${state.templates.map((template) => `<button class="control-template-item ${state.selectedControlTemplateId === template.id ? 'active' : ''}" data-control-template-id="${template.id}"><strong>${template.name}</strong><span>${template.assetName} · ${template.dimension}</span><em>Saved ${formatTemplateTimestamp(template.createdAt)}</em></button>`).join('')}
+        ${state.templates.map((template) => `<button class="control-template-item ${state.selectedControlTemplateId === template.id ? 'active' : ''}" data-control-template-id="${template.id}"><strong>${template.name}</strong><span>${template.assetName} · ${template.templateSize || template.dimension}</span><em>Saved ${formatTemplateTimestamp(template.createdAt)}</em></button>`).join('')}
         ${!state.templates.length ? '<p class="muted">No templates saved yet. Go to Design and click Save Template.</p>' : ''}
       </div>
       ${selectedTemplate ? '<button id="loadTemplateToDesignBtn" class="pill-btn">Load Selected Template in Design</button>' : ''}
@@ -1578,6 +1095,21 @@ function moveLayer(layerKey, direction) {
   setState({ designLayerOrder: order });
 }
 
+
+function toggleLayerCollapsed(layerKey) {
+  setState({
+    designCollapsedLayers: {
+      ...state.designCollapsedLayers,
+      [layerKey]: !state.designCollapsedLayers[layerKey],
+    },
+  });
+}
+
+function setDesignTemplateSize(size) {
+  if (!TEMPLATE_SIZES.some((item) => item.id === size)) return;
+  setState({ designTemplateSize: size });
+}
+
 function detectImageSize(file) {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -1715,7 +1247,6 @@ function wireDesignInteractions() {
   });
 
   document.querySelectorAll('[data-layer-id]').forEach((control) => {
-    control.addEventListener('input', () => updateLayer(control.dataset.layerId, control.dataset.prop, control.value));
     control.addEventListener('change', () => updateLayer(control.dataset.layerId, control.dataset.prop, control.value));
   });
 
@@ -1724,7 +1255,6 @@ function wireDesignInteractions() {
   });
 
   document.querySelectorAll('[data-transform-layer-id]').forEach((control) => {
-    control.addEventListener('input', () => updateLayerTransform(control.dataset.transformLayerId, control.dataset.transformProp, control.value));
     control.addEventListener('change', () => updateLayerTransform(control.dataset.transformLayerId, control.dataset.transformProp, control.value));
   });
 
@@ -1737,7 +1267,6 @@ function wireDesignInteractions() {
   });
 
   document.querySelectorAll('[data-asset-transform-prop]').forEach((control) => {
-    control.addEventListener('input', () => updateAssetTransform(control.dataset.assetTransformProp, control.value));
     control.addEventListener('change', () => updateAssetTransform(control.dataset.assetTransformProp, control.value));
   });
 
@@ -1746,6 +1275,13 @@ function wireDesignInteractions() {
 
   const assetReset = document.querySelector('[data-reset-asset-transform]');
   if (assetReset) assetReset.addEventListener('click', resetAssetTransform);
+
+  const templateSizeSelect = document.getElementById('designTemplateSize');
+  if (templateSizeSelect) templateSizeSelect.addEventListener('change', () => setDesignTemplateSize(templateSizeSelect.value));
+
+  document.querySelectorAll('[data-toggle-layer-collapse]').forEach((button) => {
+    button.addEventListener('click', () => toggleLayerCollapsed(button.dataset.toggleLayerCollapse));
+  });
 }
 
 
@@ -1761,6 +1297,37 @@ function wireControlRoomInteractions() {
       applyTemplateToDesign(state.selectedControlTemplateId);
     });
   }
+}
+
+function wireDataEngineInteractions() {
+  const toggleSimulationButton = document.getElementById('toggleSimulation');
+  if (toggleSimulationButton) {
+    toggleSimulationButton.addEventListener('click', () => {
+      if (state.simulationRunning) stopSimulation();
+      else startSimulation();
+    });
+  }
+
+  const speedSelect = document.getElementById('simulationSpeed');
+  if (speedSelect) {
+    speedSelect.addEventListener('change', (event) => {
+      const nextSpeed = Number(event.target.value);
+      const wasRunning = state.simulationRunning;
+      stopSimulation();
+      setState({ simulationSpeedMs: nextSpeed });
+      if (wasRunning) startSimulation();
+    });
+  }
+
+  const resetButton = document.getElementById('resetSimulation');
+  if (resetButton) resetButton.addEventListener('click', resetSimulation);
+}
+
+function wireInteractions() {
+  wireBrandedAssetInteractions();
+  wireDesignInteractions();
+  wireDataEngineInteractions();
+  wireControlRoomInteractions();
 }
 
 function wireDataEngineInteractions() {
