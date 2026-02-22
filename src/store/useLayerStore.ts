@@ -18,7 +18,7 @@ interface LayerStore {
   templates: LayerTemplate[];
   addText: () => void;
   addShape: () => void;
-  addAssetLayer: (assetId: string) => void;
+  addAssetLayer: (assetId: string, dimensions?: { width: number; height: number }) => void;
   duplicateLayer: (id: string) => void;
   updateLayer: (id: string, patch: Partial<Layer>) => void;
   renameLayer: (id: string, name: string) => void;
@@ -88,21 +88,28 @@ export const useLayerStore = create<LayerStore>((set) => ({
       ...DEFAULT_TRANSFORM,
     }],
   })),
-  addAssetLayer: (assetId) => set((s) => ({
-    layers: [...s.layers, {
-      id: `asset-${Date.now()}`,
-      kind: 'asset',
-      name: `Asset ${s.layers.length + 1}`,
-      assetId,
-      x: 0,
-      y: 0,
-      zIndex: s.layers.length,
-      opacity: 100,
-      width: s.canvasWidth,
-      height: s.canvasHeight,
-      ...DEFAULT_TRANSFORM,
-    }],
-  })),
+  addAssetLayer: (assetId, dimensions) => set((s) => {
+    const sourceWidth = Math.max(1, dimensions?.width ?? s.canvasWidth);
+    const sourceHeight = Math.max(1, dimensions?.height ?? s.canvasHeight);
+    const fitScale = Math.min(s.canvasWidth / sourceWidth, s.canvasHeight / sourceHeight);
+    const width = Math.max(1, Math.round(sourceWidth * fitScale));
+    const height = Math.max(1, Math.round(sourceHeight * fitScale));
+    return {
+      layers: [...s.layers, {
+        id: `asset-${Date.now()}`,
+        kind: 'asset',
+        name: `Asset ${s.layers.length + 1}`,
+        assetId,
+        x: Math.round((s.canvasWidth - width) / 2),
+        y: Math.round((s.canvasHeight - height) / 2),
+        zIndex: s.layers.length,
+        opacity: 100,
+        width,
+        height,
+        ...DEFAULT_TRANSFORM,
+      }],
+    };
+  }),
   duplicateLayer: (id) => set((s) => {
     const target = s.layers.find((layer) => layer.id === id);
     if (!target) return s;

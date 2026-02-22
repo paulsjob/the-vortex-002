@@ -7,6 +7,13 @@ export function StudioSidebar() {
   const { interactionMode, setInteractionMode, sidebarTab, setSidebarTab, selectedLayerId, setSelectedLayerId } = useStudioStore();
   const assets = useAssetStore((s) => s.assets);
 
+  const parseDimensions = (dimension?: string) => {
+    if (!dimension) return undefined;
+    const [width, height] = dimension.split('x').map(Number);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return undefined;
+    return { width, height };
+  };
+
   return (
     <aside className="rounded-xl border border-slate-800 bg-slate-900 p-3">
       <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">Stage Pro</h3>
@@ -33,7 +40,7 @@ export function StudioSidebar() {
       ) : (
         <div className="space-y-2">
           {assets.map((a) => (
-            <button key={a.id} onClick={() => addAssetLayer(a.id)} className="block w-full rounded border border-slate-700 bg-slate-900 px-2 py-2 text-left">{a.name}</button>
+            <button key={a.id} onClick={() => addAssetLayer(a.id, parseDimensions(a.dimension))} className="block w-full rounded border border-slate-700 bg-slate-900 px-2 py-2 text-left">{a.name}</button>
           ))}
           {!assets.length && <p className="text-sm text-slate-400">Upload from Dashboard library to use assets here.</p>}
         </div>

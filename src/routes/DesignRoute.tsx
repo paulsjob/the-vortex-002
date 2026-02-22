@@ -163,7 +163,7 @@ export function DesignRoute() {
     ctx.font = `700 ${layer.size}px ${layer.fontFamily}`;
     const metrics = ctx.measureText(displayText);
     const width = Math.max(16, metrics.width);
-    const height = Math.max(8, (metrics.actualBoundingBoxAscent || layer.size * 0.8) + (metrics.actualBoundingBoxDescent || layer.size * 0.2));
+    const height = Math.max(8, ((metrics.actualBoundingBoxAscent || layer.size * 0.8) + (metrics.actualBoundingBoxDescent || layer.size * 0.25)) * 1.15);
     return { width, height };
   };
 
@@ -210,9 +210,18 @@ export function DesignRoute() {
 
   const resetSelectedTransform = () => applyToSelected(() => transformDefaults as Partial<Layer>);
 
+  const parseAssetDimensions = (dimension?: string) => {
+    if (!dimension) return null;
+    const [w, h] = dimension.split('x').map(Number);
+    if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+    return { width: w, height: h };
+  };
+
   const insertSelectedAsset = () => {
     const candidate = selectedAssetId || (files[0]?.type === 'file' ? files[0].id : null);
-    if (candidate) addAssetLayer(candidate);
+    if (!candidate) return;
+    const dims = parseAssetDimensions(assetById.get(candidate)?.dimension);
+    addAssetLayer(candidate, dims ?? undefined);
   };
 
   const selectLayer = (layerId: string, event?: { shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean }) => {
@@ -343,9 +352,9 @@ export function DesignRoute() {
 
     return (
       <div key={layer.id} className={`absolute select-none ${selectedLayerIds.includes(layer.id) ? 'outline outline-2 outline-blue-400' : 'outline outline-1 outline-slate-500/40'} ${layer.locked ? 'cursor-not-allowed' : 'cursor-move'}`} style={style} onMouseDown={(event) => onLayerMouseDown(layer, event)}>
-        {layer.kind === 'asset' && <img src={assetById.get(layer.assetId)?.src} alt={layer.name} className="h-full w-full object-fill" draggable={false} />}
+        {layer.kind === 'asset' && <img src={assetById.get(layer.assetId)?.src} alt={layer.name} className="h-full w-full object-contain" draggable={false} />}
         {layer.kind === 'shape' && <div className="h-full w-full" style={{ background: layer.fill }} />}
-        {layer.kind === 'text' && <div className="h-full w-full" style={{ fontSize: `${layer.size}px`, color: layer.color, fontWeight: 700, fontFamily: layer.fontFamily, textAlign: layer.textAlign, lineHeight: 1, whiteSpace: layer.textMode === 'point' ? 'pre' : 'pre-wrap', overflow: 'hidden' }}>{getTextContent(layer)}</div>}
+        {layer.kind === 'text' && <div className="h-full w-full" style={{ fontSize: `${layer.size}px`, color: layer.color, fontWeight: 700, fontFamily: layer.fontFamily, textAlign: layer.textAlign, lineHeight: 1.15, whiteSpace: layer.textMode === 'point' ? 'pre' : 'pre-wrap', overflow: layer.textMode === 'point' ? 'visible' : 'hidden' }}>{getTextContent(layer)}</div>}
         <div className="pointer-events-none absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber-400" style={{ left: `${(transform.anchorX / bounds.width) * 100}%`, top: `${(transform.anchorY / bounds.height) * 100}%` }} />
       </div>
     );
