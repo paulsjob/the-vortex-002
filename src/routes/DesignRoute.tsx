@@ -44,7 +44,9 @@ export function DesignRoute() {
   const [lockScale, setLockScale] = useState(true);
   const [alignScope, setAlignScope] = useState<'selection' | 'canvas'>('selection');
   const [topPanelHeight, setTopPanelHeight] = useState(700);
+  const [isDraggingSplitter, setIsDraggingSplitter] = useState(false);
 
+  const layoutRef = useRef<HTMLElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ startX: number; startY: number; base: Map<string, { x: number; y: number }> } | null>(null);
   const measureCtxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -244,16 +246,34 @@ export function DesignRoute() {
 
   const startHorizontalResize = (event: ReactMouseEvent) => {
     event.preventDefault();
-    const start = event.clientY;
-    const base = topPanelHeight;
+    const layout = layoutRef.current;
+    if (!layout) return;
+
+    const bounds = layout.getBoundingClientRect();
+    const handleHeight = 10;
+    const minTop = 180;
+    const minBottom = 180;
+    const topOffset = bounds.top;
+
+    setIsDraggingSplitter(true);
+    document.body.style.cursor = 'ns-resize';
+    document.body.style.userSelect = 'none';
+
     const onMove = (move: globalThis.MouseEvent) => {
-      const next = Math.max(420, Math.min(window.innerHeight - 260, base + (move.clientY - start)));
+      const pointerY = move.clientY - topOffset;
+      const maxTop = Math.max(minTop, bounds.height - minBottom - handleHeight);
+      const next = Math.max(minTop, Math.min(maxTop, pointerY));
       setTopPanelHeight(next);
     };
+
     const onUp = () => {
+      setIsDraggingSplitter(false);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
+
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
   };
@@ -333,7 +353,7 @@ export function DesignRoute() {
   };
 
   return (
-    <section className="grid min-h-[calc(100vh-120px)]" style={{ gridTemplateRows: `${topPanelHeight}px 10px minmax(220px, 1fr)` }}>
+    <section ref={layoutRef} className="grid h-[calc(100vh-120px)] min-h-[640px]" style={{ gridTemplateRows: `${topPanelHeight}px 10px minmax(180px, 1fr)` }}>
       <section className="grid h-full min-h-0 grid-cols-1 gap-3 rounded-xl border border-slate-800 bg-slate-900 p-4 xl:grid-cols-[420px_1fr_420px] overflow-hidden">
         <aside className="rounded-lg border border-slate-700 bg-slate-950 p-3">
           <div className="mb-3 flex items-start justify-between gap-2">
@@ -435,7 +455,7 @@ export function DesignRoute() {
         </aside>
       </section>
 
-      <div className="group relative cursor-row-resize border-y border-slate-700 bg-slate-900/80" onMouseDown={startHorizontalResize}><div className="absolute left-1/2 top-1/2 h-1 w-24 -translate-x-1/2 -translate-y-1/2 rounded bg-slate-600 group-hover:bg-blue-500" /></div>
+      <div className={`group relative cursor-ns-resize border-y ${isDraggingSplitter ? 'border-blue-500 bg-slate-700/90' : 'border-slate-700 bg-slate-900/80'} transition-colors`} onMouseDown={startHorizontalResize}><div className={`absolute left-1/2 top-1/2 h-1 w-24 -translate-x-1/2 -translate-y-1/2 rounded ${isDraggingSplitter ? 'bg-blue-400' : 'bg-slate-600 group-hover:bg-blue-500'}`} /></div>
 
       <section className="rounded-xl border border-slate-800 bg-slate-900 p-4 overflow-auto min-h-0">
         <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-300">Branded Assets Locker</h3>
