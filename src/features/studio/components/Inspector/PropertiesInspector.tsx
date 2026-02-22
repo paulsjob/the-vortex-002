@@ -31,7 +31,7 @@ export function PropertiesInspector() {
           <div className="flex gap-2">
             <button className="rounded bg-slate-700 px-3 py-1" onClick={() => setZOrder(layer.id, 'down')}>Down</button>
             <button className="rounded bg-slate-700 px-3 py-1" onClick={() => setZOrder(layer.id, 'up')}>Up</button>
-            <button className="ml-auto rounded bg-red-800 px-3 py-1" onClick={() => deleteLayer(layer.id)}>Delete</button>
+            <button className="ml-auto rounded bg-red-800 px-3 py-1" onClick={() => deleteLayer(layer.id)} title="Delete">🗑</button>
           </div>
         </div>
       )}

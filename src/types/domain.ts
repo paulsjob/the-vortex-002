@@ -53,6 +53,9 @@ export interface TextLayer extends LayerBase {
   text: string;
   color: string;
   size: number;
+  fontFamily: string;
+  dataBindingSource: string;
+  dataBindingField: string;
 }
 
 export interface ShapeLayer extends LayerBase {

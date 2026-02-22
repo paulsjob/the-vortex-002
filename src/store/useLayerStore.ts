@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Layer } from '../types/domain';
+import type { Layer, TextLayer } from '../types/domain';
 import type { SavedTemplate } from './useTemplateStore';
 
 interface LayerTemplate {
@@ -36,6 +36,13 @@ const DEFAULT_TRANSFORM = {
   rotation: 0,
 };
 
+const withTextDefaults = (layer: TextLayer): TextLayer => ({
+  ...layer,
+  fontFamily: layer.fontFamily || 'Inter',
+  dataBindingSource: layer.dataBindingSource || 'manual',
+  dataBindingField: layer.dataBindingField || '',
+});
+
 export const useLayerStore = create<LayerStore>((set) => ({
   layers: [],
   canvasWidth: 1920,
@@ -53,6 +60,9 @@ export const useLayerStore = create<LayerStore>((set) => ({
       opacity: 100,
       color: '#ffffff',
       size: 56,
+      fontFamily: 'Inter',
+      dataBindingSource: 'manual',
+      dataBindingField: '',
       ...DEFAULT_TRANSFORM,
     }],
   })),
@@ -104,9 +114,10 @@ export const useLayerStore = create<LayerStore>((set) => ({
   loadTemplate: (template) => set({
     canvasWidth: template.canvasWidth,
     canvasHeight: template.canvasHeight,
-    layers: structuredClone(template.layers).map((layer) => ({
-      ...DEFAULT_TRANSFORM,
-      ...layer,
-    })),
+    layers: structuredClone(template.layers).map((layer) => {
+      const base = { ...DEFAULT_TRANSFORM, ...layer } as Layer;
+      if (base.kind === 'text') return withTextDefaults(base as TextLayer);
+      return base;
+    }),
   }),
 }));
