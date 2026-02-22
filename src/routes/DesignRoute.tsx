@@ -407,9 +407,9 @@ export function DesignRoute() {
           ))}</div>}
         </aside>
 
-        <div className="space-y-2 rounded-lg border border-slate-700 bg-slate-950 p-3">
+        <div className="flex min-h-0 flex-col gap-2 rounded-lg border border-slate-700 bg-slate-950 p-3">
           <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">Canvas · {canvasWidth} × {canvasHeight}</h3>
-          <div ref={stageViewportRef} className="grid h-full min-h-0 place-items-center overflow-hidden rounded-lg border border-slate-700 bg-slate-800 p-4">
+          <div ref={stageViewportRef} className="grid flex-1 min-h-0 place-items-center overflow-hidden rounded-lg border border-slate-700 bg-slate-800 p-4">
             <div ref={stageRef} className="relative overflow-hidden rounded border border-slate-700 bg-slate-900 shadow-2xl" style={{ width: `${stageSize.width}px`, height: `${stageSize.height}px`, maxWidth: '100%', maxHeight: '100%' }} onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedLayerIds([]); }}>
               {!canvasLayers.length ? <p className="absolute inset-0 grid place-items-center text-xl text-slate-400">Stage is blank.</p> : canvasLayers.map(renderLayerPreview)}
             </div>
