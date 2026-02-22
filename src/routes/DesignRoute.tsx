@@ -72,7 +72,13 @@ export function DesignRoute() {
 
     const update = () => {
       const rect = node.getBoundingClientRect();
-      setStageViewport({ width: Math.max(0, rect.width - 16), height: Math.max(0, rect.height - 16) });
+      const style = window.getComputedStyle(node);
+      const paddingX = (Number.parseFloat(style.paddingLeft) || 0) + (Number.parseFloat(style.paddingRight) || 0);
+      const paddingY = (Number.parseFloat(style.paddingTop) || 0) + (Number.parseFloat(style.paddingBottom) || 0);
+      setStageViewport({
+        width: Math.max(0, rect.width - paddingX),
+        height: Math.max(0, rect.height - paddingY),
+      });
     };
 
     update();
