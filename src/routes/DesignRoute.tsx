@@ -43,6 +43,7 @@ export function DesignRoute() {
   const [lastClickedLayerId, setLastClickedLayerId] = useState<string | null>(null);
   const [lockScale, setLockScale] = useState(true);
   const [alignScope, setAlignScope] = useState<'selection' | 'canvas'>('selection');
+  const [leftPanelTab, setLeftPanelTab] = useState<'layers' | 'assets'>('layers');
   const [stageViewport, setStageViewport] = useState({ width: 0, height: 0 });
 
   const stageViewportRef = useRef<HTMLDivElement | null>(null);
@@ -351,9 +352,17 @@ export function DesignRoute() {
   };
 
   return (
-    <section className="grid h-[calc(100vh-120px)] min-h-[640px] grid-rows-[minmax(420px,1fr)_minmax(260px,auto)] gap-3">
+    <section className="h-[calc(100vh-120px)] min-h-[640px]">
       <section className="grid h-full min-h-0 grid-cols-1 gap-3 rounded-xl border border-slate-800 bg-slate-900 p-4 xl:grid-cols-[420px_1fr_420px] overflow-hidden">
-        <aside className="rounded-lg border border-slate-700 bg-slate-950 p-3">
+        <aside className="flex min-h-0 flex-col rounded-lg border border-slate-700 bg-slate-950 p-3">
+          <div className="grid grid-cols-2 border-b border-slate-700 text-xs font-bold uppercase tracking-wider">
+            <button className={`px-3 py-2 ${leftPanelTab === 'layers' ? 'border-b-2 border-blue-500 text-slate-100' : 'text-slate-400'}`} onClick={() => setLeftPanelTab('layers')}>Layer Stack</button>
+            <button className={`px-3 py-2 ${leftPanelTab === 'assets' ? 'border-b-2 border-blue-500 text-slate-100' : 'text-slate-400'}`} onClick={() => setLeftPanelTab('assets')}>Assets</button>
+          </div>
+
+          <div className="mt-3 min-h-0 flex-1 overflow-auto pr-1">
+            {leftPanelTab === 'layers' ? (
+              <>
           <div className="mb-3 flex items-start justify-between gap-2">
             <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">Layer Stack</h3>
             <div className="grid grid-cols-2 gap-2 text-sm">
@@ -405,6 +414,34 @@ export function DesignRoute() {
               </div>
             </div>
           ))}</div>}
+              </>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search assets" className="flex-1 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm" />
+                  <button className="rounded bg-blue-700 px-3 py-2 text-sm" onClick={() => { const name = window.prompt('Name this new folder')?.trim(); if (name) assetStore.addFolder(name, folderId, 'branded'); }}>+ Folder</button>
+                  <label className="cursor-pointer rounded bg-blue-700 px-3 py-2 text-sm">Upload<input type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" multiple className="hidden" onChange={async (event) => { const upload = Array.from(event.target.files || []); if (upload.length) await assetStore.uploadFiles(upload, folderId, 'branded'); event.currentTarget.value = ''; }} /></label>
+                </div>
+                <div className="rounded border border-slate-700 bg-slate-900 p-3">
+                  <div className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Folders</div>
+                  {renderFolderTree(assetStore.brandedExplorer.rootId)}
+                </div>
+                <div className="rounded border border-slate-700 bg-slate-900 p-3">
+                  <div className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Files</div>
+                  <div className="space-y-2">
+                    {filtered.filter((item) => item.type === 'file').map((item) => (
+                      <button key={item.id} className={`flex w-full items-center gap-2 rounded border px-2 py-2 text-left text-sm ${selectedAssetId === item.id ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-950'}`} onClick={() => setSelectedAssetId(item.id)}>
+                        <img src={item.src} alt={item.name} className="h-8 w-8 rounded object-cover" />
+                        <span className="truncate">{item.name}</span>
+                      </button>
+                    ))}
+                    {!filtered.some((item) => item.type === 'file') && <p className="text-sm text-slate-500">No files in this folder.</p>}
+                  </div>
+                </div>
+                <button className="w-full rounded bg-emerald-700 px-3 py-2 text-sm" onClick={insertSelectedAsset}>Insert Selected in Canvas</button>
+              </div>
+            )}
+          </div>
         </aside>
 
         <div className="flex min-h-0 flex-col gap-2 rounded-lg border border-slate-700 bg-slate-950 p-3">
@@ -453,31 +490,6 @@ export function DesignRoute() {
         </aside>
       </section>
 
-
-      <section className="rounded-xl border border-slate-800 bg-slate-900 p-4 overflow-auto min-h-0">
-        <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-300">Branded Assets Locker</h3>
-        <div className="grid grid-cols-1 gap-3 xl:grid-cols-[320px_1fr]">
-          <aside className="rounded-lg border border-slate-700 bg-slate-950 p-3"><h4 className="mb-2 text-xl font-bold">Folders</h4>{renderFolderTree(assetStore.brandedExplorer.rootId)}</aside>
-          <div className="rounded-lg border border-slate-700 bg-slate-950 p-3">
-            <div className="mb-3 flex flex-wrap gap-2">
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search assets" className="flex-1 rounded border border-slate-700 bg-slate-900 px-3 py-2" />
-              <button className="rounded bg-blue-700 px-3 py-2" onClick={() => { const name = window.prompt('Name this new folder')?.trim(); if (name) assetStore.addFolder(name, folderId, 'branded'); }}>Create Folder</button>
-              <button className="rounded bg-slate-700 px-3 py-2" onClick={() => assetStore.deleteFolder(folderId, 'branded')}>Delete Folder</button>
-              <label className="cursor-pointer rounded bg-blue-700 px-3 py-2">Upload<input type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" multiple className="hidden" onChange={async (event) => { const upload = Array.from(event.target.files || []); if (upload.length) await assetStore.uploadFiles(upload, folderId, 'branded'); event.currentTarget.value = ''; }} /></label>
-              <button className="rounded bg-emerald-700 px-3 py-2" onClick={insertSelectedAsset}>Insert Selected in Canvas</button>
-            </div>
-            <div className="grid grid-cols-4 text-slate-400"><span>NAME</span><span>TYPE</span><span>DIMENSION</span><span>MODIFIED</span></div>
-            <div className="mt-2 space-y-2">{filtered.map((item) => (
-              <button key={item.id} className={`grid w-full grid-cols-4 rounded border p-2 text-left text-sm ${selectedAssetId === item.id ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'}`} onClick={() => { if (item.type === 'folder') setFolderId(item.id); if (item.type === 'file') setSelectedAssetId(item.id); }}>
-                <span className="flex items-center gap-2">{item.type === 'folder' ? '📁' : <img src={item.src} alt={item.name} className="h-8 w-8 rounded object-cover" />} {item.name}</span>
-                <span>{item.type === 'folder' ? 'Folder' : 'File'}</span>
-                <span>{item.type === 'folder' ? `${item.children.length} item(s)` : item.dimension}</span>
-                <span>{new Date(item.createdAt).toLocaleDateString()}</span>
-              </button>
-            ))}{!filtered.length && <p className="text-slate-500">No matching assets in this folder.</p>}</div>
-          </div>
-        </div>
-      </section>
     </section>
   );
 }
