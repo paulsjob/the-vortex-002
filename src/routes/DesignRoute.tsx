@@ -353,7 +353,7 @@ export function DesignRoute() {
 
   return (
     <section className="h-[calc(100vh-120px)] min-h-[640px]">
-      <section className="grid h-full min-h-0 grid-cols-1 gap-3 rounded-xl border border-slate-800 bg-slate-900 p-4 xl:grid-cols-[420px_1fr_420px] overflow-hidden">
+      <section className="grid h-full min-h-0 grid-cols-1 gap-3 rounded-xl border border-slate-800 bg-slate-900 p-4 xl:grid-cols-[360px_minmax(0,1fr)_320px] 2xl:grid-cols-[400px_minmax(0,1fr)_360px] overflow-hidden">
         <aside className="flex min-h-0 flex-col rounded-lg border border-slate-700 bg-slate-950 p-3">
           <div className="grid grid-cols-2 border-b border-slate-700 text-xs font-bold uppercase tracking-wider">
             <button className={`px-3 py-2 ${leftPanelTab === 'layers' ? 'border-b-2 border-blue-500 text-slate-100' : 'text-slate-400'}`} onClick={() => setLeftPanelTab('layers')}>Layer Stack</button>
@@ -417,10 +417,13 @@ export function DesignRoute() {
               </>
             ) : (
               <div className="space-y-3">
-                <div className="flex flex-wrap gap-2">
-                  <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search assets" className="flex-1 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm" />
-                  <button className="rounded bg-blue-700 px-3 py-2 text-sm" onClick={() => { const name = window.prompt('Name this new folder')?.trim(); if (name) assetStore.addFolder(name, folderId, 'branded'); }}>+ Folder</button>
-                  <label className="cursor-pointer rounded bg-blue-700 px-3 py-2 text-sm">Upload<input type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" multiple className="hidden" onChange={async (event) => { const upload = Array.from(event.target.files || []); if (upload.length) await assetStore.uploadFiles(upload, folderId, 'branded'); event.currentTarget.value = ''; }} /></label>
+                <div className="space-y-2">
+                  <button className="w-full rounded bg-emerald-700 px-3 py-2 text-sm" onClick={insertSelectedAsset}>Insert Selected in Canvas</button>
+                  <div className="flex flex-wrap gap-2">
+                    <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search assets" className="flex-1 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm" />
+                    <button className="rounded bg-blue-700 px-3 py-2 text-sm" onClick={() => { const name = window.prompt('Name this new folder')?.trim(); if (name) assetStore.addFolder(name, folderId, 'branded'); }}>+ Folder</button>
+                    <label className="cursor-pointer rounded bg-blue-700 px-3 py-2 text-sm">Upload<input type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" multiple className="hidden" onChange={async (event) => { const upload = Array.from(event.target.files || []); if (upload.length) await assetStore.uploadFiles(upload, folderId, 'branded'); event.currentTarget.value = ''; }} /></label>
+                  </div>
                 </div>
                 <div className="rounded border border-slate-700 bg-slate-900 p-3">
                   <div className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Folders</div>
@@ -438,7 +441,6 @@ export function DesignRoute() {
                     {!filtered.some((item) => item.type === 'file') && <p className="text-sm text-slate-500">No files in this folder.</p>}
                   </div>
                 </div>
-                <button className="w-full rounded bg-emerald-700 px-3 py-2 text-sm" onClick={insertSelectedAsset}>Insert Selected in Canvas</button>
               </div>
             )}
           </div>
@@ -446,15 +448,16 @@ export function DesignRoute() {
 
         <div className="flex min-h-0 flex-col gap-2 rounded-lg border border-slate-700 bg-slate-950 p-3">
           <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">Canvas · {canvasWidth} × {canvasHeight}</h3>
-          <div ref={stageViewportRef} className="grid flex-1 min-h-0 place-items-center overflow-hidden rounded-lg border border-slate-700 bg-slate-800 p-4">
+          <div ref={stageViewportRef} className="grid flex-1 min-h-0 place-items-center overflow-hidden rounded-lg border border-slate-700 bg-slate-800 p-6">
             <div ref={stageRef} className="relative overflow-hidden rounded border border-slate-700 bg-slate-900 shadow-2xl" style={{ width: `${stageSize.width}px`, height: `${stageSize.height}px`, maxWidth: '100%', maxHeight: '100%' }} onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedLayerIds([]); }}>
               {!canvasLayers.length ? <p className="absolute inset-0 grid place-items-center text-xl text-slate-400">Stage is blank.</p> : canvasLayers.map(renderLayerPreview)}
             </div>
           </div>
         </div>
 
-        <aside className="rounded-lg border border-slate-700 bg-slate-950 p-3">
+        <aside className="flex min-h-0 flex-col rounded-lg border border-slate-700 bg-slate-950 p-3">
           <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-300">Layer Inspector</h3>
+          <div className="min-h-0 flex-1 overflow-auto pr-1">
           {!selectedPrimary ? <p className="text-slate-400">Select a layer to edit.</p> : (
             <div className="space-y-3">
               <div className="rounded border border-slate-700 bg-slate-900 p-2"><div className="mb-1 text-xs uppercase text-slate-400">Selected ({selectedLayerIds.length})</div><strong>{selectedPrimary.name}</strong></div>
@@ -487,6 +490,7 @@ export function DesignRoute() {
               </div>
             </div>
           )}
+          </div>
         </aside>
       </section>
 
