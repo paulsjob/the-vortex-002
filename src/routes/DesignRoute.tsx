@@ -45,8 +45,10 @@ export function DesignRoute() {
   const [alignScope, setAlignScope] = useState<'selection' | 'canvas'>('selection');
   const [topPanelHeight, setTopPanelHeight] = useState(700);
   const [isDraggingSplitter, setIsDraggingSplitter] = useState(false);
+  const [stageViewport, setStageViewport] = useState({ width: 0, height: 0 });
 
   const layoutRef = useRef<HTMLElement | null>(null);
+  const stageViewportRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ startX: number; startY: number; base: Map<string, { x: number; y: number }> } | null>(null);
   const measureCtxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -64,6 +66,27 @@ export function DesignRoute() {
       measureCtxRef.current = canvas.getContext('2d');
     }
   }, []);
+
+
+  useEffect(() => {
+    const node = stageViewportRef.current;
+    if (!node) return;
+
+    const update = () => {
+      const rect = node.getBoundingClientRect();
+      setStageViewport({ width: Math.max(0, rect.width - 16), height: Math.max(0, rect.height - 16) });
+    };
+
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    window.addEventListener('resize', update);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, [topPanelHeight, canvasWidth, canvasHeight]);
 
   useEffect(() => {
     if (!selectedLayerIds.length && stackLayers.length) {
@@ -327,6 +350,18 @@ export function DesignRoute() {
 
   const actionBtn = 'h-8 w-8 rounded border border-slate-600 text-sm text-slate-200 hover:bg-slate-700';
 
+
+  const stageSize = useMemo(() => {
+    const ratio = canvasWidth / canvasHeight;
+    const safeW = Math.max(1, stageViewport.width);
+    const safeH = Math.max(1, stageViewport.height);
+    const widthByHeight = safeH * ratio;
+    if (widthByHeight <= safeW) {
+      return { width: widthByHeight, height: safeH };
+    }
+    return { width: safeW, height: safeW / ratio };
+  }, [stageViewport, canvasWidth, canvasHeight]);
+
   const renderLayerPreview = (layer: Layer) => {
     const transform = getTransform(layer);
     const bounds = getLayerBounds(layer);
@@ -353,7 +388,7 @@ export function DesignRoute() {
   };
 
   return (
-    <section ref={layoutRef} className="grid h-[calc(100vh-120px)] min-h-[640px]" style={{ gridTemplateRows: `${topPanelHeight}px 10px minmax(180px, 1fr)` }}>
+    <section ref={layoutRef} className="grid h-[calc(100vh-120px)] min-h-[640px]" style={{ gridTemplateRows: `${topPanelHeight}px 12px minmax(180px, 1fr)` }}>
       <section className="grid h-full min-h-0 grid-cols-1 gap-3 rounded-xl border border-slate-800 bg-slate-900 p-4 xl:grid-cols-[420px_1fr_420px] overflow-hidden">
         <aside className="rounded-lg border border-slate-700 bg-slate-950 p-3">
           <div className="mb-3 flex items-start justify-between gap-2">
@@ -411,8 +446,8 @@ export function DesignRoute() {
 
         <div className="space-y-2 rounded-lg border border-slate-700 bg-slate-950 p-3">
           <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">Canvas · {canvasWidth} × {canvasHeight}</h3>
-          <div className="grid h-full min-h-0 place-items-center overflow-auto rounded-lg border border-slate-700 bg-slate-800 p-4">
-            <div ref={stageRef} className="relative overflow-hidden rounded border border-slate-700 bg-slate-900 shadow-2xl" style={{ aspectRatio: `${canvasWidth}/${canvasHeight}`, width: 'min(100%, calc((100vh - 260px) * ' + (canvasWidth / canvasHeight) + '))', maxWidth: '100%' }} onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedLayerIds([]); }}>
+          <div ref={stageViewportRef} className="grid h-full min-h-0 place-items-center overflow-hidden rounded-lg border border-slate-700 bg-slate-800 p-4">
+            <div ref={stageRef} className="relative overflow-hidden rounded border border-slate-700 bg-slate-900 shadow-2xl" style={{ width: `${stageSize.width}px`, height: `${stageSize.height}px`, maxWidth: '100%', maxHeight: '100%' }} onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedLayerIds([]); }}>
               {!canvasLayers.length ? <p className="absolute inset-0 grid place-items-center text-xl text-slate-400">Stage is blank.</p> : canvasLayers.map(renderLayerPreview)}
             </div>
           </div>
@@ -455,7 +490,7 @@ export function DesignRoute() {
         </aside>
       </section>
 
-      <div className={`group relative cursor-ns-resize border-y ${isDraggingSplitter ? 'border-blue-500 bg-slate-700/90' : 'border-slate-700 bg-slate-900/80'} transition-colors`} onMouseDown={startHorizontalResize}><div className={`absolute left-1/2 top-1/2 h-1 w-24 -translate-x-1/2 -translate-y-1/2 rounded ${isDraggingSplitter ? 'bg-blue-400' : 'bg-slate-600 group-hover:bg-blue-500'}`} /></div>
+      <div className={`group relative cursor-ns-resize border-y-2 ${isDraggingSplitter ? 'border-blue-500 bg-slate-700/90' : 'border-slate-700 bg-slate-900/80'} transition-colors`} onMouseDown={startHorizontalResize}><div className={`absolute left-1/2 top-1/2 h-1.5 w-28 -translate-x-1/2 -translate-y-1/2 rounded ${isDraggingSplitter ? 'bg-blue-400' : 'bg-slate-600 group-hover:bg-blue-500'}`} /></div>
 
       <section className="rounded-xl border border-slate-800 bg-slate-900 p-4 overflow-auto min-h-0">
         <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-300">Branded Assets Locker</h3>
