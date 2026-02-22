@@ -23,6 +23,7 @@ export function DesignRoute() {
     canvasHeight,
     addText,
     addAssetLayer,
+    duplicateLayer,
     setCanvasSize,
     setZOrder,
     deleteLayer,
@@ -38,26 +39,34 @@ export function DesignRoute() {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
   const [lastClickedLayerId, setLastClickedLayerId] = useState<string | null>(null);
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [lockScale, setLockScale] = useState(true);
   const [alignScope, setAlignScope] = useState<'selection' | 'canvas'>('selection');
 
   const stageRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ startX: number; startY: number; base: Map<string, { x: number; y: number }> } | null>(null);
+  const measureCtxRef = useRef<CanvasRenderingContext2D | null>(null);
 
   const assetById = useMemo(() => new Map(assetStore.assets.map((a) => [a.id, a])), [assetStore.assets]);
   const layerById = useMemo(() => new Map(layers.map((l) => [l.id, l])), [layers]);
-  const orderedLayers = useMemo(() => [...layers].sort((a, b) => b.zIndex - a.zIndex), [layers]);
+  const stackLayers = useMemo(() => [...layers].sort((a, b) => b.zIndex - a.zIndex), [layers]);
+  const canvasLayers = useMemo(() => [...layers].filter((layer) => layer.visible !== false).sort((a, b) => a.zIndex - b.zIndex), [layers]);
   const selectedLayers = useMemo(() => selectedLayerIds.map((id) => layerById.get(id)).filter(Boolean) as Layer[], [selectedLayerIds, layerById]);
   const selectedPrimary = selectedLayers[0] || null;
 
   useEffect(() => {
-    if (!selectedLayerIds.length && orderedLayers.length) {
-      setSelectedLayerIds([orderedLayers[0].id]);
-      setLastClickedLayerId(orderedLayers[0].id);
+    if (!measureCtxRef.current) {
+      const canvas = document.createElement('canvas');
+      measureCtxRef.current = canvas.getContext('2d');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!selectedLayerIds.length && stackLayers.length) {
+      setSelectedLayerIds([stackLayers[0].id]);
+      setLastClickedLayerId(stackLayers[0].id);
     }
     setSelectedLayerIds((ids) => ids.filter((id) => layerById.has(id)));
-  }, [orderedLayers, selectedLayerIds.length, layerById]);
+  }, [stackLayers, selectedLayerIds.length, layerById]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -66,10 +75,10 @@ export function DesignRoute() {
       if (!selectedLayerIds.length) return;
       const step = event.shiftKey ? 10 : 1;
       const patches: Record<string, Partial<Layer>> = {};
-      if (event.key === 'ArrowLeft') selectedLayerIds.forEach((id) => { const l = layerById.get(id); if (l) patches[id] = { x: l.x - step }; });
-      if (event.key === 'ArrowRight') selectedLayerIds.forEach((id) => { const l = layerById.get(id); if (l) patches[id] = { x: l.x + step }; });
-      if (event.key === 'ArrowUp') selectedLayerIds.forEach((id) => { const l = layerById.get(id); if (l) patches[id] = { y: l.y - step }; });
-      if (event.key === 'ArrowDown') selectedLayerIds.forEach((id) => { const l = layerById.get(id); if (l) patches[id] = { y: l.y + step }; });
+      if (event.key === 'ArrowLeft') selectedLayerIds.forEach((id) => { const l = layerById.get(id); if (l && !l.locked) patches[id] = { x: l.x - step }; });
+      if (event.key === 'ArrowRight') selectedLayerIds.forEach((id) => { const l = layerById.get(id); if (l && !l.locked) patches[id] = { x: l.x + step }; });
+      if (event.key === 'ArrowUp') selectedLayerIds.forEach((id) => { const l = layerById.get(id); if (l && !l.locked) patches[id] = { y: l.y - step }; });
+      if (event.key === 'ArrowDown') selectedLayerIds.forEach((id) => { const l = layerById.get(id); if (l && !l.locked) patches[id] = { y: l.y + step }; });
       const ids = Object.keys(patches);
       if (!ids.length) return;
       event.preventDefault();
@@ -96,15 +105,27 @@ export function DesignRoute() {
     rotation: layer.rotation ?? 0,
   });
 
+  const measureTextBounds = (layer: Extract<Layer, { kind: 'text' }>) => {
+    const ctx = measureCtxRef.current;
+    if (!ctx) return { width: Math.max(16, layer.text.length * layer.size * 0.52), height: layer.size * 1.1 };
+    ctx.font = `${layer.size}px ${layer.fontFamily}`;
+    const metrics = ctx.measureText(layer.text || ' ');
+    const width = Math.max(16, metrics.width);
+    const ascent = metrics.actualBoundingBoxAscent || layer.size * 0.75;
+    const descent = metrics.actualBoundingBoxDescent || layer.size * 0.25;
+    return { width, height: ascent + descent };
+  };
+
   const getLayerBounds = (layer: Layer) => {
     if (layer.kind === 'asset' || layer.kind === 'shape') return { width: layer.width, height: layer.height };
-    return { width: Math.max(24, layer.text.length * layer.size * 0.6), height: layer.size * 1.2 };
+    return measureTextBounds(layer);
   };
 
   const applyToSelected = (patchFactory: (layer: Layer) => Partial<Layer>) => {
     selectedLayerIds.forEach((id) => {
       const layer = layerById.get(id);
-      if (layer) updateLayer(id, patchFactory(layer));
+      if (!layer || layer.locked) return;
+      updateLayer(id, patchFactory(layer));
     });
   };
 
@@ -137,8 +158,7 @@ export function DesignRoute() {
 
   const alignLayers = (mode: 'left' | 'center' | 'right') => {
     if (!selectedLayers.length) return;
-    const targetLayers = selectedLayers;
-    const layerRects = targetLayers.map((l) => ({ layer: l, ...getLayerBounds(l) }));
+    const layerRects = selectedLayers.map((l) => ({ layer: l, ...getLayerBounds(l) }));
     const minX = Math.min(...layerRects.map((r) => r.layer.x - (r.layer.anchorX ?? 0)));
     const maxX = Math.max(...layerRects.map((r) => r.layer.x - (r.layer.anchorX ?? 0) + r.width));
     const scopeLeft = alignScope === 'canvas' ? 0 : minX;
@@ -169,7 +189,7 @@ export function DesignRoute() {
     const additive = !!event?.metaKey || !!event?.ctrlKey;
     const range = !!event?.shiftKey;
     if (range && lastClickedLayerId) {
-      const ids = orderedLayers.map((l) => l.id);
+      const ids = stackLayers.map((l) => l.id);
       const a = ids.indexOf(lastClickedLayerId);
       const b = ids.indexOf(layerId);
       const [start, end] = a < b ? [a, b] : [b, a];
@@ -188,7 +208,7 @@ export function DesignRoute() {
 
   const onLayerMouseDown = (layer: Layer, event: MouseEvent) => {
     selectLayer(layer.id, event);
-    if (event.button !== 0) return;
+    if (event.button !== 0 || layer.locked) return;
     const stage = stageRef.current;
     if (!stage) return;
     const rect = stage.getBoundingClientRect();
@@ -196,10 +216,10 @@ export function DesignRoute() {
     const activeIds = (event.metaKey || event.ctrlKey) ? (selectedLayerIds.includes(layer.id) ? selectedLayerIds : [...selectedLayerIds, layer.id]) : [layer.id];
     activeIds.forEach((id) => {
       const l = layerById.get(id);
-      if (l) base.set(id, { x: l.x, y: l.y });
+      if (l && !l.locked) base.set(id, { x: l.x, y: l.y });
     });
     dragRef.current = { startX: event.clientX, startY: event.clientY, base };
-    const onMove = (move: MouseEvent) => {
+    const onMove = (move: globalThis.MouseEvent) => {
       if (!dragRef.current) return;
       const dx = ((move.clientX - dragRef.current.startX) / rect.width) * canvasWidth;
       const dy = ((move.clientY - dragRef.current.startY) / rect.height) * canvasHeight;
@@ -234,6 +254,8 @@ export function DesignRoute() {
     );
   };
 
+  const actionBtn = 'h-8 w-8 rounded border border-slate-600 text-sm text-slate-200 hover:bg-slate-700';
+
   const renderLayerPreview = (layer: Layer) => {
     const transform = getTransform(layer);
     const bounds = getLayerBounds(layer);
@@ -252,7 +274,7 @@ export function DesignRoute() {
     return (
       <div
         key={layer.id}
-        className={`absolute select-none ${selectedLayerIds.includes(layer.id) ? 'outline outline-2 outline-blue-400' : 'outline outline-1 outline-slate-500/50'}`}
+        className={`absolute select-none ${selectedLayerIds.includes(layer.id) ? 'outline outline-2 outline-blue-400' : 'outline outline-1 outline-slate-500/40'} ${layer.locked ? 'cursor-not-allowed' : 'cursor-move'}`}
         style={baseStyle}
         onMouseDown={(event) => onLayerMouseDown(layer, event)}
       >
@@ -260,7 +282,15 @@ export function DesignRoute() {
           <img src={assetById.get(layer.assetId)?.src} alt={assetById.get(layer.assetId)?.name || layer.name} className="h-full w-full object-fill" draggable={false} />
         )}
         {layer.kind === 'text' && (
-          <div className="h-full w-full overflow-visible" style={{ fontSize: `${layer.size / 2}px`, color: layer.color, fontWeight: 700, fontFamily: layer.fontFamily }}>{layer.text}</div>
+          <div className="h-full w-full" style={{
+            fontSize: `${layer.size}px`,
+            color: layer.color,
+            fontWeight: 700,
+            fontFamily: layer.fontFamily,
+            textAlign: layer.textAlign,
+            whiteSpace: 'pre',
+            lineHeight: 1,
+          }}>{layer.text}</div>
         )}
         {layer.kind === 'shape' && <div className="h-full w-full" style={{ background: layer.fill }} />}
         <div className="pointer-events-none absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber-400" style={{ left: `${(transform.anchorX / bounds.width) * 100}%`, top: `${(transform.anchorY / bounds.height) * 100}%` }} />
@@ -270,7 +300,7 @@ export function DesignRoute() {
 
   return (
     <section className="space-y-4">
-      <section className="grid grid-cols-1 gap-3 rounded-xl border border-slate-800 bg-slate-900 p-4 xl:grid-cols-[320px_1fr_360px]">
+      <section className="grid grid-cols-1 gap-3 rounded-xl border border-slate-800 bg-slate-900 p-4 xl:grid-cols-[420px_1fr_420px]">
         <aside className="rounded-lg border border-slate-700 bg-slate-950 p-3">
           <div className="mb-3 flex items-start justify-between gap-2">
             <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">Layer Stack</h3>
@@ -306,26 +336,25 @@ export function DesignRoute() {
             </div>
           )}
 
-          {!orderedLayers.length ? <p className="text-slate-400">No layers yet.</p> : (
+          {!stackLayers.length ? <p className="text-slate-400">No layers yet.</p> : (
             <div className="space-y-2">
-              {orderedLayers.map((layer) => {
-                const isCollapsed = !!collapsed[layer.id];
-                const assetName = layer.kind === 'asset' ? assetById.get(layer.assetId)?.name || 'Asset' : null;
+              {stackLayers.map((layer) => {
                 const isSelected = selectedLayerIds.includes(layer.id);
                 return (
                   <div key={layer.id} className={`rounded border p-2 ${isSelected ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'}`} onClick={(event) => selectLayer(layer.id, event)}>
                     <div className="flex items-center gap-2">
-                      <button className="rounded border border-slate-700 px-2" onClick={(event) => { event.stopPropagation(); setCollapsed((s) => ({ ...s, [layer.id]: !s[layer.id] })); }}>{isCollapsed ? '▸' : '▾'}</button>
+                      <button className={actionBtn} onClick={(event) => { event.stopPropagation(); setZOrder(layer.id, 'up'); }} title="Move up">↑</button>
+                      <button className={actionBtn} onClick={(event) => { event.stopPropagation(); setZOrder(layer.id, 'down'); }} title="Move down">↓</button>
                       {editingLayerId === layer.id ? (
                         <input className="flex-1 rounded border border-blue-500 bg-slate-950 px-2 py-1" value={editingLayerValue} onChange={(e) => setEditingLayerValue(e.target.value)} onClick={(event) => event.stopPropagation()} onBlur={() => { renameLayer(layer.id, editingLayerValue.trim() || layer.name); setEditingLayerId(null); setEditingLayerValue(''); }} onKeyDown={(e) => { if (e.key === 'Enter') { renameLayer(layer.id, editingLayerValue.trim() || layer.name); setEditingLayerId(null); setEditingLayerValue(''); } }} autoFocus />
                       ) : (
-                        <strong className="flex-1" onDoubleClick={() => { setEditingLayerId(layer.id); setEditingLayerValue(layer.name); }}>{layer.name}{assetName ? ` · ${assetName}` : ''}</strong>
+                        <strong className="flex-1 truncate" onDoubleClick={() => { setEditingLayerId(layer.id); setEditingLayerValue(layer.name); }}>{layer.name}</strong>
                       )}
-                      <button className="rounded border border-slate-600 px-2" onClick={(event) => { event.stopPropagation(); setZOrder(layer.id, 'up'); }}>↑</button>
-                      <button className="rounded border border-slate-600 px-2" onClick={(event) => { event.stopPropagation(); setZOrder(layer.id, 'down'); }}>↓</button>
-                      <button className="rounded border border-red-700 px-2 text-red-300" title="Delete" onClick={(event) => { event.stopPropagation(); deleteLayer(layer.id); }}>🗑</button>
+                      <button className={actionBtn} onClick={(event) => { event.stopPropagation(); updateLayer(layer.id, { visible: !layer.visible }); }} title={layer.visible ? 'Hide layer' : 'Show layer'}>{layer.visible ? '👁' : '🚫'}</button>
+                      <button className={actionBtn} onClick={(event) => { event.stopPropagation(); updateLayer(layer.id, { locked: !layer.locked }); }} title={layer.locked ? 'Unlock layer' : 'Lock layer'}>{layer.locked ? '🔒' : '🔓'}</button>
+                      <button className={actionBtn} onClick={(event) => { event.stopPropagation(); duplicateLayer(layer.id); }} title="Duplicate">⧉</button>
+                      <button className={`${actionBtn} border-red-700 text-red-300`} onClick={(event) => { event.stopPropagation(); deleteLayer(layer.id); }} title="Delete">🗑</button>
                     </div>
-                    {!isCollapsed && layer.kind === 'text' && <div className="mt-2 text-sm text-slate-400">{layer.text}</div>}
                   </div>
                 );
               })}
@@ -335,9 +364,9 @@ export function DesignRoute() {
 
         <div className="space-y-2 rounded-lg border border-slate-700 bg-slate-950 p-3">
           <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">Canvas · {canvasWidth} × {canvasHeight}</h3>
-          <div className="grid max-h-[72vh] min-h-[420px] place-items-center overflow-auto rounded-lg border border-slate-700 bg-slate-800 p-4">
-            <div ref={stageRef} className="relative overflow-hidden rounded border border-slate-700 bg-slate-900 shadow-2xl" style={{ aspectRatio: `${canvasWidth}/${canvasHeight}`, width: `min(100%, calc((72vh - 2rem) * ${canvasWidth / canvasHeight}))` }} onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedLayerIds([]); }}>
-              {!orderedLayers.length ? <p className="absolute inset-0 grid place-items-center text-xl text-slate-400">Stage is blank.</p> : orderedLayers.map(renderLayerPreview)}
+          <div className="grid max-h-[78vh] min-h-[520px] place-items-center overflow-auto rounded-lg border border-slate-700 bg-slate-800 p-4">
+            <div ref={stageRef} className="relative overflow-hidden rounded border border-slate-700 bg-slate-900 shadow-2xl" style={{ aspectRatio: `${canvasWidth}/${canvasHeight}`, width: `min(100%, calc((78vh - 2rem) * ${canvasWidth / canvasHeight}))` }} onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedLayerIds([]); }}>
+              {!canvasLayers.length ? <p className="absolute inset-0 grid place-items-center text-xl text-slate-400">Stage is blank.</p> : canvasLayers.map(renderLayerPreview)}
             </div>
           </div>
         </div>
@@ -371,6 +400,11 @@ export function DesignRoute() {
                         {FONT_OPTIONS.map((font) => <option key={font} value={font}>{font}</option>)}
                       </select>
                     </label>
+                    <div className="flex gap-2 text-xs">
+                      <button className={`rounded border px-2 py-1 ${selectedPrimary.textAlign === 'left' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => applyToSelected((layer) => layer.kind === 'text' ? ({ textAlign: 'left' } as Partial<Layer>) : ({}))}>Left</button>
+                      <button className={`rounded border px-2 py-1 ${selectedPrimary.textAlign === 'center' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => applyToSelected((layer) => layer.kind === 'text' ? ({ textAlign: 'center' } as Partial<Layer>) : ({}))}>Center</button>
+                      <button className={`rounded border px-2 py-1 ${selectedPrimary.textAlign === 'right' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => applyToSelected((layer) => layer.kind === 'text' ? ({ textAlign: 'right' } as Partial<Layer>) : ({}))}>Right</button>
+                    </div>
                   </div>
 
                   <div className="space-y-2 rounded border border-slate-700 bg-slate-900 p-3">
@@ -389,7 +423,6 @@ export function DesignRoute() {
                         {DATA_FIELDS.map((field) => <option key={field} value={field}>{field}</option>)}
                       </select>
                     </label>
-                    <p className="text-xs text-slate-400">Bind once, then content updates from Data Engine without hand-editing every text layer.</p>
                   </div>
                 </>
               )}
@@ -427,7 +460,7 @@ export function DesignRoute() {
 
       <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
         <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-300">Branded Assets Locker</h3>
-        <div className="grid grid-cols-1 gap-3 xl:grid-cols-[280px_1fr]">
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-[320px_1fr]">
           <aside className="rounded-lg border border-slate-700 bg-slate-950 p-3">
             <h4 className="mb-2 text-xl font-bold">Folders</h4>
             {renderFolderTree(assetStore.brandedExplorer.rootId)}

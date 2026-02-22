@@ -19,6 +19,7 @@ interface LayerStore {
   addText: () => void;
   addShape: () => void;
   addAssetLayer: (assetId: string) => void;
+  duplicateLayer: (id: string) => void;
   updateLayer: (id: string, patch: Partial<Layer>) => void;
   renameLayer: (id: string, name: string) => void;
   deleteLayer: (id: string) => void;
@@ -34,6 +35,8 @@ const DEFAULT_TRANSFORM = {
   scaleX: 100,
   scaleY: 100,
   rotation: 0,
+  visible: true,
+  locked: false,
 };
 
 const withTextDefaults = (layer: TextLayer): TextLayer => ({
@@ -41,9 +44,10 @@ const withTextDefaults = (layer: TextLayer): TextLayer => ({
   fontFamily: layer.fontFamily || 'Inter',
   dataBindingSource: layer.dataBindingSource || 'manual',
   dataBindingField: layer.dataBindingField || '',
+  textAlign: layer.textAlign || 'left',
 });
 
-export const useLayerStore = create<LayerStore>((set) => ({
+export const useLayerStore = create<LayerStore>((set, get) => ({
   layers: [],
   canvasWidth: 1920,
   canvasHeight: 1080,
@@ -63,6 +67,7 @@ export const useLayerStore = create<LayerStore>((set) => ({
       fontFamily: 'Inter',
       dataBindingSource: 'manual',
       dataBindingField: '',
+      textAlign: 'left',
       ...DEFAULT_TRANSFORM,
     }],
   })),
@@ -96,6 +101,22 @@ export const useLayerStore = create<LayerStore>((set) => ({
       ...DEFAULT_TRANSFORM,
     }],
   })),
+  duplicateLayer: (id) => set((s) => {
+    const target = s.layers.find((layer) => layer.id === id);
+    if (!target) return s;
+    const nextZ = Math.max(-1, ...s.layers.map((layer) => layer.zIndex)) + 1;
+    const clone: Layer = {
+      ...structuredClone(target),
+      id: `${target.kind}-${Date.now()}`,
+      name: `${target.name} Copy`,
+      x: target.x + 10,
+      y: target.y + 10,
+      zIndex: nextZ,
+      visible: true,
+      locked: false,
+    };
+    return { layers: [...s.layers, clone] };
+  }),
   updateLayer: (id, patch) => set((s) => ({ layers: s.layers.map((l) => (l.id === id ? ({ ...l, ...patch } as Layer) : l)) })),
   renameLayer: (id, name) => set((s) => ({ layers: s.layers.map((l) => (l.id === id ? { ...l, name } : l)) })),
   deleteLayer: (id) => set((s) => ({ layers: s.layers.filter((l) => l.id !== id).map((l, i) => ({ ...l, zIndex: i })) })),

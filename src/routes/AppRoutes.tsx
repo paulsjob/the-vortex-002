@@ -18,7 +18,7 @@ export function AppRoutes() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <header className="border-b border-slate-800 bg-slate-900/80 px-6 py-4 backdrop-blur">
-        <div className="mx-auto flex max-w-[1800px] items-center justify-between">
+        <div className="flex items-center justify-between">
           <h1 className="text-4xl font-bold tracking-wide text-slate-100">Renderless</h1>
           <div className="flex items-center gap-6">
             <nav className="flex gap-2 rounded-xl border border-slate-700 bg-slate-950 p-2">
@@ -33,7 +33,7 @@ export function AppRoutes() {
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-[1800px] p-6">
+      <main className="p-6">
         <Routes>
           <Route path="/" element={<DashboardRoute />} />
           <Route path="/design" element={<DesignRoute />} />

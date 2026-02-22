@@ -46,6 +46,8 @@ export interface LayerBase {
   scaleX: number;
   scaleY: number;
   rotation: number;
+  visible: boolean;
+  locked: boolean;
 }
 
 export interface TextLayer extends LayerBase {
@@ -56,6 +58,7 @@ export interface TextLayer extends LayerBase {
   fontFamily: string;
   dataBindingSource: string;
   dataBindingField: string;
+  textAlign: 'left' | 'center' | 'right';
 }
 
 export interface ShapeLayer extends LayerBase {
