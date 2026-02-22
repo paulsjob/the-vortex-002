@@ -45,9 +45,10 @@ const withTextDefaults = (layer: TextLayer): TextLayer => ({
   dataBindingSource: layer.dataBindingSource || 'manual',
   dataBindingField: layer.dataBindingField || '',
   textAlign: layer.textAlign || 'left',
+  textMode: layer.textMode || 'point',
 });
 
-export const useLayerStore = create<LayerStore>((set, get) => ({
+export const useLayerStore = create<LayerStore>((set) => ({
   layers: [],
   canvasWidth: 1920,
   canvasHeight: 1080,
@@ -68,6 +69,7 @@ export const useLayerStore = create<LayerStore>((set, get) => ({
       dataBindingSource: 'manual',
       dataBindingField: '',
       textAlign: 'left',
+      textMode: 'point',
       ...DEFAULT_TRANSFORM,
     }],
   })),
