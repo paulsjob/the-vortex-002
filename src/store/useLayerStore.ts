@@ -28,19 +28,63 @@ interface LayerStore {
   loadTemplate: (template: SavedTemplate) => void;
 }
 
-export const useLayerStore = create<LayerStore>((set, get) => ({
+const DEFAULT_TRANSFORM = {
+  anchorX: 0,
+  anchorY: 0,
+  scaleX: 100,
+  scaleY: 100,
+  rotation: 0,
+};
+
+export const useLayerStore = create<LayerStore>((set) => ({
   layers: [],
   canvasWidth: 1920,
   canvasHeight: 1080,
   templates: [],
   addText: () => set((s) => ({
-    layers: [...s.layers, { id: `text-${Date.now()}`, kind: 'text', name: `Text ${s.layers.length + 1}`, text: 'New Text Layer', x: 32, y: 64, zIndex: s.layers.length, opacity: 100, color: '#ffffff', size: 56 }],
+    layers: [...s.layers, {
+      id: `text-${Date.now()}`,
+      kind: 'text',
+      name: `Text ${s.layers.length + 1}`,
+      text: 'New Text Layer',
+      x: 32,
+      y: 64,
+      zIndex: s.layers.length,
+      opacity: 100,
+      color: '#ffffff',
+      size: 56,
+      ...DEFAULT_TRANSFORM,
+    }],
   })),
   addShape: () => set((s) => ({
-    layers: [...s.layers, { id: `shape-${Date.now()}`, kind: 'shape', name: `Shape ${s.layers.length + 1}`, x: 120, y: 120, zIndex: s.layers.length, opacity: 100, width: 320, height: 120, fill: '#1d4ed8' }],
+    layers: [...s.layers, {
+      id: `shape-${Date.now()}`,
+      kind: 'shape',
+      name: `Shape ${s.layers.length + 1}`,
+      x: 120,
+      y: 120,
+      zIndex: s.layers.length,
+      opacity: 100,
+      width: 320,
+      height: 120,
+      fill: '#1d4ed8',
+      ...DEFAULT_TRANSFORM,
+    }],
   })),
   addAssetLayer: (assetId) => set((s) => ({
-    layers: [...s.layers, { id: `asset-${Date.now()}`, kind: 'asset', name: `Asset ${s.layers.length + 1}`, assetId, x: 0, y: 0, zIndex: s.layers.length, opacity: 100, width: s.canvasWidth, height: s.canvasHeight }],
+    layers: [...s.layers, {
+      id: `asset-${Date.now()}`,
+      kind: 'asset',
+      name: `Asset ${s.layers.length + 1}`,
+      assetId,
+      x: 0,
+      y: 0,
+      zIndex: s.layers.length,
+      opacity: 100,
+      width: s.canvasWidth,
+      height: s.canvasHeight,
+      ...DEFAULT_TRANSFORM,
+    }],
   })),
   updateLayer: (id, patch) => set((s) => ({ layers: s.layers.map((l) => (l.id === id ? ({ ...l, ...patch } as Layer) : l)) })),
   renameLayer: (id, name) => set((s) => ({ layers: s.layers.map((l) => (l.id === id ? { ...l, name } : l)) })),
@@ -60,6 +104,9 @@ export const useLayerStore = create<LayerStore>((set, get) => ({
   loadTemplate: (template) => set({
     canvasWidth: template.canvasWidth,
     canvasHeight: template.canvasHeight,
-    layers: structuredClone(template.layers),
+    layers: structuredClone(template.layers).map((layer) => ({
+      ...DEFAULT_TRANSFORM,
+      ...layer,
+    })),
   }),
 }));

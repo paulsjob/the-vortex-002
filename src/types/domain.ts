@@ -41,6 +41,11 @@ export interface LayerBase {
   y: number;
   zIndex: number;
   opacity: number;
+  anchorX: number;
+  anchorY: number;
+  scaleX: number;
+  scaleY: number;
+  rotation: number;
 }
 
 export interface TextLayer extends LayerBase {
