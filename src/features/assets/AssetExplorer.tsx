@@ -13,6 +13,8 @@ export function AssetExplorer({ kind, title }: Props) {
   const uploadRef = useRef<HTMLInputElement | null>(null);
 
   const getNode = (id: string) => explorer.nodes.find((n) => n.id === id);
+  const currentFolder = getNode(currentFolderId);
+
   const children = useMemo(() => {
     const folder = getNode(currentFolderId);
     if (!folder || folder.type !== 'folder') return [];
@@ -32,7 +34,7 @@ export function AssetExplorer({ kind, title }: Props) {
           {childFolders.length > 0 ? (
             <button className="h-5 w-5 rounded border border-slate-700 bg-slate-800 text-xs" onClick={() => store.toggleExpanded(folderId, kind)}>{isOpen ? '▾' : '▸'}</button>
           ) : <span className="inline-block h-5 w-5" />}
-          <button className={`w-full rounded border px-2 py-1 text-left ${currentFolderId === folder.id ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'}`} onClick={() => setCurrentFolderId(folder.id)}>{folder.name}</button>
+          <button className={`w-full rounded border px-2 py-1 text-left ${currentFolderId === folder.id ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'}`} onClick={() => setCurrentFolderId(folder.id)} onDoubleClick={() => setCurrentFolderId(folder.id)}>{folder.name}</button>
         </div>
         {isOpen && childFolders.map((c) => renderTree(c.id, depth + 1))}
       </div>
@@ -46,6 +48,7 @@ export function AssetExplorer({ kind, title }: Props) {
         {renderTree(explorer.rootId)}
       </aside>
       <div className="rounded-lg border border-slate-800 bg-slate-950 p-3">
+        <p className="mb-2 text-xs text-slate-400">Open folder: <span className="font-semibold text-slate-200">{currentFolder?.type === 'folder' ? currentFolder.name : 'Unknown'}</span> · Uploads are saved to this folder.</p>
         <div className="mb-3 flex flex-wrap gap-2">
           <input value={query} onChange={(e) => setQuery(e.target.value)} className="flex-1 rounded border border-slate-700 bg-slate-900 px-2 py-1" placeholder={`Search ${title.toLowerCase()}`} />
           <button
@@ -76,12 +79,12 @@ export function AssetExplorer({ kind, title }: Props) {
         <div className="grid gap-2 text-sm">
           <div className="grid grid-cols-4 text-slate-400"><span>Name</span><span>Type</span><span>Dimension</span><span>Modified</span></div>
           {children.filter((item) => item.name.toLowerCase().includes(query.toLowerCase())).map((item) => (
-            <div key={item.id} className="grid grid-cols-4 rounded border border-slate-800 bg-slate-900 p-2">
+            <button key={item.id} className="grid grid-cols-4 rounded border border-slate-800 bg-slate-900 p-2 text-left hover:border-blue-500/60 hover:bg-slate-800" onDoubleClick={() => { if (item.type === 'folder') setCurrentFolderId(item.id); }}>
               <span>{item.type === 'folder' ? `📁 ${item.name}` : `🖼️ ${item.name}`}</span>
               <span>{item.type === 'folder' ? 'Folder' : 'File'}</span>
               <span>{item.type === 'folder' ? `${item.children.length} item(s)` : item.dimension}</span>
               <span>{new Date(item.createdAt).toLocaleDateString()}</span>
-            </div>
+            </button>
           ))}
           {!children.length && <p className="text-slate-500">This folder is empty.</p>}
         </div>

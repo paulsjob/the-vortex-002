@@ -342,7 +342,7 @@ export function DesignRoute() {
           {children.length > 0 ? (
             <button className="h-5 w-5 rounded border border-slate-700 bg-slate-800 text-xs" onClick={() => assetStore.toggleExpanded(id, 'branded')}>{isOpen ? '▾' : '▸'}</button>
           ) : <span className="inline-block h-5 w-5" />}
-          <button onClick={() => setFolderId(id)} className={`w-full rounded border px-2 py-1 text-left ${folderId === id ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'}`}>{node.name}</button>
+          <button onClick={() => setFolderId(id)} onDoubleClick={() => setFolderId(id)} className={`w-full rounded border px-2 py-1 text-left ${folderId === id ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'}`}>{node.name}</button>
         </div>
         {isOpen && children.map((child) => renderFolderTree(child.id, depth + 1))}
       </div>
