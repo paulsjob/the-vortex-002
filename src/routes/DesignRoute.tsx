@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEven
 import { useAssetStore } from '../store/useAssetStore';
 import { useDataEngineStore } from '../store/useDataEngineStore';
 import { useLayerStore } from '../store/useLayerStore';
+import { useTemplateStore } from '../store/useTemplateStore';
 import type { ExplorerNode, Layer } from '../types/domain';
 
 const TEMPLATE_SIZES = [
@@ -17,6 +18,7 @@ const transformDefaults = { anchorX: 0, anchorY: 0, scaleX: 100, scaleY: 100, ro
 
 export function DesignRoute() {
   const assetStore = useAssetStore();
+  const templateStore = useTemplateStore();
   const engineGame = useDataEngineStore((s) => s.game);
   const {
     layers,
@@ -46,6 +48,7 @@ export function DesignRoute() {
   const [stageViewport, setStageViewport] = useState({ width: 0, height: 0 });
   const [stageTextEditId, setStageTextEditId] = useState<string | null>(null);
   const [stageTextEditValue, setStageTextEditValue] = useState('');
+  const [templateName, setTemplateName] = useState('');
 
   const stageViewportRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -217,6 +220,18 @@ export function DesignRoute() {
   };
 
   const resetSelectedTransform = () => applyToSelected(() => transformDefaults as Partial<Layer>);
+
+  const saveCurrentTemplate = () => {
+    const name = templateName.trim() || `Template ${new Date().toLocaleTimeString()}`;
+    templateStore.saveTemplate({
+      name,
+      folderId: templateStore.rootId,
+      canvasWidth,
+      canvasHeight,
+      layers,
+    });
+    setTemplateName(name);
+  };
 
 
   const startStageTextEdit = (layer: Extract<Layer, { kind: 'text' }>) => {
@@ -455,7 +470,7 @@ export function DesignRoute() {
         </aside>
 
         <div className="flex min-h-0 flex-col gap-2 rounded-lg border border-slate-700 bg-slate-950 p-3">
-          <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">Canvas · {canvasWidth} × {canvasHeight}</h3><select className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs" value={`${canvasWidth}x${canvasHeight}`} onChange={(e) => { const [w, h] = e.target.value.split('x').map(Number); setCanvasSize(w, h); }}>{TEMPLATE_SIZES.map((size) => <option key={size.value} value={size.value}>{size.label}</option>)}</select></div>
+          <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">Canvas · {canvasWidth} × {canvasHeight}</h3><div className="flex flex-wrap items-center gap-2"><input className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs" placeholder="Template name" value={templateName} onChange={(e) => setTemplateName(e.target.value)} /><button className="rounded bg-blue-700 px-3 py-1 text-xs font-semibold" onClick={saveCurrentTemplate}>Save Template</button><select className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs" value={`${canvasWidth}x${canvasHeight}`} onChange={(e) => { const [w, h] = e.target.value.split('x').map(Number); setCanvasSize(w, h); }}>{TEMPLATE_SIZES.map((size) => <option key={size.value} value={size.value}>{size.label}</option>)}</select></div></div>
           <div ref={stageViewportRef} className="grid flex-1 min-h-0 place-items-center overflow-hidden rounded-lg border border-slate-700 bg-slate-800 p-6">
             <div className="relative" style={{ width: `${canvasWidth * stageScale}px`, height: `${canvasHeight * stageScale}px` }}>
               <div ref={stageRef} className="relative overflow-hidden rounded border border-slate-500 bg-slate-900 shadow-[0_0_0_1px_rgba(148,163,184,0.25),0_20px_60px_rgba(0,0,0,0.45)]" style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px`, transform: `scale(${stageScale})`, transformOrigin: 'top left' }} onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedLayerIds([]); }}>

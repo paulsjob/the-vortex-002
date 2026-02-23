@@ -2,6 +2,7 @@ import { NavLink, Route, Routes } from 'react-router-dom';
 import { DashboardRoute } from './DashboardRoute';
 import { DesignRoute } from './DesignRoute';
 import { DataEngineRoute } from './DataEngineRoute';
+import { ControlRoomRoute } from './ControlRoomRoute';
 
 const tabs = [
   { to: '/', label: 'Dashboard' },
@@ -39,7 +40,7 @@ export function AppRoutes() {
           <Route path="/" element={<DashboardRoute />} />
           <Route path="/design" element={<DesignRoute />} />
           <Route path="/data-engine" element={<DataEngineRoute />} />
-          <Route path="/control-room" element={<Placeholder title="Control Room" />} />
+          <Route path="/control-room" element={<ControlRoomRoute />} />
           <Route path="/output" element={<Placeholder title="Output" />} />
         </Routes>
       </main>
