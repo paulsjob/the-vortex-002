@@ -2,29 +2,23 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEven
 import { useAssetStore } from '../store/useAssetStore';
 import { useDataEngineStore } from '../store/useDataEngineStore';
 import { useLayerStore } from '../store/useLayerStore';
-import { useTemplateStore } from '../store/useTemplateStore';
 import type { ExplorerNode, Layer } from '../types/domain';
-
-const TEMPLATE_SIZES = [
-  { value: '1920x1080', label: '1920 × 1080' },
-  { value: '1080x1920', label: '1080 × 1920' },
-  { value: '1080x1350', label: '1080 × 1350' },
-  { value: '1080x1080', label: '1080 × 1080' },
-];
 
 const FONT_OPTIONS = ['Inter', 'Arial', 'Helvetica', 'Roboto', 'Montserrat', 'Oswald', 'Georgia', 'Times New Roman'];
 const DATA_FIELDS = ['score.home', 'score.away', 'inning.number', 'inning.state', 'count.balls', 'count.strikes', 'count.outs', 'runners.first', 'runners.second', 'runners.third', 'pitch.type', 'pitch.velocity', 'pitch.location', 'bat.batspeed', 'bat.exitvelo', 'bat.launchangle', 'bat.distance', 'matchup.pitcher', 'matchup.batter'];
+const VIRTUAL_CANVAS_WIDTH = 1920;
+const VIRTUAL_CANVAS_HEIGHT = 1080;
 const transformDefaults = { anchorX: 0, anchorY: 0, scaleX: 100, scaleY: 100, rotation: 0 };
 
 export function DesignRoute() {
   const assetStore = useAssetStore();
-  const templateStore = useTemplateStore();
   const engineGame = useDataEngineStore((s) => s.game);
   const {
     layers,
-    canvasWidth,
-    canvasHeight,
+    canvasWidth: storeCanvasWidth,
+    canvasHeight: storeCanvasHeight,
     addText,
+    addShape,
     addAssetLayer,
     duplicateLayer,
     setCanvasSize,
@@ -38,12 +32,12 @@ export function DesignRoute() {
   const [search, setSearch] = useState('');
   const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
   const [editingLayerValue, setEditingLayerValue] = useState('');
-  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
   const [lastClickedLayerId, setLastClickedLayerId] = useState<string | null>(null);
   const [lockScale, setLockScale] = useState(true);
   const [alignScope, setAlignScope] = useState<'selection' | 'canvas'>('selection');
   const [leftPanelTab, setLeftPanelTab] = useState<'layers' | 'assets'>('layers');
+  const [interactionMode, setInteractionMode] = useState<'select' | 'pan'>('select');
   const [stageViewport, setStageViewport] = useState({ width: 0, height: 0 });
 
   const stageViewportRef = useRef<HTMLDivElement | null>(null);
@@ -57,6 +51,15 @@ export function DesignRoute() {
   const canvasLayers = useMemo(() => [...layers].filter((layer) => layer.visible !== false).sort((a, b) => a.zIndex - b.zIndex), [layers]);
   const selectedLayers = useMemo(() => selectedLayerIds.map((id) => layerById.get(id)).filter(Boolean) as Layer[], [selectedLayerIds, layerById]);
   const selectedPrimary = selectedLayers[0] || null;
+
+  const canvasWidth = VIRTUAL_CANVAS_WIDTH;
+  const canvasHeight = VIRTUAL_CANVAS_HEIGHT;
+
+  useEffect(() => {
+    if (storeCanvasWidth !== VIRTUAL_CANVAS_WIDTH || storeCanvasHeight !== VIRTUAL_CANVAS_HEIGHT) {
+      setCanvasSize(VIRTUAL_CANVAS_WIDTH, VIRTUAL_CANVAS_HEIGHT);
+    }
+  }, [storeCanvasWidth, storeCanvasHeight, setCanvasSize]);
 
   useEffect(() => {
     if (!measureCtxRef.current) {
@@ -223,12 +226,6 @@ export function DesignRoute() {
     return { width: w, height: h };
   };
 
-  const insertSelectedAsset = () => {
-    const candidate = selectedAssetId || (files[0]?.type === 'file' ? files[0].id : null);
-    if (!candidate) return;
-    const dims = parseAssetDimensions(assetById.get(candidate)?.dimension);
-    addAssetLayer(candidate, dims ?? undefined);
-  };
 
   const selectLayer = (layerId: string, event?: { shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean }) => {
     const additive = !!event?.metaKey || !!event?.ctrlKey;
@@ -255,7 +252,6 @@ export function DesignRoute() {
     if (event.button !== 0 || layer.locked) return;
     const stage = stageRef.current;
     if (!stage) return;
-    const rect = stage.getBoundingClientRect();
     const base = new Map<string, { x: number; y: number }>();
     const activeIds = (event.metaKey || event.ctrlKey) ? (selectedLayerIds.includes(layer.id) ? selectedLayerIds : [...selectedLayerIds, layer.id]) : [layer.id];
     activeIds.forEach((id) => {
@@ -265,8 +261,8 @@ export function DesignRoute() {
     dragRef.current = { startX: event.clientX, startY: event.clientY, base };
     const onMove = (move: globalThis.MouseEvent) => {
       if (!dragRef.current) return;
-      const dx = ((move.clientX - dragRef.current.startX) / rect.width) * canvasWidth;
-      const dy = ((move.clientY - dragRef.current.startY) / rect.height) * canvasHeight;
+      const dx = (move.clientX - dragRef.current.startX) / stageScale;
+      const dy = (move.clientY - dragRef.current.startY) / stageScale;
       dragRef.current.base.forEach((start, id) => {
         updateLayer(id, { x: Math.round(start.x + dx), y: Math.round(start.y + dy) });
       });
@@ -330,16 +326,11 @@ export function DesignRoute() {
   const actionBtn = 'h-8 w-8 rounded border border-slate-600 text-sm text-slate-200 hover:bg-slate-700';
 
 
-  const stageSize = useMemo(() => {
-    const ratio = canvasWidth / canvasHeight;
+  const stageScale = useMemo(() => {
     const safeW = Math.max(1, stageViewport.width);
     const safeH = Math.max(1, stageViewport.height);
-    const widthByHeight = safeH * ratio;
-    if (widthByHeight <= safeW) {
-      return { width: widthByHeight, height: safeH };
-    }
-    return { width: safeW, height: safeW / ratio };
-  }, [stageViewport, canvasWidth, canvasHeight]);
+    return Math.max(0.01, Math.min(safeW / VIRTUAL_CANVAS_WIDTH, safeH / VIRTUAL_CANVAS_HEIGHT));
+  }, [stageViewport]);
 
   const renderLayerPreview = (layer: Layer) => {
     const transform = getTransform(layer);
@@ -376,42 +367,23 @@ export function DesignRoute() {
           </div>
 
           <div className="mt-3 min-h-0 flex-1 overflow-auto pr-1">
+            <div className="mb-3">
+              <h3 className="text-sm font-bold tracking-[0.2em] text-zinc-100">STAGE PRO</h3>
+              <p className="text-[10px] tracking-[0.25em] text-zinc-400">STUDIO EDITOR</p>
+            </div>
+            <div className="mb-3 grid grid-cols-4 gap-1 text-[10px]">
+              <button className="rounded bg-zinc-800 px-1 py-2 text-zinc-100 hover:bg-zinc-700" onClick={addText}>T<br/>TEXT</button>
+              <button className="rounded bg-zinc-800 px-1 py-2 text-zinc-100" onClick={addShape}>☆<br/>SHAPE</button>
+              <button className="rounded bg-zinc-800 px-1 py-2 text-zinc-500">∞<br/>FIGMA</button>
+              <button className="rounded bg-zinc-800 px-1 py-2 text-zinc-500">▶<br/>RIVE</button>
+            </div>
+            <div className="mb-3 flex rounded-full bg-zinc-800 p-1 text-xs">
+              <button className={`flex-1 rounded-full px-3 py-1 ${interactionMode === 'select' ? 'bg-blue-900 text-blue-300' : 'text-zinc-400'}`} onClick={() => setInteractionMode('select')}>SELECT</button>
+              <button className={`flex-1 rounded-full px-3 py-1 ${interactionMode === 'pan' ? 'bg-blue-900 text-blue-300' : 'text-zinc-400'}`} onClick={() => setInteractionMode('pan')}>PAN</button>
+            </div>
+
             {leftPanelTab === 'layers' ? (
               <>
-          <div className="mb-3 flex items-start justify-between gap-2">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">Layer Stack</h3>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <button className="rounded border border-slate-600 bg-slate-800 px-2 py-1" onClick={() => { const name = window.prompt('Template name', `Template ${Date.now()}`)?.trim(); if (name) templateStore.saveTemplate({ name, folderId: templateStore.rootId, canvasWidth, canvasHeight, layers }); }}>+New</button>
-              <button className="rounded border border-slate-600 bg-slate-800 px-2 py-1" onClick={() => { const name = window.prompt('Save template as', `Saved ${Date.now()}`)?.trim(); if (name) templateStore.saveTemplate({ name, folderId: templateStore.rootId, canvasWidth, canvasHeight, layers }); }}>Save</button>
-              <button className="rounded border border-slate-600 bg-slate-800 px-2 py-1" onClick={insertSelectedAsset}>+Asset</button>
-              <button className="rounded border border-slate-600 bg-slate-800 px-2 py-1" onClick={addText}>+Text</button>
-            </div>
-          </div>
-
-          <label className="mb-2 block text-sm">Template Size
-            <select className="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2" value={`${canvasWidth}x${canvasHeight}`} onChange={(e) => { const [w, h] = e.target.value.split('x').map(Number); setCanvasSize(w, h); }}>
-              {TEMPLATE_SIZES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
-          </label>
-
-          <div className="mb-2 flex gap-2 text-xs">
-            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('left')}>Align Left</button>
-            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('center')}>Align Center</button>
-            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('right')}>Align Right</button>
-          </div>
-          {selectedLayerIds.length > 1 && (
-            <div className="mb-3 space-y-2 rounded border border-slate-700 p-2 text-xs">
-              <div className="flex gap-2">
-                <button className={`rounded border px-2 py-1 ${alignScope === 'selection' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => setAlignScope('selection')}>Selection</button>
-                <button className={`rounded border px-2 py-1 ${alignScope === 'canvas' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => setAlignScope('canvas')}>Canvas</button>
-              </div>
-              <div className="flex gap-2">
-                <button className="rounded border border-slate-700 px-2 py-1" onClick={() => distributeLayers('x')}>Distribute H</button>
-                <button className="rounded border border-slate-700 px-2 py-1" onClick={() => distributeLayers('y')}>Distribute V</button>
-              </div>
-            </div>
-          )}
-
           {!stackLayers.length ? <p className="text-slate-400">No layers yet.</p> : <div className="space-y-2">{stackLayers.map((layer) => (
             <div key={layer.id} className={`rounded border p-2 ${selectedLayerIds.includes(layer.id) ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'}`} onClick={(event) => selectLayer(layer.id, event)}>
               <div className="flex items-center gap-2">
@@ -432,29 +404,25 @@ export function DesignRoute() {
               </>
             ) : (
               <div className="space-y-3">
-                <div className="space-y-2">
-                  <button className="w-full rounded bg-emerald-700 px-3 py-2 text-sm" onClick={insertSelectedAsset}>Insert Selected in Canvas</button>
-                  <div className="flex flex-wrap gap-2">
-                    <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search assets" className="flex-1 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm" />
-                    <button className="rounded bg-blue-700 px-3 py-2 text-sm" onClick={() => { const name = window.prompt('Name this new folder')?.trim(); if (name) assetStore.addFolder(name, folderId, 'branded'); }}>+ Folder</button>
-                    <label className="cursor-pointer rounded bg-blue-700 px-3 py-2 text-sm">Upload<input type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" multiple className="hidden" onChange={async (event) => { const upload = Array.from(event.target.files || []); if (upload.length) await assetStore.uploadFiles(upload, folderId, 'branded'); event.currentTarget.value = ''; }} /></label>
-                  </div>
+                <div className="flex flex-wrap gap-2">
+                  <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search assets" className="flex-1 rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm" />
+                  <label className="cursor-pointer rounded bg-blue-700 px-3 py-2 text-sm">Upload<input type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" multiple className="hidden" onChange={async (event) => { const upload = Array.from(event.target.files || []); if (upload.length) await assetStore.uploadFiles(upload, folderId, 'branded'); event.currentTarget.value = ''; }} /></label>
                 </div>
-                <div className="rounded border border-slate-700 bg-slate-900 p-3">
-                  <div className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Folders</div>
+                <div className="rounded border border-zinc-700 bg-zinc-900 p-3">
+                  <div className="mb-2 text-xs font-bold uppercase tracking-wider text-zinc-400">Folders</div>
                   {renderFolderTree(assetStore.brandedExplorer.rootId)}
                 </div>
-                <div className="rounded border border-slate-700 bg-slate-900 p-3">
-                  <div className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Files</div>
-                  <div className="space-y-2">
-                    {filtered.filter((item) => item.type === 'file').map((item) => (
-                      <button key={item.id} className={`flex w-full items-center gap-2 rounded border px-2 py-2 text-left text-sm ${selectedAssetId === item.id ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-950'}`} onClick={() => setSelectedAssetId(item.id)}>
-                        <img src={item.src} alt={item.name} className="h-8 w-8 rounded object-cover" />
-                        <span className="truncate">{item.name}</span>
+                <div className="grid grid-cols-2 gap-2">
+                  {filtered.filter((item) => item.type === 'file').map((item) => {
+                    const dims = parseAssetDimensions(item.dimension);
+                    return (
+                      <button key={item.id} className="rounded border border-zinc-700 bg-zinc-900 p-1 text-left" onClick={() => addAssetLayer(item.id, dims ?? undefined)}>
+                        <img src={item.src} alt={item.name} className="mb-1 h-20 w-full rounded object-cover" />
+                        <span className="block truncate text-xs text-zinc-300">{item.name}</span>
                       </button>
-                    ))}
-                    {!filtered.some((item) => item.type === 'file') && <p className="text-sm text-slate-500">No files in this folder.</p>}
-                  </div>
+                    );
+                  })}
+                  {!filtered.some((item) => item.type === 'file') && <p className="text-sm text-zinc-500">No files in this folder.</p>}
                 </div>
               </div>
             )}
@@ -462,16 +430,19 @@ export function DesignRoute() {
         </aside>
 
         <div className="flex min-h-0 flex-col gap-2 rounded-lg border border-slate-700 bg-slate-950 p-3">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">Canvas · {canvasWidth} × {canvasHeight}</h3>
+          <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">Canvas · 1920 × 1080</h3>
           <div ref={stageViewportRef} className="grid flex-1 min-h-0 place-items-center overflow-hidden rounded-lg border border-slate-700 bg-slate-800 p-6">
-            <div ref={stageRef} className="relative overflow-hidden rounded border border-slate-700 bg-slate-900 shadow-2xl" style={{ width: `${stageSize.width}px`, height: `${stageSize.height}px`, maxWidth: '100%', maxHeight: '100%' }} onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedLayerIds([]); }}>
+            <div className="relative" style={{ width: `${VIRTUAL_CANVAS_WIDTH * stageScale}px`, height: `${VIRTUAL_CANVAS_HEIGHT * stageScale}px` }}>
+              <div ref={stageRef} className="relative overflow-hidden rounded border border-slate-500 bg-slate-900 shadow-[0_0_0_1px_rgba(148,163,184,0.25),0_20px_60px_rgba(0,0,0,0.45)]" style={{ width: `${VIRTUAL_CANVAS_WIDTH}px`, height: `${VIRTUAL_CANVAS_HEIGHT}px`, transform: `scale(${stageScale})`, transformOrigin: 'top left' }} onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedLayerIds([]); }}>
               {!canvasLayers.length ? <p className="absolute inset-0 grid place-items-center text-xl text-slate-400">Stage is blank.</p> : canvasLayers.map(renderLayerPreview)}
+              </div>
             </div>
           </div>
         </div>
 
         <aside className="flex min-h-0 flex-col rounded-lg border border-slate-700 bg-slate-950 p-3">
           <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-300">Layer Inspector</h3>
+          <div className="mb-3 flex gap-2 text-xs"><button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('left')}>Align Left</button><button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('center')}>Align Center</button><button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('right')}>Align Right</button></div>
           <div className="min-h-0 flex-1 overflow-auto pr-1">
           {!selectedPrimary ? <p className="text-slate-400">Select a layer to edit.</p> : (
             <div className="space-y-3">
