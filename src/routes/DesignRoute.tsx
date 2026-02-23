@@ -44,7 +44,6 @@ export function DesignRoute() {
   const [leftPanelTab, setLeftPanelTab] = useState<'layers' | 'assets'>('layers');
   const [interactionMode, setInteractionMode] = useState<'select' | 'pan'>('select');
   const [stageViewport, setStageViewport] = useState({ width: 0, height: 0 });
-  const [uploadedFonts, setUploadedFonts] = useState<string[]>([]);
   const [stageTextEditId, setStageTextEditId] = useState<string | null>(null);
   const [stageTextEditValue, setStageTextEditValue] = useState('');
 
@@ -219,21 +218,6 @@ export function DesignRoute() {
 
   const resetSelectedTransform = () => applyToSelected(() => transformDefaults as Partial<Layer>);
 
-  const fontOptions = useMemo(() => [...new Set([...FONT_OPTIONS, ...uploadedFonts])], [uploadedFonts]);
-
-  const uploadFonts = async (files: FileList | null) => {
-    if (!files?.length) return;
-    const newNames: string[] = [];
-    for (const file of Array.from(files)) {
-      const data = await file.arrayBuffer();
-      const family = file.name.replace(/\.[^/.]+$/, '');
-      const fontFace = new FontFace(family, data);
-      await fontFace.load();
-      document.fonts.add(fontFace);
-      newNames.push(family);
-    }
-    setUploadedFonts((prev) => [...new Set([...prev, ...newNames])]);
-  };
 
   const startStageTextEdit = (layer: Extract<Layer, { kind: 'text' }>) => {
     setStageTextEditId(layer.id);
@@ -426,7 +410,7 @@ export function DesignRoute() {
             {leftPanelTab === 'layers' ? (
               <>
           {!stackLayers.length ? <p className="text-slate-400">No layers yet.</p> : <div className="space-y-2">{stackLayers.map((layer) => (
-            <div key={layer.id} className={`rounded border p-2 ${selectedLayerIds.includes(layer.id) ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'}`} onClick={(event) => selectLayer(layer.id, event)}>
+            <div key={layer.id} className={`select-none rounded border p-2 ${selectedLayerIds.includes(layer.id) ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'}`} onClick={(event) => selectLayer(layer.id, event)}>
               <div className="flex items-center gap-2">
                 <button className={actionBtn} onClick={(event) => { event.stopPropagation(); setZOrder(layer.id, 'up'); }} title="Move up">↑</button>
                 <button className={actionBtn} onClick={(event) => { event.stopPropagation(); setZOrder(layer.id, 'down'); }} title="Move down">↓</button>
@@ -483,28 +467,43 @@ export function DesignRoute() {
 
         <aside className="flex min-h-0 flex-col rounded-lg border border-slate-700 bg-slate-950 p-3">
           <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-300">Layer Inspector</h3>
-          <div className="mb-3 flex gap-2 text-xs"><button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('left')}>Align Left</button><button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('center')}>Align Center</button><button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('right')}>Align Right</button></div>
           <div className="min-h-0 flex-1 overflow-auto pr-1">
           {!selectedPrimary ? <p className="text-slate-400">Select a layer to edit.</p> : (
             <div className="space-y-3">
-              <div className="rounded border border-slate-700 bg-slate-900 p-2"><div className="mb-1 text-xs uppercase text-slate-400">Selected ({selectedLayerIds.length})</div><strong>{selectedPrimary.name}</strong></div>
+              <div className="rounded border border-slate-700 bg-slate-900 p-2"><div className="mb-1 text-xs uppercase text-slate-400">Selected ({selectedLayerIds.length})</div>{editingLayerId === selectedPrimary.id ? (<input className="w-full rounded border border-blue-500 bg-slate-950 px-2 py-1 font-semibold" value={editingLayerValue} onChange={(e) => setEditingLayerValue(e.target.value)} onBlur={() => { renameLayer(selectedPrimary.id, editingLayerValue.trim() || selectedPrimary.name); setEditingLayerId(null); setEditingLayerValue(''); }} onKeyDown={(e) => { if (e.key === 'Enter') { renameLayer(selectedPrimary.id, editingLayerValue.trim() || selectedPrimary.name); setEditingLayerId(null); setEditingLayerValue(''); } }} autoFocus />) : (<strong onClick={() => { setEditingLayerId(selectedPrimary.id); setEditingLayerValue(selectedPrimary.name); }} className="cursor-text">{selectedPrimary.name}</strong>)}</div>
+
+              <div className="mb-3 space-y-2 rounded border border-slate-700 bg-slate-900 p-3">
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Stage Align & Distribute</div>
+                <div className="flex gap-2">
+                  <button className={`rounded border px-2 py-1 text-xs ${alignScope === 'selection' ? 'border-blue-500 text-blue-300' : 'border-slate-700 text-slate-300'}`} onClick={() => setAlignScope('selection')}>Selection</button>
+                  <button className={`rounded border px-2 py-1 text-xs ${alignScope === 'canvas' ? 'border-blue-500 text-blue-300' : 'border-slate-700 text-slate-300'}`} onClick={() => setAlignScope('canvas')}>Stage</button>
+                </div>
+                <div className="flex gap-2 text-xs">
+                  <button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('left')}>Align Left</button>
+                  <button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('center')}>Align Center</button>
+                  <button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('right')}>Align Right</button>
+                </div>
+                <div className="flex gap-2 text-xs">
+                  <button className="rounded border border-slate-700 px-2 py-1" onClick={() => distributeLayers('x')}>Distribute H</button>
+                  <button className="rounded border border-slate-700 px-2 py-1" onClick={() => distributeLayers('y')}>Distribute V</button>
+                </div>
+              </div>
 
               {selectedPrimary.kind === 'text' && (
                 <>
                   <div className="space-y-2 rounded border border-slate-700 bg-slate-900 p-3">
-                    <h4 className="font-semibold">Text</h4>
-                    <label className="block text-sm">Content<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" value={selectedPrimary.text} onChange={(e) => applyToSelected((layer) => layer.kind === 'text' ? ({ text: e.target.value } as Partial<Layer>) : ({}))} /></label>
-                    <div className="grid grid-cols-2 gap-2"><label className="text-sm">Color<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="color" value={selectedPrimary.color} onChange={(e) => applyToSelected((layer) => layer.kind === 'text' ? ({ color: e.target.value } as Partial<Layer>) : ({}))} /></label><label className="text-sm">Size<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" value={selectedPrimary.size} onChange={(e) => setNumeric('size', e.target.value)} /></label></div>
-                    <label className="text-sm">Font<select className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" value={selectedPrimary.fontFamily} onChange={(e) => applyToSelected((layer) => layer.kind === 'text' ? ({ fontFamily: e.target.value } as Partial<Layer>) : ({}))}>{fontOptions.map((font) => <option key={font} value={font}>{font}</option>)}</select></label>
-                    <label className="text-sm">Upload Font<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2 text-xs" type="file" accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2" multiple onChange={async (e) => { await uploadFonts(e.target.files); e.currentTarget.value = ''; }} /></label>
-                    <div className="flex gap-2 text-xs"><button className={`rounded border px-2 py-1 ${selectedPrimary.textAlign === 'left' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => applyToSelected((layer) => layer.kind === 'text' ? ({ textAlign: 'left' } as Partial<Layer>) : ({}))}>Left</button><button className={`rounded border px-2 py-1 ${selectedPrimary.textAlign === 'center' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => applyToSelected((layer) => layer.kind === 'text' ? ({ textAlign: 'center' } as Partial<Layer>) : ({}))}>Center</button><button className={`rounded border px-2 py-1 ${selectedPrimary.textAlign === 'right' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => applyToSelected((layer) => layer.kind === 'text' ? ({ textAlign: 'right' } as Partial<Layer>) : ({}))}>Right</button></div>
-                    <div className="flex gap-2 text-xs"><button className={`rounded border px-2 py-1 ${selectedPrimary.textMode === 'point' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => applyToSelected((layer) => layer.kind === 'text' ? ({ textMode: 'point' } as Partial<Layer>) : ({}))}>Point Text</button><button className={`rounded border px-2 py-1 ${selectedPrimary.textMode === 'area' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => applyToSelected((layer) => layer.kind === 'text' ? ({ textMode: 'area', width: 500, height: selectedPrimary.size * 1.2 } as unknown as Partial<Layer>) : ({}))}>Area Text</button></div>
-                  </div>
-
-                  <div className="space-y-2 rounded border border-slate-700 bg-slate-900 p-3">
                     <h4 className="font-semibold">Data Binding</h4>
                     <label className="text-sm">Source<select className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" value={selectedPrimary.dataBindingSource} onChange={(e) => applyToSelected((layer) => layer.kind === 'text' ? ({ dataBindingSource: e.target.value } as Partial<Layer>) : ({}))}><option value="manual">Manual</option><option value="live-feed">Live Feed</option><option value="game-state">Game State</option><option value="stats-service">Stats Service</option></select></label>
                     <label className="text-sm">Field<select className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" value={selectedPrimary.dataBindingField} onChange={(e) => applyToSelected((layer) => layer.kind === 'text' ? ({ dataBindingField: e.target.value } as Partial<Layer>) : ({}))}><option value="">Choose field…</option>{DATA_FIELDS.map((field) => <option key={field} value={field}>{field}</option>)}</select></label>
+                  </div>
+
+                  <div className="space-y-2 rounded border border-slate-700 bg-slate-900 p-3">
+                    <h4 className="font-semibold">Text</h4>
+                    <label className="block text-sm">Content<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" value={selectedPrimary.text} onChange={(e) => applyToSelected((layer) => layer.kind === 'text' ? ({ text: e.target.value } as Partial<Layer>) : ({}))} /></label>
+                    <div className="grid grid-cols-2 gap-2"><label className="text-sm">Color<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="color" value={selectedPrimary.color} onChange={(e) => applyToSelected((layer) => layer.kind === 'text' ? ({ color: e.target.value } as Partial<Layer>) : ({}))} /></label><label className="text-sm">Size<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" value={selectedPrimary.size} onChange={(e) => setNumeric('size', e.target.value)} /></label></div>
+                    <label className="text-sm">Font<select className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" value={selectedPrimary.fontFamily} onChange={(e) => applyToSelected((layer) => layer.kind === 'text' ? ({ fontFamily: e.target.value } as Partial<Layer>) : ({}))}>{FONT_OPTIONS.map((font) => <option key={font} value={font}>{font}</option>)}</select></label>
+                    <div className="flex gap-2 text-xs"><button className={`rounded border px-2 py-1 ${selectedPrimary.textAlign === 'left' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => applyToSelected((layer) => layer.kind === 'text' ? ({ textAlign: 'left' } as Partial<Layer>) : ({}))}>Left</button><button className={`rounded border px-2 py-1 ${selectedPrimary.textAlign === 'center' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => applyToSelected((layer) => layer.kind === 'text' ? ({ textAlign: 'center' } as Partial<Layer>) : ({}))}>Center</button><button className={`rounded border px-2 py-1 ${selectedPrimary.textAlign === 'right' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => applyToSelected((layer) => layer.kind === 'text' ? ({ textAlign: 'right' } as Partial<Layer>) : ({}))}>Right</button></div>
+                    <div className="flex gap-2 text-xs"><button className={`rounded border px-2 py-1 ${selectedPrimary.textMode === 'point' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => applyToSelected((layer) => layer.kind === 'text' ? ({ textMode: 'point' } as Partial<Layer>) : ({}))}>Point Text</button><button className={`rounded border px-2 py-1 ${selectedPrimary.textMode === 'area' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => applyToSelected((layer) => layer.kind === 'text' ? ({ textMode: 'area', width: 500, height: selectedPrimary.size * 1.2 } as unknown as Partial<Layer>) : ({}))}>Area Text</button></div>
                   </div>
                 </>
               )}
