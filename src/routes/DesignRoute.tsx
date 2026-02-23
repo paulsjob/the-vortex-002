@@ -4,10 +4,15 @@ import { useDataEngineStore } from '../store/useDataEngineStore';
 import { useLayerStore } from '../store/useLayerStore';
 import type { ExplorerNode, Layer } from '../types/domain';
 
+const TEMPLATE_SIZES = [
+  { value: '1920x1080', label: '1920 × 1080' },
+  { value: '1080x1920', label: '1080 × 1920' },
+  { value: '1080x1350', label: '1080 × 1350' },
+  { value: '1080x1080', label: '1080 × 1080' },
+];
+
 const FONT_OPTIONS = ['Inter', 'Arial', 'Helvetica', 'Roboto', 'Montserrat', 'Oswald', 'Georgia', 'Times New Roman'];
 const DATA_FIELDS = ['score.home', 'score.away', 'inning.number', 'inning.state', 'count.balls', 'count.strikes', 'count.outs', 'runners.first', 'runners.second', 'runners.third', 'pitch.type', 'pitch.velocity', 'pitch.location', 'bat.batspeed', 'bat.exitvelo', 'bat.launchangle', 'bat.distance', 'matchup.pitcher', 'matchup.batter'];
-const VIRTUAL_CANVAS_WIDTH = 1920;
-const VIRTUAL_CANVAS_HEIGHT = 1080;
 const transformDefaults = { anchorX: 0, anchorY: 0, scaleX: 100, scaleY: 100, rotation: 0 };
 
 export function DesignRoute() {
@@ -15,8 +20,8 @@ export function DesignRoute() {
   const engineGame = useDataEngineStore((s) => s.game);
   const {
     layers,
-    canvasWidth: storeCanvasWidth,
-    canvasHeight: storeCanvasHeight,
+    canvasWidth,
+    canvasHeight,
     addText,
     addShape,
     addAssetLayer,
@@ -39,6 +44,9 @@ export function DesignRoute() {
   const [leftPanelTab, setLeftPanelTab] = useState<'layers' | 'assets'>('layers');
   const [interactionMode, setInteractionMode] = useState<'select' | 'pan'>('select');
   const [stageViewport, setStageViewport] = useState({ width: 0, height: 0 });
+  const [uploadedFonts, setUploadedFonts] = useState<string[]>([]);
+  const [stageTextEditId, setStageTextEditId] = useState<string | null>(null);
+  const [stageTextEditValue, setStageTextEditValue] = useState('');
 
   const stageViewportRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -52,14 +60,6 @@ export function DesignRoute() {
   const selectedLayers = useMemo(() => selectedLayerIds.map((id) => layerById.get(id)).filter(Boolean) as Layer[], [selectedLayerIds, layerById]);
   const selectedPrimary = selectedLayers[0] || null;
 
-  const canvasWidth = VIRTUAL_CANVAS_WIDTH;
-  const canvasHeight = VIRTUAL_CANVAS_HEIGHT;
-
-  useEffect(() => {
-    if (storeCanvasWidth !== VIRTUAL_CANVAS_WIDTH || storeCanvasHeight !== VIRTUAL_CANVAS_HEIGHT) {
-      setCanvasSize(VIRTUAL_CANVAS_WIDTH, VIRTUAL_CANVAS_HEIGHT);
-    }
-  }, [storeCanvasWidth, storeCanvasHeight, setCanvasSize]);
 
   useEffect(() => {
     if (!measureCtxRef.current) {
@@ -219,6 +219,33 @@ export function DesignRoute() {
 
   const resetSelectedTransform = () => applyToSelected(() => transformDefaults as Partial<Layer>);
 
+  const fontOptions = useMemo(() => [...new Set([...FONT_OPTIONS, ...uploadedFonts])], [uploadedFonts]);
+
+  const uploadFonts = async (files: FileList | null) => {
+    if (!files?.length) return;
+    const newNames: string[] = [];
+    for (const file of Array.from(files)) {
+      const data = await file.arrayBuffer();
+      const family = file.name.replace(/\.[^/.]+$/, '');
+      const fontFace = new FontFace(family, data);
+      await fontFace.load();
+      document.fonts.add(fontFace);
+      newNames.push(family);
+    }
+    setUploadedFonts((prev) => [...new Set([...prev, ...newNames])]);
+  };
+
+  const startStageTextEdit = (layer: Extract<Layer, { kind: 'text' }>) => {
+    setStageTextEditId(layer.id);
+    setStageTextEditValue(layer.text);
+  };
+
+  const commitStageTextEdit = () => {
+    if (!stageTextEditId) return;
+    updateLayer(stageTextEditId, { text: stageTextEditValue });
+    setStageTextEditId(null);
+  };
+
   const parseAssetDimensions = (dimension?: string) => {
     if (!dimension) return null;
     const [w, h] = dimension.split('x').map(Number);
@@ -329,7 +356,7 @@ export function DesignRoute() {
   const stageScale = useMemo(() => {
     const safeW = Math.max(1, stageViewport.width);
     const safeH = Math.max(1, stageViewport.height);
-    return Math.max(0.01, Math.min(safeW / VIRTUAL_CANVAS_WIDTH, safeH / VIRTUAL_CANVAS_HEIGHT));
+    return Math.max(0.01, Math.min(safeW / canvasWidth, safeH / canvasHeight));
   }, [stageViewport]);
 
   const renderLayerPreview = (layer: Layer) => {
@@ -351,7 +378,21 @@ export function DesignRoute() {
       <div key={layer.id} className={`absolute select-none ${selectedLayerIds.includes(layer.id) ? 'outline outline-2 outline-blue-400' : 'outline outline-1 outline-slate-500/40'} ${layer.locked ? 'cursor-not-allowed' : 'cursor-move'}`} style={style} onMouseDown={(event) => onLayerMouseDown(layer, event)}>
         {layer.kind === 'asset' && <img src={assetById.get(layer.assetId)?.src} alt={layer.name} className="h-full w-full object-contain" draggable={false} />}
         {layer.kind === 'shape' && <div className="h-full w-full" style={{ background: layer.fill }} />}
-        {layer.kind === 'text' && <div className="h-full w-full" style={{ fontSize: `${layer.size}px`, color: layer.color, fontWeight: 700, fontFamily: layer.fontFamily, textAlign: layer.textAlign, lineHeight: 1.15, whiteSpace: layer.textMode === 'point' ? 'pre' : 'pre-wrap', overflow: layer.textMode === 'point' ? 'visible' : 'hidden' }}>{getTextContent(layer)}</div>}
+        {layer.kind === 'text' && (
+          stageTextEditId === layer.id ? (
+            <textarea
+              className="h-full w-full resize-none bg-slate-950/90 p-1 text-white outline-none"
+              style={{ fontSize: `${layer.size}px`, fontFamily: layer.fontFamily, lineHeight: 1.15 }}
+              value={stageTextEditValue}
+              autoFocus
+              onChange={(e) => setStageTextEditValue(e.target.value)}
+              onBlur={commitStageTextEdit}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commitStageTextEdit(); } }}
+            />
+          ) : (
+            <div className="h-full w-full" onDoubleClick={(e) => { e.stopPropagation(); startStageTextEdit(layer); }} style={{ fontSize: `${layer.size}px`, color: layer.color, fontWeight: 700, fontFamily: layer.fontFamily, textAlign: layer.textAlign, lineHeight: 1.15, whiteSpace: layer.textMode === 'point' ? 'pre' : 'pre-wrap', overflow: layer.textMode === 'point' ? 'visible' : 'hidden' }}>{getTextContent(layer)}</div>
+          )
+        )}
         <div className="pointer-events-none absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber-400" style={{ left: `${(transform.anchorX / bounds.width) * 100}%`, top: `${(transform.anchorY / bounds.height) * 100}%` }} />
       </div>
     );
@@ -430,10 +471,10 @@ export function DesignRoute() {
         </aside>
 
         <div className="flex min-h-0 flex-col gap-2 rounded-lg border border-slate-700 bg-slate-950 p-3">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">Canvas · 1920 × 1080</h3>
+          <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">Canvas · {canvasWidth} × {canvasHeight}</h3><select className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs" value={`${canvasWidth}x${canvasHeight}`} onChange={(e) => { const [w, h] = e.target.value.split('x').map(Number); setCanvasSize(w, h); }}>{TEMPLATE_SIZES.map((size) => <option key={size.value} value={size.value}>{size.label}</option>)}</select></div>
           <div ref={stageViewportRef} className="grid flex-1 min-h-0 place-items-center overflow-hidden rounded-lg border border-slate-700 bg-slate-800 p-6">
-            <div className="relative" style={{ width: `${VIRTUAL_CANVAS_WIDTH * stageScale}px`, height: `${VIRTUAL_CANVAS_HEIGHT * stageScale}px` }}>
-              <div ref={stageRef} className="relative overflow-hidden rounded border border-slate-500 bg-slate-900 shadow-[0_0_0_1px_rgba(148,163,184,0.25),0_20px_60px_rgba(0,0,0,0.45)]" style={{ width: `${VIRTUAL_CANVAS_WIDTH}px`, height: `${VIRTUAL_CANVAS_HEIGHT}px`, transform: `scale(${stageScale})`, transformOrigin: 'top left' }} onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedLayerIds([]); }}>
+            <div className="relative" style={{ width: `${canvasWidth * stageScale}px`, height: `${canvasHeight * stageScale}px` }}>
+              <div ref={stageRef} className="relative overflow-hidden rounded border border-slate-500 bg-slate-900 shadow-[0_0_0_1px_rgba(148,163,184,0.25),0_20px_60px_rgba(0,0,0,0.45)]" style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px`, transform: `scale(${stageScale})`, transformOrigin: 'top left' }} onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedLayerIds([]); }}>
               {!canvasLayers.length ? <p className="absolute inset-0 grid place-items-center text-xl text-slate-400">Stage is blank.</p> : canvasLayers.map(renderLayerPreview)}
               </div>
             </div>
@@ -454,7 +495,8 @@ export function DesignRoute() {
                     <h4 className="font-semibold">Text</h4>
                     <label className="block text-sm">Content<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" value={selectedPrimary.text} onChange={(e) => applyToSelected((layer) => layer.kind === 'text' ? ({ text: e.target.value } as Partial<Layer>) : ({}))} /></label>
                     <div className="grid grid-cols-2 gap-2"><label className="text-sm">Color<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="color" value={selectedPrimary.color} onChange={(e) => applyToSelected((layer) => layer.kind === 'text' ? ({ color: e.target.value } as Partial<Layer>) : ({}))} /></label><label className="text-sm">Size<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" value={selectedPrimary.size} onChange={(e) => setNumeric('size', e.target.value)} /></label></div>
-                    <label className="text-sm">Font<select className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" value={selectedPrimary.fontFamily} onChange={(e) => applyToSelected((layer) => layer.kind === 'text' ? ({ fontFamily: e.target.value } as Partial<Layer>) : ({}))}>{FONT_OPTIONS.map((font) => <option key={font} value={font}>{font}</option>)}</select></label>
+                    <label className="text-sm">Font<select className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" value={selectedPrimary.fontFamily} onChange={(e) => applyToSelected((layer) => layer.kind === 'text' ? ({ fontFamily: e.target.value } as Partial<Layer>) : ({}))}>{fontOptions.map((font) => <option key={font} value={font}>{font}</option>)}</select></label>
+                    <label className="text-sm">Upload Font<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2 text-xs" type="file" accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2" multiple onChange={async (e) => { await uploadFonts(e.target.files); e.currentTarget.value = ''; }} /></label>
                     <div className="flex gap-2 text-xs"><button className={`rounded border px-2 py-1 ${selectedPrimary.textAlign === 'left' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => applyToSelected((layer) => layer.kind === 'text' ? ({ textAlign: 'left' } as Partial<Layer>) : ({}))}>Left</button><button className={`rounded border px-2 py-1 ${selectedPrimary.textAlign === 'center' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => applyToSelected((layer) => layer.kind === 'text' ? ({ textAlign: 'center' } as Partial<Layer>) : ({}))}>Center</button><button className={`rounded border px-2 py-1 ${selectedPrimary.textAlign === 'right' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => applyToSelected((layer) => layer.kind === 'text' ? ({ textAlign: 'right' } as Partial<Layer>) : ({}))}>Right</button></div>
                     <div className="flex gap-2 text-xs"><button className={`rounded border px-2 py-1 ${selectedPrimary.textMode === 'point' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => applyToSelected((layer) => layer.kind === 'text' ? ({ textMode: 'point' } as Partial<Layer>) : ({}))}>Point Text</button><button className={`rounded border px-2 py-1 ${selectedPrimary.textMode === 'area' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => applyToSelected((layer) => layer.kind === 'text' ? ({ textMode: 'area', width: 500, height: selectedPrimary.size * 1.2 } as unknown as Partial<Layer>) : ({}))}>Area Text</button></div>
                   </div>
@@ -472,7 +514,9 @@ export function DesignRoute() {
                 <div className="grid grid-cols-3 gap-1">{[0, 0.5, 1].flatMap((y) => [0, 0.5, 1].map((x) => ({ x, y }))).map((pt) => <button key={`${pt.x}-${pt.y}`} className="rounded border border-slate-700 py-1 text-xs" onClick={() => setAnchorPreset(pt.x, pt.y)}>•</button>)}</div>
                 <div className="grid grid-cols-2 gap-2"><label className="text-sm">Anchor X<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" value={getTransform(selectedPrimary).anchorX} onChange={(e) => setNumeric('anchorX', e.target.value)} /></label><label className="text-sm">Anchor Y<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" value={getTransform(selectedPrimary).anchorY} onChange={(e) => setNumeric('anchorY', e.target.value)} /></label><label className="text-sm">Position X<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" value={selectedPrimary.x} onChange={(e) => setNumeric('x', e.target.value)} /></label><label className="text-sm">Position Y<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" value={selectedPrimary.y} onChange={(e) => setNumeric('y', e.target.value)} /></label></div>
                 <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2"><label className="text-sm">Scale X<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" value={getTransform(selectedPrimary).scaleX} onChange={(e) => updateScale('x', e.target.value)} /></label><button className={`rounded border px-2 py-2 ${lockScale ? 'border-blue-500 text-blue-300' : 'border-slate-700 text-slate-300'}`} onClick={() => setLockScale((v) => !v)}>{lockScale ? '🔗' : '⛓'}</button><label className="text-sm">Scale Y<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" value={getTransform(selectedPrimary).scaleY} onChange={(e) => updateScale('y', e.target.value)} /></label></div>
+                <label className="block text-xs text-slate-300">Scale Slider<input className="mt-1 w-full" type="range" min={1} max={300} value={Math.round(getTransform(selectedPrimary).scaleX)} onChange={(e) => updateScale('x', e.target.value)} /></label>
                 <div className="grid grid-cols-2 gap-2"><label className="text-sm">Rotation<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" value={getTransform(selectedPrimary).rotation} onChange={(e) => setNumeric('rotation', e.target.value)} /></label><label className="text-sm">Opacity<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" min={0} max={100} value={selectedPrimary.opacity} onChange={(e) => setNumeric('opacity', e.target.value)} /></label></div>
+                <label className="block text-xs text-slate-300">Opacity Slider<input className="mt-1 w-full" type="range" min={0} max={100} value={Math.round(selectedPrimary.opacity)} onChange={(e) => setNumeric('opacity', e.target.value)} /></label>
               </div>
             </div>
           )}
