@@ -3,6 +3,8 @@ import { DashboardRoute } from './DashboardRoute';
 import { DesignRoute } from './DesignRoute';
 import { DataEngineRoute } from './DataEngineRoute';
 import { ControlRoomRoute } from './ControlRoomRoute';
+import { OutputRoute } from './OutputRoute';
+import { usePlayoutStore } from '../store/usePlayoutStore';
 
 const tabs = [
   { to: '/', label: 'Dashboard' },
@@ -12,11 +14,10 @@ const tabs = [
   { to: '/output', label: 'Output' },
 ];
 
-function Placeholder({ title }: { title: string }) {
-  return <div className="rounded-xl border border-slate-800 bg-slate-900 p-8 text-slate-300">{title} coming back in next pass.</div>;
-}
-
 export function AppRoutes() {
+  const previewTemplate = usePlayoutStore((s) => s.previewTemplate);
+  const takeToProgram = usePlayoutStore((s) => s.takeToProgram);
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <header className="border-b border-slate-800 bg-slate-900/80 px-6 py-4 backdrop-blur">
@@ -31,7 +32,14 @@ export function AppRoutes() {
               ))}
             </nav>
             <span className="text-2xl text-emerald-400">● Live Connected</span>
-            <button className="rounded-xl bg-red-600 px-6 py-3 text-xl font-semibold">Push to Stream</button>
+            <button
+              className="rounded-xl bg-red-600 px-6 py-3 text-xl font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={takeToProgram}
+              disabled={!previewTemplate}
+              title={previewTemplate ? `Take ${previewTemplate.name} to Output` : 'Load a template in Control Room first'}
+            >
+              Push to Stream
+            </button>
           </div>
         </div>
       </header>
@@ -41,7 +49,7 @@ export function AppRoutes() {
           <Route path="/design" element={<DesignRoute />} />
           <Route path="/data-engine" element={<DataEngineRoute />} />
           <Route path="/control-room" element={<ControlRoomRoute />} />
-          <Route path="/output" element={<Placeholder title="Output" />} />
+          <Route path="/output" element={<OutputRoute />} />
         </Routes>
       </main>
     </div>
