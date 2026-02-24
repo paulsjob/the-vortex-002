@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { usePlayoutStore } from '../store/usePlayoutStore';
+import { TemplatePreview } from '../features/playout/TemplatePreview';
 
 export function OutputRoute() {
   const programTemplate = usePlayoutStore((s) => s.programTemplate);
@@ -38,6 +39,11 @@ export function OutputRoute() {
           <p className="text-xs uppercase tracking-wider text-slate-400">Last Take</p>
           <p className="font-semibold text-slate-100">{lastTakeAt ? new Date(lastTakeAt).toLocaleString() : 'Never'}</p>
         </div>
+      </div>
+
+      <div className="grid gap-4 rounded-lg border border-slate-700 bg-slate-950 p-4 lg:grid-cols-2">
+        <TemplatePreview template={previewTemplate} label="PST / Preview" tone="preview" />
+        <TemplatePreview template={programTemplate} label="PGM / Program" tone="program" />
       </div>
 
       <div className="rounded-lg border border-slate-700 bg-slate-950 p-4">

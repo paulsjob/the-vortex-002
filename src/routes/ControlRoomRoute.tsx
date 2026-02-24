@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { usePlayoutStore } from '../store/usePlayoutStore';
+import { TemplatePreview } from '../features/playout/TemplatePreview';
 
 export function ControlRoomRoute() {
   const templateStore = useTemplateStore();
@@ -22,16 +23,21 @@ export function ControlRoomRoute() {
         <p className="text-slate-400">Saved Design templates are available here for graphics operators to trigger on-air.</p>
       </div>
 
-      <div className="grid gap-3 rounded-lg border border-slate-700 bg-slate-950 p-3 text-sm md:grid-cols-2">
-        <div>
-          <p className="text-xs uppercase tracking-wider text-slate-400">Preview</p>
-          <p className="font-semibold text-slate-100">{previewTemplate?.name || 'No template loaded'}</p>
-        </div>
-        <div>
-          <p className="text-xs uppercase tracking-wider text-slate-400">Program / Output</p>
-          <p className="font-semibold text-slate-100">{programTemplate?.name || 'Nothing on-air'}</p>
-          {lastTakeAt && <p className="text-xs text-slate-500">Last take: {new Date(lastTakeAt).toLocaleString()}</p>}
-        </div>
+      <div className="grid gap-4 rounded-lg border border-slate-700 bg-slate-950 p-3 xl:grid-cols-2">
+        <TemplatePreview template={previewTemplate} label="PST / Preview" tone="preview" />
+        <TemplatePreview template={programTemplate} label="PGM / Program" tone="program" />
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between rounded-lg border border-slate-700 bg-slate-950 p-3 text-xs text-slate-400">
+        <p>
+          <span className="mr-2 uppercase tracking-wider">Preview</span>
+          <span className="font-semibold text-slate-200">{previewTemplate?.name || 'No template loaded'}</span>
+        </p>
+        <p>
+          <span className="mr-2 uppercase tracking-wider">Program</span>
+          <span className="font-semibold text-slate-200">{programTemplate?.name || 'Nothing on-air'}</span>
+        </p>
+        {lastTakeAt && <p>Last take: {new Date(lastTakeAt).toLocaleString()}</p>}
       </div>
 
       <div className="overflow-hidden rounded-lg border border-slate-700">
