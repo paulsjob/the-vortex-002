@@ -1,4 +1,4 @@
-import { NavLink, Route, Routes } from 'react-router-dom';
+import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { DashboardRoute } from './DashboardRoute';
 import { DesignRoute } from './DesignRoute';
 import { DataEngineRoute } from './DataEngineRoute';
@@ -18,6 +18,17 @@ const tabs = [
 export function AppRoutes() {
   const previewTemplate = usePlayoutStore((s) => s.previewTemplate);
   const takeToProgram = usePlayoutStore((s) => s.takeToProgram);
+
+  const location = useLocation();
+  const isPublicTemplateFeed = location.pathname.startsWith('/template-feed/');
+
+  if (isPublicTemplateFeed) {
+    return (
+      <Routes>
+        <Route path="/template-feed/:templateId" element={<PublicTemplateRoute />} />
+      </Routes>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">

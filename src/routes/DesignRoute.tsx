@@ -372,8 +372,14 @@ export function DesignRoute() {
     dragRef.current = { startX: event.clientX, startY: event.clientY, base };
     const onMove = (move: globalThis.MouseEvent) => {
       if (!dragRef.current) return;
-      const dx = (move.clientX - dragRef.current.startX) / stageScale;
-      const dy = (move.clientY - dragRef.current.startY) / stageScale;
+      const rawDx = (move.clientX - dragRef.current.startX) / stageScale;
+      const rawDy = (move.clientY - dragRef.current.startY) / stageScale;
+      let dx = rawDx;
+      let dy = rawDy;
+      if (move.shiftKey) {
+        if (Math.abs(rawDx) >= Math.abs(rawDy)) dy = 0;
+        else dx = 0;
+      }
       dragRef.current.base.forEach((start, id) => {
         updateLayer(id, { x: Math.round(start.x + dx), y: Math.round(start.y + dy) });
       });
