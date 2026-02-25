@@ -77,11 +77,29 @@ interface AssetStore {
   addFolder: (name: string, parentId: string, kind: 'branded' | 'templates') => void;
   renameFolder: (id: string, name: string, kind: 'branded' | 'templates') => void;
   deleteFolder: (id: string, kind: 'branded' | 'templates') => void;
+  deleteNode: (id: string, kind: 'branded' | 'templates') => void;
   toggleExpanded: (id: string, kind: 'branded' | 'templates') => void;
 }
 
 const brandedExplorer = loadExplorer(STORAGE_KEYS.branded, 'root', 'Branded Assets');
 const templateExplorer = loadExplorer(STORAGE_KEYS.templates, 'template-root', 'Templates');
+
+const removeNodeFromExplorer = (explorer: ExplorerState, id: string): ExplorerState => {
+  if (id === explorer.rootId) return explorer;
+  const next = structuredClone(explorer);
+  const doomed = new Set<string>();
+  const walk = (nodeId: string) => {
+    doomed.add(nodeId);
+    const node = next.nodes.find((n) => n.id === nodeId);
+    if (node?.type === 'folder') node.children.forEach(walk);
+  };
+  walk(id);
+  next.nodes = next.nodes.filter((n) => !doomed.has(n.id));
+  next.nodes.forEach((node) => {
+    if (node.type === 'folder') node.children = node.children.filter((childId) => !doomed.has(childId));
+  });
+  return next;
+};
 
 export const useAssetStore = create<AssetStore>((set, get) => ({
   assets: extractAssets(brandedExplorer, templateExplorer),
@@ -136,17 +154,14 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
   },
   deleteFolder: (id, kind) => {
     const key = kind === 'branded' ? 'brandedExplorer' : 'templateExplorer';
-    const next = structuredClone(get()[key]);
-    if (id === next.rootId) return;
-    const doomed = new Set<string>();
-    const walk = (nodeId: string) => {
-      doomed.add(nodeId);
-      const node = next.nodes.find((n) => n.id === nodeId);
-      if (node?.type === 'folder') node.children.forEach(walk);
-    };
-    walk(id);
-    next.nodes = next.nodes.filter((n) => !doomed.has(n.id));
-    next.nodes.forEach((n) => { if (n.type === 'folder') n.children = n.children.filter((c) => !doomed.has(c)); });
+    const next = removeNodeFromExplorer(get()[key], id);
+    persist(kind, next);
+    const patch = { [key]: next } as Partial<AssetStore>;
+    set({ ...patch, assets: extractAssets(kind === 'branded' ? next : get().brandedExplorer, kind === 'templates' ? next : get().templateExplorer) });
+  },
+  deleteNode: (id, kind) => {
+    const key = kind === 'branded' ? 'brandedExplorer' : 'templateExplorer';
+    const next = removeNodeFromExplorer(get()[key], id);
     persist(kind, next);
     const patch = { [key]: next } as Partial<AssetStore>;
     set({ ...patch, assets: extractAssets(kind === 'branded' ? next : get().brandedExplorer, kind === 'templates' ? next : get().templateExplorer) });

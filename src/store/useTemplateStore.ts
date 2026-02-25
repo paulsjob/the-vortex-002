@@ -19,6 +19,7 @@ export type SavedTemplate = {
   canvasHeight: number;
   layers: Layer[];
   createdAt: string;
+  updatedAt?: string;
 };
 
 type PersistedTemplateState = {
@@ -54,8 +55,11 @@ interface TemplateStore extends PersistedTemplateState {
   addFolder: (name: string, parentId: string) => void;
   deleteFolder: (folderId: string) => void;
   toggleExpanded: (folderId: string) => void;
-  saveTemplate: (input: { name: string; folderId: string; canvasWidth: number; canvasHeight: number; layers: Layer[] }) => void;
+  saveTemplate: (input: { name: string; folderId: string; canvasWidth: number; canvasHeight: number; layers: Layer[] }) => string | null;
+  updateTemplate: (templateId: string, input: { name: string; folderId: string; canvasWidth: number; canvasHeight: number; layers: Layer[] }) => void;
+  deleteTemplate: (templateId: string) => void;
   getTemplatesInFolder: (folderId: string) => SavedTemplate[];
+  getTemplateById: (templateId: string) => SavedTemplate | undefined;
   getFolderById: (folderId: string) => TemplateFolder | undefined;
   getRootFolder: () => TemplateFolder;
 }
@@ -99,9 +103,10 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
   toggleExpanded: (folderId) => set((s) => ({ expanded: { ...s.expanded, [folderId]: !s.expanded[folderId] } })),
   saveTemplate: ({ name, folderId, canvasWidth, canvasHeight, layers }) => {
     const trimmed = name.trim();
-    if (!trimmed) return;
+    if (!trimmed) return null;
+    const id = `template-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const templates = [{
-      id: `template-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id,
       name: trimmed,
       folderId,
       canvasWidth,
@@ -112,8 +117,28 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     const next = { rootId: get().rootId, folders: get().folders, templates };
     persist(next);
     set({ templates });
+    return id;
+  },
+  updateTemplate: (templateId, { name, folderId, canvasWidth, canvasHeight, layers }) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const templates = get().templates.map((template) => (
+      template.id === templateId
+        ? { ...template, name: trimmed, folderId, canvasWidth, canvasHeight, layers: structuredClone(layers), updatedAt: new Date().toISOString() }
+        : template
+    ));
+    const next = { rootId: get().rootId, folders: get().folders, templates };
+    persist(next);
+    set({ templates });
+  },
+  deleteTemplate: (templateId) => {
+    const templates = get().templates.filter((template) => template.id !== templateId);
+    const next = { rootId: get().rootId, folders: get().folders, templates };
+    persist(next);
+    set({ templates });
   },
   getTemplatesInFolder: (folderId) => get().templates.filter((t) => t.folderId === folderId),
+  getTemplateById: (templateId) => get().templates.find((t) => t.id === templateId),
   getFolderById: (folderId) => get().folders.find((f) => f.id === folderId),
   getRootFolder: () => get().folders.find((f) => f.id === get().rootId) || get().folders[0],
 }));

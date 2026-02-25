@@ -4,6 +4,8 @@ import type { ExplorerNode } from '../../types/domain';
 
 interface Props { kind: 'branded' | 'templates'; title: string }
 
+const iconBtn = 'h-8 w-8 rounded border border-slate-700 bg-slate-900 text-sm text-slate-200 hover:bg-slate-800 disabled:opacity-50';
+
 export function AssetExplorer({ kind, title }: Props) {
   const store = useAssetStore();
   const explorer = kind === 'branded' ? store.brandedExplorer : store.templateExplorer;
@@ -20,6 +22,8 @@ export function AssetExplorer({ kind, title }: Props) {
     if (!folder || folder.type !== 'folder') return [];
     return folder.children.map(getNode).filter(Boolean) as ExplorerNode[];
   }, [currentFolderId, explorer]);
+
+  const filteredChildren = children.filter((item) => item.name.toLowerCase().includes(query.toLowerCase()));
 
   const renderTree = (folderId: string, depth = 0): JSX.Element | null => {
     const folder = getNode(folderId);
@@ -49,19 +53,20 @@ export function AssetExplorer({ kind, title }: Props) {
       </aside>
       <div className="rounded-lg border border-slate-800 bg-slate-950 p-3">
         <p className="mb-2 text-xs text-slate-400">Open folder: <span className="font-semibold text-slate-200">{currentFolder?.type === 'folder' ? currentFolder.name : 'Unknown'}</span> · Uploads are saved to this folder.</p>
-        <div className="mb-3 flex flex-wrap gap-2">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
           <input value={query} onChange={(e) => setQuery(e.target.value)} className="flex-1 rounded border border-slate-700 bg-slate-900 px-2 py-1" placeholder={`Search ${title.toLowerCase()}`} />
           <button
-            className="rounded bg-blue-700 px-3 py-1"
+            className={iconBtn}
+            title="Create folder"
             onClick={() => {
               const name = window.prompt('Name this new folder')?.trim();
               if (name) store.addFolder(name, currentFolderId, kind);
             }}
           >
-            Create Folder
+            ➕
           </button>
-          <button className="rounded bg-red-800 px-3 py-1" onClick={() => store.deleteFolder(currentFolderId, kind)} disabled={currentFolderId === explorer.rootId}>Delete Folder</button>
-          <button className="rounded bg-emerald-700 px-3 py-1" onClick={() => uploadRef.current?.click()}>Upload</button>
+          <button className={iconBtn} title="Delete selected folder" onClick={() => store.deleteNode(currentFolderId, kind)} disabled={currentFolderId === explorer.rootId}>🗑</button>
+          <button className={iconBtn} title="Upload file" onClick={() => uploadRef.current?.click()}>⤴</button>
           <input
             ref={uploadRef}
             type="file"
@@ -77,14 +82,17 @@ export function AssetExplorer({ kind, title }: Props) {
           />
         </div>
         <div className="grid gap-2 text-sm">
-          <div className="grid grid-cols-4 text-slate-400"><span>Name</span><span>Type</span><span>Dimension</span><span>Modified</span></div>
-          {children.filter((item) => item.name.toLowerCase().includes(query.toLowerCase())).map((item) => (
-            <button key={item.id} className="grid grid-cols-4 rounded border border-slate-800 bg-slate-900 p-2 text-left hover:border-blue-500/60 hover:bg-slate-800" onDoubleClick={() => { if (item.type === 'folder') setCurrentFolderId(item.id); }}>
-              <span>{item.type === 'folder' ? `📁 ${item.name}` : `🖼️ ${item.name}`}</span>
+          <div className="grid grid-cols-[1.8fr_1fr_1fr_1fr_auto] text-slate-400"><span>Name</span><span>Type</span><span>Dimension</span><span>Modified</span><span /></div>
+          {filteredChildren.map((item) => (
+            <div key={item.id} className="grid grid-cols-[1.8fr_1fr_1fr_1fr_auto] items-center gap-2 rounded border border-slate-800 bg-slate-900 p-2 hover:border-blue-500/60 hover:bg-slate-800">
+              <button className="text-left" onDoubleClick={() => { if (item.type === 'folder') setCurrentFolderId(item.id); }}>
+                <span>{item.type === 'folder' ? `📁 ${item.name}` : `🖼️ ${item.name}`}</span>
+              </button>
               <span>{item.type === 'folder' ? 'Folder' : 'File'}</span>
               <span>{item.type === 'folder' ? `${item.children.length} item(s)` : item.dimension}</span>
               <span>{new Date(item.createdAt).toLocaleDateString()}</span>
-            </button>
+              <button className={iconBtn} title="Delete" onClick={() => store.deleteNode(item.id, kind)}>🗑</button>
+            </div>
           ))}
           {!children.length && <p className="text-slate-500">This folder is empty.</p>}
         </div>

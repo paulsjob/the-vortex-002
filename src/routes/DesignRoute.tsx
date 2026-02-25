@@ -34,6 +34,8 @@ export function DesignRoute() {
     deleteLayer,
     renameLayer,
     updateLayer,
+    loadedTemplateId,
+    clearLoadedTemplate,
   } = useLayerStore();
 
   const [folderId, setFolderId] = useState(assetStore.brandedExplorer.rootId);
@@ -51,6 +53,7 @@ export function DesignRoute() {
   const [stageTextEditValue, setStageTextEditValue] = useState('');
   const [templateName, setTemplateName] = useState('');
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const [deliveryMode, setDeliveryMode] = useState<'update' | 'new'>('new');
 
   const stageViewportRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -63,6 +66,7 @@ export function DesignRoute() {
   const canvasLayers = useMemo(() => [...layers].filter((layer) => layer.visible !== false).sort((a, b) => a.zIndex - b.zIndex), [layers]);
   const selectedLayers = useMemo(() => selectedLayerIds.map((id) => layerById.get(id)).filter(Boolean) as Layer[], [selectedLayerIds, layerById]);
   const selectedPrimary = selectedLayers[0] || null;
+  const loadedTemplate = useMemo(() => (loadedTemplateId ? templateStore.getTemplateById(loadedTemplateId) : undefined), [loadedTemplateId, templateStore.templates]);
 
 
   useEffect(() => {
@@ -195,17 +199,97 @@ export function DesignRoute() {
 
   const resetSelectedTransform = () => applyToSelected(() => transformDefaults as Partial<Layer>);
 
-  const saveCurrentTemplate = () => {
-    const name = templateName.trim() || `Template ${new Date().toLocaleTimeString()}`;
-    templateStore.saveTemplate({
-      name,
-      folderId: templateStore.rootId,
-      canvasWidth,
-      canvasHeight,
-      layers,
-    });
+  const saveCurrentTemplate = (mode: 'new' | 'update' = deliveryMode) => {
+    const name = templateName.trim() || loadedTemplate?.name || `Template ${new Date().toLocaleTimeString()}`;
+    if (mode === 'update' && loadedTemplateId) {
+      templateStore.updateTemplate(loadedTemplateId, {
+        name,
+        folderId: loadedTemplate?.folderId ?? templateStore.rootId,
+        canvasWidth,
+        canvasHeight,
+        layers,
+      });
+      setSaveNotice(`Updated “${name}” at ${new Date().toLocaleTimeString()}.`);
+    } else {
+      const newId = templateStore.saveTemplate({
+        name,
+        folderId: templateStore.rootId,
+        canvasWidth,
+        canvasHeight,
+        layers,
+      });
+      if (newId) setSaveNotice(`Saved new template “${name}” at ${new Date().toLocaleTimeString()}.`);
+      clearLoadedTemplate();
+    }
     setTemplateName(name);
-    setSaveNotice(`Saved “${name}” to Control Room at ${new Date().toLocaleTimeString()}.`);
+  };
+
+  const getTemplatePublicUrl = () => `${window.location.origin}/public/template/${loadedTemplateId ?? 'unsaved'}`;
+
+  const copyTemplatePublicUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(getTemplatePublicUrl());
+      setSaveNotice('Copied template public URL to clipboard.');
+    } catch {
+      setSaveNotice(`Template URL: ${getTemplatePublicUrl()}`);
+    }
+  };
+
+  const exportTemplateImage = async (format: 'jpg' | 'png' | 'png-green') => {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    if (format === 'jpg') {
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    if (format === 'png-green') {
+      ctx.fillStyle = '#00b140';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    const sorted = [...layers].filter((layer) => layer.visible !== false).sort((a, b) => a.zIndex - b.zIndex);
+    for (const layer of sorted) {
+      ctx.save();
+      ctx.globalAlpha = layer.opacity / 100;
+      if (layer.kind === 'shape') {
+        ctx.fillStyle = layer.fill;
+        if (layer.shapeType === 'ellipse') {
+          ctx.beginPath();
+          ctx.ellipse(layer.x + layer.width / 2, layer.y + layer.height / 2, layer.width / 2, layer.height / 2, 0, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.fillRect(layer.x, layer.y, layer.width, layer.height);
+        }
+      } else if (layer.kind === 'asset') {
+        const src = assetById.get(layer.assetId)?.src;
+        if (src) {
+          const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+            const el = new Image();
+            el.onload = () => resolve(el);
+            el.onerror = reject;
+            el.src = src;
+          });
+          ctx.drawImage(img, layer.x, layer.y, layer.width, layer.height);
+        }
+      } else {
+        ctx.fillStyle = layer.color;
+        ctx.font = `700 ${layer.size}px ${layer.fontFamily}`;
+        ctx.textAlign = layer.textAlign;
+        ctx.textBaseline = 'top';
+        ctx.fillText(getTextContent(layer), layer.x, layer.y);
+      }
+      ctx.restore();
+    }
+    const mime = format === 'jpg' ? 'image/jpeg' : 'image/png';
+    const url = canvas.toDataURL(mime, 0.92);
+    const a = document.createElement('a');
+    const safeName = (templateName || loadedTemplate?.name || 'template').replace(/\s+/g, '-').toLowerCase();
+    a.href = url;
+    a.download = `${safeName}.${format === 'jpg' ? 'jpg' : 'png'}`;
+    a.click();
+    setSaveNotice(`Exported ${format.toUpperCase()}.`);
   };
 
   useEffect(() => {
@@ -341,8 +425,8 @@ export function DesignRoute() {
   const renderLayerPreview = (layer: Layer) => {
     const transform = getTransform(layer);
     const bounds = getLayerBounds(layer);
-    const left = ((layer.x - transform.anchorX) / canvasWidth) * 100;
-    const top = ((layer.y - transform.anchorY) / canvasHeight) * 100;
+    const left = ((layer.kind === 'shape' ? layer.x : (layer.x - transform.anchorX)) / canvasWidth) * 100;
+    const top = ((layer.kind === 'shape' ? layer.y : (layer.y - transform.anchorY)) / canvasHeight) * 100;
     const style = {
       left: `${left}%`,
       top: `${top}%`,
@@ -356,7 +440,9 @@ export function DesignRoute() {
     return (
       <div key={layer.id} className={`absolute select-none ${selectedLayerIds.includes(layer.id) ? 'outline outline-2 outline-blue-400' : 'outline outline-1 outline-slate-500/40'} ${layer.locked ? 'cursor-not-allowed' : 'cursor-move'}`} style={style} onMouseDown={(event) => onLayerMouseDown(layer, event)}>
         {layer.kind === 'asset' && <img src={assetById.get(layer.assetId)?.src} alt={layer.name} className="h-full w-full object-contain" draggable={false} />}
-        {layer.kind === 'shape' && <div className="h-full w-full" style={{ background: layer.fill }} />}
+        {layer.kind === 'shape' && (
+          <div className="h-full w-full" style={{ background: layer.fill, borderRadius: layer.shapeType === 'ellipse' ? '9999px' : '0' }} />
+        )}
         {layer.kind === 'text' && (
           stageTextEditId === layer.id ? (
             <textarea
@@ -454,11 +540,36 @@ export function DesignRoute() {
             <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">Canvas · {canvasWidth} × {canvasHeight}</h3>
             <div className="flex flex-wrap items-center gap-2">
               <input className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs" placeholder="Template name" value={templateName} onChange={(e) => setTemplateName(e.target.value)} />
-              <button className="rounded bg-blue-700 px-3 py-1 text-xs font-semibold" onClick={saveCurrentTemplate}>Save Template</button>
               <select className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs" value={`${canvasWidth}x${canvasHeight}`} onChange={(e) => { const [w, h] = e.target.value.split('x').map(Number); setCanvasSize(w, h); }}>
                 {TEMPLATE_SIZES.map((size) => <option key={size.value} value={size.value}>{size.label}</option>)}
               </select>
+              <button className="rounded bg-blue-700 px-3 py-1 text-xs font-semibold" onClick={() => saveCurrentTemplate('new')}>Save Template</button>
             </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 rounded border border-slate-700 bg-slate-900 p-2 text-xs">
+            <span className="font-semibold uppercase tracking-wider text-slate-400">Stage Align & Distribute</span>
+            <button className={`rounded border px-2 py-1 ${alignScope === 'selection' ? 'border-blue-500 text-blue-300' : 'border-slate-700 text-slate-300'}`} onClick={() => setAlignScope('selection')}>Selection</button>
+            <button className={`rounded border px-2 py-1 ${alignScope === 'canvas' ? 'border-blue-500 text-blue-300' : 'border-slate-700 text-slate-300'}`} onClick={() => setAlignScope('canvas')}>Stage</button>
+            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('left')}>Align Left</button>
+            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('center')}>Align Center</button>
+            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('right')}>Align Right</button>
+            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => distributeLayers('x')}>Distribute H</button>
+            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => distributeLayers('y')}>Distribute V</button>
+          </div>
+          <div className="rounded border border-slate-700 bg-slate-900 p-3 text-xs">
+            <h4 className="mb-2 text-sm font-semibold uppercase tracking-wider text-slate-300">Template Delivery Panel</h4>
+            <div className="mb-2 flex flex-wrap gap-2">
+              <button className={`rounded border px-2 py-1 ${deliveryMode === 'update' ? 'border-blue-500 text-blue-300' : 'border-slate-700 text-slate-300'}`} onClick={() => setDeliveryMode('update')}>Update Existing</button>
+              <button className={`rounded border px-2 py-1 ${deliveryMode === 'new' ? 'border-blue-500 text-blue-300' : 'border-slate-700 text-slate-300'}`} onClick={() => setDeliveryMode('new')}>Save As New</button>
+              <button className="rounded bg-blue-700 px-3 py-1 font-semibold" onClick={() => saveCurrentTemplate()}>{deliveryMode === 'update' ? 'Update Template' : 'Save New Template'}</button>
+            </div>
+            <p className="mb-2 text-slate-400">Loaded template: <span className="font-semibold text-slate-200">{loadedTemplate?.name ?? 'none'}</span></p>
+            <div className="mb-2 flex flex-wrap gap-2">
+              <button className="rounded border border-slate-700 px-2 py-1" onClick={() => exportTemplateImage('jpg')}>Export JPG</button>
+              <button className="rounded border border-slate-700 px-2 py-1" onClick={() => exportTemplateImage('png')}>Export PNG α</button>
+              <button className="rounded border border-slate-700 px-2 py-1" onClick={() => exportTemplateImage('png-green')}>Export PNG Green</button>
+            </div>
+            <button className="rounded bg-emerald-700 px-3 py-1 font-semibold" onClick={copyTemplatePublicUrl}>Copy Public URL (this template)</button>
           </div>
           {saveNotice && <p className="rounded border border-emerald-700 bg-emerald-900/20 px-3 py-2 text-xs text-emerald-200">{saveNotice}</p>}
           <div ref={stageViewportRef} className="grid flex-1 min-h-0 place-items-center overflow-hidden rounded-lg border border-slate-700 bg-slate-800 p-6">
@@ -477,22 +588,17 @@ export function DesignRoute() {
             <div className="space-y-3">
               <div className="rounded border border-slate-700 bg-slate-900 p-2"><div className="mb-1 text-xs uppercase text-slate-400">Selected ({selectedLayerIds.length})</div>{editingLayerId === selectedPrimary.id ? (<input className="w-full rounded border border-blue-500 bg-slate-950 px-2 py-1 font-semibold" value={editingLayerValue} onChange={(e) => setEditingLayerValue(e.target.value)} onBlur={() => { renameLayer(selectedPrimary.id, editingLayerValue.trim() || selectedPrimary.name); setEditingLayerId(null); setEditingLayerValue(''); }} onKeyDown={(e) => { if (e.key === 'Enter') { renameLayer(selectedPrimary.id, editingLayerValue.trim() || selectedPrimary.name); setEditingLayerId(null); setEditingLayerValue(''); } }} autoFocus />) : (<strong onClick={() => { setEditingLayerId(selectedPrimary.id); setEditingLayerValue(selectedPrimary.name); }} className="cursor-text">{selectedPrimary.name}</strong>)}</div>
 
-              <div className="mb-3 space-y-2 rounded border border-slate-700 bg-slate-900 p-3">
-                <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Stage Align & Distribute</div>
-                <div className="flex gap-2">
-                  <button className={`rounded border px-2 py-1 text-xs ${alignScope === 'selection' ? 'border-blue-500 text-blue-300' : 'border-slate-700 text-slate-300'}`} onClick={() => setAlignScope('selection')}>Selection</button>
-                  <button className={`rounded border px-2 py-1 text-xs ${alignScope === 'canvas' ? 'border-blue-500 text-blue-300' : 'border-slate-700 text-slate-300'}`} onClick={() => setAlignScope('canvas')}>Stage</button>
+
+              {selectedPrimary.kind === 'shape' && (
+                <div className="space-y-2 rounded border border-slate-700 bg-slate-900 p-3">
+                  <h4 className="font-semibold">Shape</h4>
+                  <div className="flex gap-2 text-xs">
+                    <button className={`rounded border px-2 py-1 ${selectedPrimary.shapeType === 'rectangle' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => applyToSelected((layer) => layer.kind === 'shape' ? ({ shapeType: 'rectangle' } as Partial<Layer>) : ({}))}>Rectangle</button>
+                    <button className={`rounded border px-2 py-1 ${selectedPrimary.shapeType === 'ellipse' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => applyToSelected((layer) => layer.kind === 'shape' ? ({ shapeType: 'ellipse' } as Partial<Layer>) : ({}))}>Ellipse</button>
+                  </div>
+                  <label className="text-sm">Fill<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="color" value={selectedPrimary.fill} onChange={(e) => applyToSelected((layer) => layer.kind === 'shape' ? ({ fill: e.target.value } as Partial<Layer>) : ({}))} /></label>
                 </div>
-                <div className="flex gap-2 text-xs">
-                  <button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('left')}>Align Left</button>
-                  <button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('center')}>Align Center</button>
-                  <button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('right')}>Align Right</button>
-                </div>
-                <div className="flex gap-2 text-xs">
-                  <button className="rounded border border-slate-700 px-2 py-1" onClick={() => distributeLayers('x')}>Distribute H</button>
-                  <button className="rounded border border-slate-700 px-2 py-1" onClick={() => distributeLayers('y')}>Distribute V</button>
-                </div>
-              </div>
+              )}
 
               {selectedPrimary.kind === 'text' && (
                 <>
@@ -516,7 +622,7 @@ export function DesignRoute() {
               <div className="space-y-2 rounded border border-slate-700 bg-slate-900 p-3">
                 <div className="flex items-center justify-between"><h4 className="font-semibold">Transform</h4><button className="text-sm text-blue-300" onClick={resetSelectedTransform}>Reset</button></div>
                 <div className="grid grid-cols-3 gap-1">{[0, 0.5, 1].flatMap((y) => [0, 0.5, 1].map((x) => ({ x, y }))).map((pt) => <button key={`${pt.x}-${pt.y}`} className="rounded border border-slate-700 py-1 text-xs" onClick={() => setAnchorPreset(pt.x, pt.y)}>•</button>)}</div>
-                <div className="grid grid-cols-2 gap-2"><label className="text-sm">Anchor X<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" value={getTransform(selectedPrimary).anchorX} onChange={(e) => setNumeric('anchorX', e.target.value)} /></label><label className="text-sm">Anchor Y<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" value={getTransform(selectedPrimary).anchorY} onChange={(e) => setNumeric('anchorY', e.target.value)} /></label><label className="text-sm">Position X<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" value={selectedPrimary.x} onChange={(e) => setNumeric('x', e.target.value)} /></label><label className="text-sm">Position Y<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" value={selectedPrimary.y} onChange={(e) => setNumeric('y', e.target.value)} /></label></div>
+                <div className="grid grid-cols-2 gap-2"><label className="text-sm">Anchor X<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" value={getTransform(selectedPrimary).anchorX} onChange={(e) => setNumeric('anchorX', e.target.value)} /></label><label className="text-sm">Anchor Y<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" value={getTransform(selectedPrimary).anchorY} onChange={(e) => setNumeric('anchorY', e.target.value)} /></label><label className="text-sm">Position X<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" value={selectedPrimary.x} onChange={(e) => setNumeric('x', e.target.value)} /></label><label className="text-sm">Position Y<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" value={selectedPrimary.y} onChange={(e) => setNumeric('y', e.target.value)} /></label></div>{selectedPrimary.kind === "shape" && selectedPrimary.shapeType === "rectangle" && <div className="grid grid-cols-2 gap-2"><label className="text-sm">Width<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" value={selectedPrimary.width} onChange={(e) => setNumeric('width', e.target.value)} /></label><label className="text-sm">Height<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" value={selectedPrimary.height} onChange={(e) => setNumeric('height', e.target.value)} /></label></div>}
                 <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2"><label className="text-sm">Scale X<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" value={getTransform(selectedPrimary).scaleX} onChange={(e) => updateScale('x', e.target.value)} /></label><button className={`rounded border px-2 py-2 ${lockScale ? 'border-blue-500 text-blue-300' : 'border-slate-700 text-slate-300'}`} onClick={() => setLockScale((v) => !v)}>{lockScale ? '🔗' : '⛓'}</button><label className="text-sm">Scale Y<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" value={getTransform(selectedPrimary).scaleY} onChange={(e) => updateScale('y', e.target.value)} /></label></div>
                 <label className="block text-xs text-slate-300">Scale Slider<input className="mt-1 w-full" type="range" min={1} max={300} value={Math.round(getTransform(selectedPrimary).scaleX)} onChange={(e) => updateScale('x', e.target.value)} /></label>
                 <div className="grid grid-cols-2 gap-2"><label className="text-sm">Rotation<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" value={getTransform(selectedPrimary).rotation} onChange={(e) => setNumeric('rotation', e.target.value)} /></label><label className="text-sm">Opacity<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" min={0} max={100} value={selectedPrimary.opacity} onChange={(e) => setNumeric('opacity', e.target.value)} /></label></div>

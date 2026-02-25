@@ -70,6 +70,19 @@ export function TemplatePreview({ template, label, tone = 'preview' }: Props) {
                   }
 
                   if (layer.kind === 'shape') {
+                    if (layer.shapeType === 'ellipse') {
+                      return (
+                        <ellipse
+                          key={layer.id}
+                          cx={layer.x + (layer.width / 2)}
+                          cy={layer.y + (layer.height / 2)}
+                          rx={Math.max(1, layer.width / 2)}
+                          ry={Math.max(1, layer.height / 2)}
+                          fill={layer.fill}
+                          opacity={opacity}
+                        />
+                      );
+                    }
                     return (
                       <rect
                         key={layer.id}

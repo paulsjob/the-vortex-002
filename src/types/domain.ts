@@ -64,6 +64,7 @@ export interface TextLayer extends LayerBase {
 
 export interface ShapeLayer extends LayerBase {
   kind: 'shape';
+  shapeType: 'rectangle' | 'ellipse';
   width: number;
   height: number;
   fill: string;

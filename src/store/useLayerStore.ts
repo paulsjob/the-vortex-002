@@ -16,6 +16,7 @@ interface LayerStore {
   canvasWidth: number;
   canvasHeight: number;
   templates: LayerTemplate[];
+  loadedTemplateId: string | null;
   addText: () => void;
   addShape: () => void;
   addAssetLayer: (assetId: string, dimensions?: { width: number; height: number }) => void;
@@ -27,6 +28,7 @@ interface LayerStore {
   setCanvasSize: (canvasWidth: number, canvasHeight: number) => void;
   saveTemplate: (name: string) => void;
   loadTemplate: (template: SavedTemplate) => void;
+  clearLoadedTemplate: () => void;
 }
 
 const DEFAULT_TRANSFORM = {
@@ -53,6 +55,7 @@ export const useLayerStore = create<LayerStore>((set) => ({
   canvasWidth: 1920,
   canvasHeight: 1080,
   templates: [],
+  loadedTemplateId: null,
   addText: () => set((s) => ({
     layers: [...s.layers, {
       id: `text-${Date.now()}`,
@@ -82,6 +85,7 @@ export const useLayerStore = create<LayerStore>((set) => ({
       y: 120,
       zIndex: s.layers.length,
       opacity: 100,
+      shapeType: 'rectangle',
       width: 320,
       height: 120,
       fill: '#1d4ed8',
@@ -142,12 +146,15 @@ export const useLayerStore = create<LayerStore>((set) => ({
     templates: [{ id: `tpl-${Date.now()}`, name, layerIds: s.layers.map((l) => l.id), canvasWidth: s.canvasWidth, canvasHeight: s.canvasHeight, createdAt: new Date().toISOString() }, ...s.templates],
   })),
   loadTemplate: (template) => set({
+    loadedTemplateId: template.id,
     canvasWidth: template.canvasWidth,
     canvasHeight: template.canvasHeight,
     layers: structuredClone(template.layers).map((layer) => {
       const base = { ...DEFAULT_TRANSFORM, ...layer } as Layer;
       if (base.kind === 'text') return withTextDefaults(base as TextLayer);
+      if (base.kind === 'shape') return { ...base, shapeType: base.shapeType ?? 'rectangle' };
       return base;
     }),
   }),
+  clearLoadedTemplate: () => set({ loadedTemplateId: null }),
 }));

@@ -4,7 +4,6 @@ import { TemplatePreview } from '../features/playout/TemplatePreview';
 
 export function OutputRoute() {
   const programTemplate = usePlayoutStore((s) => s.programTemplate);
-  const previewTemplate = usePlayoutStore((s) => s.previewTemplate);
   const lastTakeAt = usePlayoutStore((s) => s.lastTakeAt);
   const clearProgram = usePlayoutStore((s) => s.clearProgram);
 
@@ -20,17 +19,13 @@ export function OutputRoute() {
     <section className="space-y-4 rounded-xl border border-slate-800 bg-slate-900 p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-slate-100">Output Monitor</h2>
-          <p className="text-slate-400">Rudimentary playout path: Design → Control Room Preview → Take to Output.</p>
+          <h2 className="text-2xl font-bold text-slate-100">Output Monitor (Client Feed)</h2>
+          <p className="text-slate-400">This is the actual program output feed only.</p>
         </div>
         <button className="rounded border border-slate-700 px-3 py-1 text-xs text-slate-300" onClick={clearProgram}>Clear Output</button>
       </div>
 
-      <div className="grid gap-3 rounded-lg border border-slate-700 bg-slate-950 p-3 text-sm md:grid-cols-3">
-        <div>
-          <p className="text-xs uppercase tracking-wider text-slate-400">Preview</p>
-          <p className="font-semibold text-slate-100">{previewTemplate?.name || 'None'}</p>
-        </div>
+      <div className="grid gap-3 rounded-lg border border-slate-700 bg-slate-950 p-3 text-sm md:grid-cols-2">
         <div>
           <p className="text-xs uppercase tracking-wider text-slate-400">Program (Live)</p>
           <p className="font-semibold text-red-300">{programTemplate?.name || 'No live graphic'}</p>
@@ -41,9 +36,8 @@ export function OutputRoute() {
         </div>
       </div>
 
-      <div className="grid gap-4 rounded-lg border border-slate-700 bg-slate-950 p-4 lg:grid-cols-2">
-        <TemplatePreview template={previewTemplate} label="PST / Preview" tone="preview" />
-        <TemplatePreview template={programTemplate} label="PGM / Program" tone="program" />
+      <div className="rounded-lg border border-slate-700 bg-slate-950 p-4">
+        <TemplatePreview template={programTemplate} label="PROGRAM FEED" tone="program" />
       </div>
 
       <div className="rounded-lg border border-slate-700 bg-slate-950 p-4">
