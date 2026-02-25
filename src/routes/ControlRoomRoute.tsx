@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { usePlayoutStore } from '../store/usePlayoutStore';
 import { TemplatePreview } from '../features/playout/TemplatePreview';
+import { useDataEngineStore } from '../store/useDataEngineStore';
 
 export function ControlRoomRoute() {
   const templateStore = useTemplateStore();
@@ -10,6 +11,13 @@ export function ControlRoomRoute() {
   const lastTakeAt = usePlayoutStore((s) => s.lastTakeAt);
   const setPreviewTemplate = usePlayoutStore((s) => s.setPreviewTemplate);
   const takeToProgram = usePlayoutStore((s) => s.takeToProgram);
+
+  const engineRunning = useDataEngineStore((s) => s.running);
+  const engineSpeed = useDataEngineStore((s) => s.speed);
+  const startEngine = useDataEngineStore((s) => s.start);
+  const stopEngine = useDataEngineStore((s) => s.stop);
+  const stepPitch = useDataEngineStore((s) => s.stepPitch);
+  const setEngineSpeed = useDataEngineStore((s) => s.setSpeed);
 
   const templates = useMemo(
     () => [...templateStore.templates].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
@@ -21,6 +29,24 @@ export function ControlRoomRoute() {
       <div>
         <h2 className="text-2xl font-bold text-slate-100">Control Room Template Queue</h2>
         <p className="text-slate-400">Saved Design templates are available here for graphics operators to trigger on-air.</p>
+      </div>
+
+
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-700 bg-slate-950 p-3">
+        <div className="text-xs text-slate-400">
+          <span className="mr-2 uppercase tracking-wider">Data Engine</span>
+          <span className={`font-semibold ${engineRunning ? 'text-emerald-300' : 'text-amber-300'}`}>{engineRunning ? 'Live' : 'Paused'}</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <select className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs" value={engineSpeed} onChange={(e) => setEngineSpeed(e.target.value as 'slow' | 'normal' | 'fast')}>
+            <option value="slow">Slow</option>
+            <option value="normal">Normal</option>
+            <option value="fast">Fast</option>
+          </select>
+          <button className="rounded border border-slate-700 px-2 py-1 text-xs" onClick={stepPitch}>Step</button>
+          <button className="rounded bg-emerald-700 px-2 py-1 text-xs font-semibold disabled:opacity-50" onClick={startEngine} disabled={engineRunning}>Start</button>
+          <button className="rounded bg-amber-700 px-2 py-1 text-xs font-semibold disabled:opacity-50" onClick={stopEngine} disabled={!engineRunning}>Pause</button>
+        </div>
       </div>
 
       <div className="grid gap-4 rounded-lg border border-slate-700 bg-slate-950 p-3 xl:grid-cols-2">

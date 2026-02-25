@@ -17,7 +17,7 @@ interface LastPitch {
   projectedDistanceFt: number | null;
 }
 
-interface GameState {
+export interface GameState {
   homeTeam: string;
   awayTeam: string;
   inning: number;

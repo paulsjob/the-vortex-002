@@ -4,6 +4,7 @@ import { useDataEngineStore } from '../store/useDataEngineStore';
 import { useLayerStore } from '../store/useLayerStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import type { ExplorerNode, Layer } from '../types/domain';
+import { getLiveTextContent } from '../features/playout/liveBindings';
 
 const TEMPLATE_SIZES = [
   { value: '1920x1080', label: '1920 × 1080' },
@@ -135,35 +136,7 @@ export function DesignRoute() {
   const files = folderChildren.filter((n) => n.type === 'file');
   const filtered = folderChildren.filter((n) => n.name.toLowerCase().includes(search.toLowerCase()));
 
-  const resolveBindingValue = (field: string): string => {
-    const map: Record<string, string> = {
-      'score.home': String(engineGame.scoreHome),
-      'score.away': String(engineGame.scoreAway),
-      'inning.number': String(engineGame.inning),
-      'inning.state': engineGame.half,
-      'count.balls': String(engineGame.balls),
-      'count.strikes': String(engineGame.strikes),
-      'count.outs': String(engineGame.outs),
-      'runners.first': engineGame.onFirst ? 'On' : 'Off',
-      'runners.second': engineGame.onSecond ? 'On' : 'Off',
-      'runners.third': engineGame.onThird ? 'On' : 'Off',
-      'pitch.type': engineGame.lastPitch.pitchType,
-      'pitch.velocity': String(engineGame.lastPitch.velocityMph),
-      'pitch.location': engineGame.lastPitch.location,
-      'bat.batspeed': String(engineGame.lastPitch.batSpeedMph ?? '-'),
-      'bat.exitvelo': String(engineGame.lastPitch.exitVelocityMph ?? '-'),
-      'bat.launchangle': String(engineGame.lastPitch.launchAngleDeg ?? '-'),
-      'bat.distance': String(engineGame.lastPitch.projectedDistanceFt ?? '-'),
-      'matchup.pitcher': engineGame.pitcher,
-      'matchup.batter': engineGame.batter,
-    };
-    return map[field] ?? '';
-  };
-
-  const getTextContent = (layer: Extract<Layer, { kind: 'text' }>) => {
-    if (layer.dataBindingSource === 'manual') return layer.text;
-    return resolveBindingValue(layer.dataBindingField) || layer.text;
-  };
+  const getTextContent = (layer: Extract<Layer, { kind: 'text' }>) => getLiveTextContent(layer, engineGame);
 
   const measureTextBounds = (layer: Extract<Layer, { kind: 'text' }>) => {
     if (layer.textMode === 'area') {

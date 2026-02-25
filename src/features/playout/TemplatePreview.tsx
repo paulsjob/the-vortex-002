@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import { useAssetStore } from '../../store/useAssetStore';
+import { useDataEngineStore } from '../../store/useDataEngineStore';
 import type { SavedTemplate } from '../../store/useTemplateStore';
+import { getLiveTextContent } from './liveBindings';
 
 interface Props {
   template: SavedTemplate | null;
@@ -10,11 +12,18 @@ interface Props {
 
 export function TemplatePreview({ template, label, tone = 'preview' }: Props) {
   const assets = useAssetStore((s) => s.assets);
+  const game = useDataEngineStore((s) => s.game);
+  const running = useDataEngineStore((s) => s.running);
   const assetById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets]);
 
   return (
     <section className="space-y-2">
-      <h4 className={`text-xs font-semibold uppercase tracking-[0.2em] ${tone === 'program' ? 'text-red-300' : 'text-slate-400'}`}>{label}</h4>
+      <div className="flex items-center justify-between">
+        <h4 className={`text-xs font-semibold uppercase tracking-[0.2em] ${tone === 'program' ? 'text-red-300' : 'text-slate-400'}`}>{label}</h4>
+        <div className={`rounded border px-2 py-0.5 text-[10px] uppercase tracking-wider ${running ? 'border-emerald-600 bg-emerald-900/30 text-emerald-300' : 'border-amber-600 bg-amber-900/30 text-amber-300'}`}>
+          Data Engine {running ? 'Live' : 'Paused'}
+        </div>
+      </div>
       {!template ? (
         <div className="grid h-[240px] place-items-center rounded-lg border border-slate-700 bg-slate-950 text-sm text-slate-500">
           No template loaded.
@@ -40,6 +49,8 @@ export function TemplatePreview({ template, label, tone = 'preview' }: Props) {
                   const opacity = (layer.opacity ?? 100) / 100;
 
                   if (layer.kind === 'text') {
+                    const textValue = getLiveTextContent(layer, game);
+                    const anchor = layer.textAlign === 'center' ? 'middle' : layer.textAlign === 'right' ? 'end' : 'start';
                     return (
                       <text
                         key={layer.id}
@@ -51,8 +62,9 @@ export function TemplatePreview({ template, label, tone = 'preview' }: Props) {
                         fontWeight="700"
                         opacity={opacity}
                         dominantBaseline="hanging"
+                        textAnchor={anchor}
                       >
-                        {layer.text}
+                        {textValue}
                       </text>
                     );
                   }
@@ -91,6 +103,11 @@ export function TemplatePreview({ template, label, tone = 'preview' }: Props) {
                   );
                 })}
             </svg>
+          </div>
+          <div className="mt-1 grid grid-cols-3 gap-2 text-[10px] text-slate-500">
+            <span>Pitch #{game.lastPitch.pitchNumber}</span>
+            <span>{game.awayTeam} {game.scoreAway} - {game.scoreHome} {game.homeTeam}</span>
+            <span>{game.half.toUpperCase()} {game.inning} · {game.balls}-{game.strikes} · {game.outs} out</span>
           </div>
         </div>
       )}
