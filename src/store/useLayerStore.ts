@@ -25,10 +25,12 @@ interface LayerStore {
   renameLayer: (id: string, name: string) => void;
   deleteLayer: (id: string) => void;
   setZOrder: (id: string, direction: 'up' | 'down') => void;
+  moveLayer: (sourceId: string, targetId: string) => void;
   setCanvasSize: (canvasWidth: number, canvasHeight: number) => void;
   saveTemplate: (name: string) => void;
   loadTemplate: (template: SavedTemplate) => void;
   clearLoadedTemplate: () => void;
+  setLoadedTemplateId: (templateId: string | null) => void;
 }
 
 const DEFAULT_TRANSFORM = {
@@ -141,6 +143,17 @@ export const useLayerStore = create<LayerStore>((set) => ({
     [sorted[idx], sorted[t]] = [sorted[t], sorted[idx]];
     return { layers: sorted.map((l, i) => ({ ...l, zIndex: i })) };
   }),
+
+  moveLayer: (sourceId, targetId) => set((s) => {
+    if (sourceId === targetId) return s;
+    const sorted = [...s.layers].sort((a, b) => a.zIndex - b.zIndex);
+    const from = sorted.findIndex((l) => l.id === sourceId);
+    const to = sorted.findIndex((l) => l.id === targetId);
+    if (from < 0 || to < 0) return s;
+    const [moved] = sorted.splice(from, 1);
+    sorted.splice(to, 0, moved);
+    return { layers: sorted.map((l, i) => ({ ...l, zIndex: i })) };
+  }),
   setCanvasSize: (canvasWidth, canvasHeight) => set({ canvasWidth, canvasHeight }),
   saveTemplate: (name) => set((s) => ({
     templates: [{ id: `tpl-${Date.now()}`, name, layerIds: s.layers.map((l) => l.id), canvasWidth: s.canvasWidth, canvasHeight: s.canvasHeight, createdAt: new Date().toISOString() }, ...s.templates],
@@ -157,4 +170,5 @@ export const useLayerStore = create<LayerStore>((set) => ({
     }),
   }),
   clearLoadedTemplate: () => set({ loadedTemplateId: null }),
+  setLoadedTemplateId: (templateId) => set({ loadedTemplateId: templateId }),
 }));

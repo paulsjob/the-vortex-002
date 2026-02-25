@@ -19,6 +19,16 @@ export function ControlRoomRoute() {
   const stepPitch = useDataEngineStore((s) => s.stepPitch);
   const setEngineSpeed = useDataEngineStore((s) => s.setSpeed);
 
+
+  const copyTemplateUrl = async (templateId: string) => {
+    const url = `${window.location.origin}/template-feed/${templateId}`;
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      window.prompt('Copy template URL', url);
+    }
+  };
+
   const templates = useMemo(
     () => [...templateStore.templates].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
     [templateStore.templates],
@@ -67,7 +77,7 @@ export function ControlRoomRoute() {
       </div>
 
       <div className="overflow-hidden rounded-lg border border-slate-700">
-        <div className="grid grid-cols-[2fr_1fr_1fr_1fr_220px] bg-slate-950 px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+        <div className="grid grid-cols-[2fr_1fr_1fr_1fr_300px] bg-slate-950 px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-400">
           <span>Name</span>
           <span>Canvas</span>
           <span>Layers</span>
@@ -78,7 +88,7 @@ export function ControlRoomRoute() {
           {templates.map((template) => {
             const isPreview = previewTemplate?.id === template.id;
             return (
-              <div key={template.id} className={`grid grid-cols-[2fr_1fr_1fr_1fr_220px] items-center px-4 py-3 text-sm ${isPreview ? 'bg-blue-900/20 text-blue-100' : 'text-slate-200'}`}>
+              <div key={template.id} className={`grid grid-cols-[2fr_1fr_1fr_1fr_300px] items-center px-4 py-3 text-sm ${isPreview ? 'bg-blue-900/20 text-blue-100' : 'text-slate-200'}`}>
                 <span className="font-semibold">{template.name}</span>
                 <span>{template.canvasWidth} × {template.canvasHeight}</span>
                 <span>{template.layers.length}</span>
@@ -87,6 +97,7 @@ export function ControlRoomRoute() {
                   <button className="rounded bg-blue-700 px-2 py-1 text-xs font-semibold" onClick={() => setPreviewTemplate(template)}>
                     {isPreview ? 'Loaded' : 'Load Preview'}
                   </button>
+                  <button className="rounded border border-emerald-700 px-2 py-1 text-xs font-semibold text-emerald-300" onClick={() => copyTemplateUrl(template.id)}>Copy URL</button>
                   <button className="rounded bg-red-700 px-2 py-1 text-xs font-semibold disabled:opacity-50" onClick={takeToProgram} disabled={!isPreview}>
                     Take
                   </button>

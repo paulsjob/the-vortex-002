@@ -35,7 +35,8 @@ export function DesignRoute() {
     renameLayer,
     updateLayer,
     loadedTemplateId,
-    clearLoadedTemplate,
+    setLoadedTemplateId,
+    moveLayer,
   } = useLayerStore();
 
   const [folderId, setFolderId] = useState(assetStore.brandedExplorer.rootId);
@@ -45,7 +46,6 @@ export function DesignRoute() {
   const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
   const [lastClickedLayerId, setLastClickedLayerId] = useState<string | null>(null);
   const [lockScale, setLockScale] = useState(true);
-  const [alignScope, setAlignScope] = useState<'selection' | 'canvas'>('selection');
   const [leftPanelTab, setLeftPanelTab] = useState<'layers' | 'assets'>('layers');
   const [interactionMode, setInteractionMode] = useState<'select' | 'pan'>('select');
   const [stageViewport, setStageViewport] = useState({ width: 0, height: 0 });
@@ -53,7 +53,10 @@ export function DesignRoute() {
   const [stageTextEditValue, setStageTextEditValue] = useState('');
   const [templateName, setTemplateName] = useState('');
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
-  const [deliveryMode, setDeliveryMode] = useState<'update' | 'new'>('new');
+  const [alignScope, setAlignScope] = useState<'selection' | 'canvas' | 'key'>('selection');
+  const [keyObjectId, setKeyObjectId] = useState<string | null>(null);
+  const [distributeSpacingValue, setDistributeSpacingValue] = useState('20');
+  const [dragLayerId, setDragLayerId] = useState<string | null>(null);
 
   const stageViewportRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -110,6 +113,13 @@ export function DesignRoute() {
     }
     setSelectedLayerIds((ids) => ids.filter((id) => layerById.has(id)));
   }, [stackLayers, selectedLayerIds.length, layerById]);
+
+
+  useEffect(() => {
+    if (!keyObjectId || !selectedLayerIds.includes(keyObjectId)) {
+      setKeyObjectId(selectedLayerIds[0] ?? null);
+    }
+  }, [selectedLayerIds, keyObjectId]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -199,7 +209,7 @@ export function DesignRoute() {
 
   const resetSelectedTransform = () => applyToSelected(() => transformDefaults as Partial<Layer>);
 
-  const saveCurrentTemplate = (mode: 'new' | 'update' = deliveryMode) => {
+  const saveCurrentTemplate = (mode: 'new' | 'update' = 'new') => {
     const name = templateName.trim() || loadedTemplate?.name || `Template ${new Date().toLocaleTimeString()}`;
     if (mode === 'update' && loadedTemplateId) {
       templateStore.updateTemplate(loadedTemplateId, {
@@ -218,20 +228,27 @@ export function DesignRoute() {
         canvasHeight,
         layers,
       });
-      if (newId) setSaveNotice(`Saved new template “${name}” at ${new Date().toLocaleTimeString()}.`);
-      clearLoadedTemplate();
+      if (newId) {
+        setLoadedTemplateId(newId);
+        setSaveNotice(`Saved new template “${name}” at ${new Date().toLocaleTimeString()}.`);
+      }
     }
     setTemplateName(name);
   };
 
-  const getTemplatePublicUrl = () => `${window.location.origin}/public/template/${loadedTemplateId ?? 'unsaved'}`;
+  const getTemplatePublicUrl = () => (loadedTemplateId ? `${window.location.origin}/template-feed/${loadedTemplateId}` : '');
 
   const copyTemplatePublicUrl = async () => {
+    const url = getTemplatePublicUrl();
+    if (!url) {
+      setSaveNotice('Save or load a template first to copy its URL.');
+      return;
+    }
     try {
-      await navigator.clipboard.writeText(getTemplatePublicUrl());
+      await navigator.clipboard.writeText(url);
       setSaveNotice('Copied template public URL to clipboard.');
     } catch {
-      setSaveNotice(`Template URL: ${getTemplatePublicUrl()}`);
+      setSaveNotice(`Template URL: ${url}`);
     }
   };
 
@@ -333,6 +350,10 @@ export function DesignRoute() {
       setLastClickedLayerId(layerId);
       return;
     }
+    if (selectedLayerIds.includes(layerId) && selectedLayerIds.length > 1) {
+      setKeyObjectId(layerId);
+      return;
+    }
     setSelectedLayerIds([layerId]);
     setLastClickedLayerId(layerId);
   };
@@ -366,32 +387,84 @@ export function DesignRoute() {
     window.addEventListener('mouseup', onUp);
   };
 
-  const alignLayers = (mode: 'left' | 'center' | 'right') => {
+  const getLayerRect = (layer: Layer) => {
+    const { width, height } = getLayerBounds(layer);
+    const left = layer.kind === 'shape' ? layer.x : (layer.x - (layer.anchorX ?? 0));
+    const top = layer.kind === 'shape' ? layer.y : (layer.y - (layer.anchorY ?? 0));
+    return { layer, width, height, left, top, right: left + width, bottom: top + height, centerX: left + width / 2, centerY: top + height / 2 };
+  };
+
+  const alignLayers = (mode: 'left' | 'hCenter' | 'right' | 'top' | 'vCenter' | 'bottom') => {
     if (!selectedLayers.length) return;
-    const layerRects = selectedLayers.map((l) => ({ layer: l, ...getLayerBounds(l) }));
-    const minX = Math.min(...layerRects.map((r) => r.layer.x - (r.layer.anchorX ?? 0)));
-    const maxX = Math.max(...layerRects.map((r) => r.layer.x - (r.layer.anchorX ?? 0) + r.width));
-    const scopeLeft = alignScope === 'canvas' ? 0 : minX;
-    const scopeRight = alignScope === 'canvas' ? canvasWidth : maxX;
-    layerRects.forEach(({ layer, width }) => {
-      const anchorX = layer.anchorX ?? 0;
-      if (mode === 'left') updateLayer(layer.id, { x: scopeLeft + anchorX });
-      if (mode === 'center') updateLayer(layer.id, { x: scopeLeft + ((scopeRight - scopeLeft - width) / 2) + anchorX });
-      if (mode === 'right') updateLayer(layer.id, { x: scopeRight - width + anchorX });
+    const rects = selectedLayers.map(getLayerRect);
+    const keyRect = keyObjectId ? rects.find((r) => r.layer.id === keyObjectId) : undefined;
+    const minX = Math.min(...rects.map((r) => r.left));
+    const maxX = Math.max(...rects.map((r) => r.right));
+    const minY = Math.min(...rects.map((r) => r.top));
+    const maxY = Math.max(...rects.map((r) => r.bottom));
+
+    const ref = {
+      left: alignScope === 'canvas' ? 0 : alignScope === 'key' && keyRect ? keyRect.left : minX,
+      right: alignScope === 'canvas' ? canvasWidth : alignScope === 'key' && keyRect ? keyRect.right : maxX,
+      top: alignScope === 'canvas' ? 0 : alignScope === 'key' && keyRect ? keyRect.top : minY,
+      bottom: alignScope === 'canvas' ? canvasHeight : alignScope === 'key' && keyRect ? keyRect.bottom : maxY,
+    };
+
+    rects.forEach((rect) => {
+      if (alignScope === 'key' && keyRect && rect.layer.id === keyRect.layer.id) return;
+      if (mode === 'left') updateLayer(rect.layer.id, { x: rect.layer.x + (ref.left - rect.left) });
+      if (mode === 'right') updateLayer(rect.layer.id, { x: rect.layer.x + (ref.right - rect.right) });
+      if (mode === 'hCenter') updateLayer(rect.layer.id, { x: rect.layer.x + (((ref.left + ref.right) / 2) - rect.centerX) });
+      if (mode === 'top') updateLayer(rect.layer.id, { y: rect.layer.y + (ref.top - rect.top) });
+      if (mode === 'bottom') updateLayer(rect.layer.id, { y: rect.layer.y + (ref.bottom - rect.bottom) });
+      if (mode === 'vCenter') updateLayer(rect.layer.id, { y: rect.layer.y + (((ref.top + ref.bottom) / 2) - rect.centerY) });
     });
   };
 
-  const distributeLayers = (axis: 'x' | 'y') => {
+  const distributeCenters = (axis: 'x' | 'y') => {
     if (selectedLayers.length < 3) return;
-    const sorted = [...selectedLayers].sort((a, b) => (axis === 'x' ? a.x - b.x : a.y - b.y));
-    const first = sorted[0];
-    const last = sorted[sorted.length - 1];
-    const totalDistance = axis === 'x' ? (last.x - first.x) : (last.y - first.y);
-    const step = totalDistance / (sorted.length - 1);
-    sorted.forEach((layer, i) => {
-      if (layer.id === first.id || layer.id === last.id) return;
-      if (axis === 'x') updateLayer(layer.id, { x: Math.round(first.x + step * i) });
-      else updateLayer(layer.id, { y: Math.round(first.y + step * i) });
+    const rects = selectedLayers.map(getLayerRect).sort((a, b) => axis === 'x' ? a.centerX - b.centerX : a.centerY - b.centerY);
+    const first = rects[0];
+    const last = rects[rects.length - 1];
+    const total = axis === 'x' ? (last.centerX - first.centerX) : (last.centerY - first.centerY);
+    const step = total / (rects.length - 1);
+    rects.forEach((rect, i) => {
+      if (i === 0 || i === rects.length - 1) return;
+      const target = (axis === 'x' ? first.centerX : first.centerY) + (step * i);
+      if (axis === 'x') updateLayer(rect.layer.id, { x: rect.layer.x + (target - rect.centerX) });
+      else updateLayer(rect.layer.id, { y: rect.layer.y + (target - rect.centerY) });
+    });
+  };
+
+  const distributeEdges = (axis: 'x' | 'y') => {
+    if (selectedLayers.length < 3) return;
+    const rects = selectedLayers.map(getLayerRect).sort((a, b) => axis === 'x' ? a.left - b.left : a.top - b.top);
+    const first = rects[0];
+    const last = rects[rects.length - 1];
+    const total = axis === 'x' ? (last.left - first.left) : (last.top - first.top);
+    const step = total / (rects.length - 1);
+    rects.forEach((rect, i) => {
+      if (i === 0 || i === rects.length - 1) return;
+      const target = (axis === 'x' ? first.left : first.top) + (step * i);
+      if (axis === 'x') updateLayer(rect.layer.id, { x: rect.layer.x + (target - rect.left) });
+      else updateLayer(rect.layer.id, { y: rect.layer.y + (target - rect.top) });
+    });
+  };
+
+  const distributeSpacing = (axis: 'x' | 'y') => {
+    if (selectedLayers.length < 2) return;
+    const spacing = Number(distributeSpacingValue);
+    if (!Number.isFinite(spacing)) return;
+    const rects = selectedLayers.map(getLayerRect).sort((a, b) => axis === 'x' ? a.left - b.left : a.top - b.top);
+    let cursor = axis === 'x' ? rects[0].right + spacing : rects[0].bottom + spacing;
+    rects.slice(1).forEach((rect) => {
+      if (axis === 'x') {
+        updateLayer(rect.layer.id, { x: rect.layer.x + (cursor - rect.left) });
+        cursor += rect.width + spacing;
+      } else {
+        updateLayer(rect.layer.id, { y: rect.layer.y + (cursor - rect.top) });
+        cursor += rect.height + spacing;
+      }
     });
   };
 
@@ -491,7 +564,7 @@ export function DesignRoute() {
             {leftPanelTab === 'layers' ? (
               <>
           {!stackLayers.length ? <p className="text-slate-400">No layers yet.</p> : <div className="space-y-2">{stackLayers.map((layer) => (
-            <div key={layer.id} className={`select-none rounded border p-2 ${selectedLayerIds.includes(layer.id) ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'}`} onClick={(event) => selectLayer(layer.id, event)}>
+            <div key={layer.id} draggable className={`select-none rounded border p-2 ${selectedLayerIds.includes(layer.id) ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'}`} onClick={(event) => selectLayer(layer.id, event)} onDragStart={() => setDragLayerId(layer.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (dragLayerId) moveLayer(dragLayerId, layer.id); setDragLayerId(null); }} onDragEnd={() => setDragLayerId(null)}>
               <div className="flex items-center gap-2">
                 <button className={actionBtn} onClick={(event) => { event.stopPropagation(); setZOrder(layer.id, 'up'); }} title="Move up">↑</button>
                 <button className={actionBtn} onClick={(event) => { event.stopPropagation(); setZOrder(layer.id, 'down'); }} title="Move down">↓</button>
@@ -544,32 +617,34 @@ export function DesignRoute() {
                 {TEMPLATE_SIZES.map((size) => <option key={size.value} value={size.value}>{size.label}</option>)}
               </select>
               <button className="rounded bg-blue-700 px-3 py-1 text-xs font-semibold" onClick={() => saveCurrentTemplate('new')}>Save Template</button>
+              <button className="rounded border border-blue-700 px-3 py-1 text-xs font-semibold text-blue-300 disabled:opacity-50" disabled={!loadedTemplateId} onClick={() => saveCurrentTemplate('update')}>Update</button>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 rounded border border-slate-700 bg-slate-900 p-2 text-xs">
             <span className="font-semibold uppercase tracking-wider text-slate-400">Stage Align & Distribute</span>
             <button className={`rounded border px-2 py-1 ${alignScope === 'selection' ? 'border-blue-500 text-blue-300' : 'border-slate-700 text-slate-300'}`} onClick={() => setAlignScope('selection')}>Selection</button>
+            <button className={`rounded border px-2 py-1 ${alignScope === 'key' ? 'border-blue-500 text-blue-300' : 'border-slate-700 text-slate-300'}`} onClick={() => setAlignScope('key')}>Key Object</button>
             <button className={`rounded border px-2 py-1 ${alignScope === 'canvas' ? 'border-blue-500 text-blue-300' : 'border-slate-700 text-slate-300'}`} onClick={() => setAlignScope('canvas')}>Stage</button>
-            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('left')}>Align Left</button>
-            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('center')}>Align Center</button>
-            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('right')}>Align Right</button>
-            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => distributeLayers('x')}>Distribute H</button>
-            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => distributeLayers('y')}>Distribute V</button>
+            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('left')}>Left</button>
+            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('hCenter')}>H Center</button>
+            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('right')}>Right</button>
+            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('top')}>Top</button>
+            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('vCenter')}>V Middle</button>
+            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => alignLayers('bottom')}>Bottom</button>
+            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => distributeCenters('x')}>Dist Ctr H</button>
+            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => distributeCenters('y')}>Dist Ctr V</button>
+            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => distributeEdges('x')}>Dist Edge H</button>
+            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => distributeEdges('y')}>Dist Edge V</button>
+            <input className="w-16 rounded border border-slate-700 bg-slate-950 px-2 py-1" value={distributeSpacingValue} onChange={(e) => setDistributeSpacingValue(e.target.value)} aria-label="Distribution spacing" />
+            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => distributeSpacing('x')}>Space H</button>
+            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => distributeSpacing('y')}>Space V</button>
           </div>
-          <div className="rounded border border-slate-700 bg-slate-900 p-3 text-xs">
-            <h4 className="mb-2 text-sm font-semibold uppercase tracking-wider text-slate-300">Template Delivery Panel</h4>
-            <div className="mb-2 flex flex-wrap gap-2">
-              <button className={`rounded border px-2 py-1 ${deliveryMode === 'update' ? 'border-blue-500 text-blue-300' : 'border-slate-700 text-slate-300'}`} onClick={() => setDeliveryMode('update')}>Update Existing</button>
-              <button className={`rounded border px-2 py-1 ${deliveryMode === 'new' ? 'border-blue-500 text-blue-300' : 'border-slate-700 text-slate-300'}`} onClick={() => setDeliveryMode('new')}>Save As New</button>
-              <button className="rounded bg-blue-700 px-3 py-1 font-semibold" onClick={() => saveCurrentTemplate()}>{deliveryMode === 'update' ? 'Update Template' : 'Save New Template'}</button>
-            </div>
-            <p className="mb-2 text-slate-400">Loaded template: <span className="font-semibold text-slate-200">{loadedTemplate?.name ?? 'none'}</span></p>
-            <div className="mb-2 flex flex-wrap gap-2">
-              <button className="rounded border border-slate-700 px-2 py-1" onClick={() => exportTemplateImage('jpg')}>Export JPG</button>
-              <button className="rounded border border-slate-700 px-2 py-1" onClick={() => exportTemplateImage('png')}>Export PNG α</button>
-              <button className="rounded border border-slate-700 px-2 py-1" onClick={() => exportTemplateImage('png-green')}>Export PNG Green</button>
-            </div>
-            <button className="rounded bg-emerald-700 px-3 py-1 font-semibold" onClick={copyTemplatePublicUrl}>Copy Public URL (this template)</button>
+          <div className="flex flex-wrap items-center gap-2 rounded border border-slate-700 bg-slate-900 p-2 text-xs">
+            <span className="font-semibold uppercase tracking-wider text-slate-400">Export</span>
+            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => exportTemplateImage('jpg')}>Export JPG</button>
+            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => exportTemplateImage('png')}>Export PNG α</button>
+            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => exportTemplateImage('png-green')}>Export PNG Green</button>
+            <button className="rounded bg-emerald-700 px-3 py-1 font-semibold" onClick={copyTemplatePublicUrl}>Copy Public URL</button>
           </div>
           {saveNotice && <p className="rounded border border-emerald-700 bg-emerald-900/20 px-3 py-2 text-xs text-emerald-200">{saveNotice}</p>}
           <div ref={stageViewportRef} className="grid flex-1 min-h-0 place-items-center overflow-hidden rounded-lg border border-slate-700 bg-slate-800 p-6">
@@ -586,7 +661,7 @@ export function DesignRoute() {
           <div className="min-h-0 flex-1 overflow-auto pr-1">
           {!selectedPrimary ? <p className="text-slate-400">Select a layer to edit.</p> : (
             <div className="space-y-3">
-              <div className="rounded border border-slate-700 bg-slate-900 p-2"><div className="mb-1 text-xs uppercase text-slate-400">Selected ({selectedLayerIds.length})</div>{editingLayerId === selectedPrimary.id ? (<input className="w-full rounded border border-blue-500 bg-slate-950 px-2 py-1 font-semibold" value={editingLayerValue} onChange={(e) => setEditingLayerValue(e.target.value)} onBlur={() => { renameLayer(selectedPrimary.id, editingLayerValue.trim() || selectedPrimary.name); setEditingLayerId(null); setEditingLayerValue(''); }} onKeyDown={(e) => { if (e.key === 'Enter') { renameLayer(selectedPrimary.id, editingLayerValue.trim() || selectedPrimary.name); setEditingLayerId(null); setEditingLayerValue(''); } }} autoFocus />) : (<strong onClick={() => { setEditingLayerId(selectedPrimary.id); setEditingLayerValue(selectedPrimary.name); }} className="cursor-text">{selectedPrimary.name}</strong>)}</div>
+              <div className="rounded border border-slate-700 bg-slate-900 p-2"><div className="mb-1 text-xs uppercase text-slate-400">Selected ({selectedLayerIds.length})</div>{editingLayerId === selectedPrimary.id ? (<input className="w-full rounded border border-blue-500 bg-slate-950 px-2 py-1 font-semibold" value={editingLayerValue} onChange={(e) => setEditingLayerValue(e.target.value)} onBlur={() => { renameLayer(selectedPrimary.id, editingLayerValue.trim() || selectedPrimary.name); setEditingLayerId(null); setEditingLayerValue(''); }} onKeyDown={(e) => { if (e.key === 'Enter') { renameLayer(selectedPrimary.id, editingLayerValue.trim() || selectedPrimary.name); setEditingLayerId(null); setEditingLayerValue(''); } }} autoFocus />) : (<strong className="cursor-text" onDoubleClick={() => { setEditingLayerId(selectedPrimary.id); setEditingLayerValue(selectedPrimary.name); }}>{selectedPrimary.name}</strong>)}</div>
 
 
               {selectedPrimary.kind === 'shape' && (

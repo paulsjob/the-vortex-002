@@ -4,6 +4,7 @@ import { DesignRoute } from './DesignRoute';
 import { DataEngineRoute } from './DataEngineRoute';
 import { ControlRoomRoute } from './ControlRoomRoute';
 import { OutputRoute } from './OutputRoute';
+import { PublicTemplateRoute } from './PublicTemplateRoute';
 import { usePlayoutStore } from '../store/usePlayoutStore';
 
 const tabs = [
@@ -50,6 +51,7 @@ export function AppRoutes() {
           <Route path="/data-engine" element={<DataEngineRoute />} />
           <Route path="/control-room" element={<ControlRoomRoute />} />
           <Route path="/output" element={<OutputRoute />} />
+          <Route path="/template-feed/:templateId" element={<PublicTemplateRoute />} />
         </Routes>
       </main>
     </div>
