@@ -5,6 +5,7 @@ import { useLayerStore } from '../store/useLayerStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import type { ExplorerNode, Layer } from '../types/domain';
 import { getLiveTextContent } from '../features/playout/liveBindings';
+import { buildTemplateFeedUrl } from '../features/playout/publicUrl';
 
 const TEMPLATE_SIZES = [
   { value: '1920x1080', label: '1920 × 1080' },
@@ -236,7 +237,10 @@ export function DesignRoute() {
     setTemplateName(name);
   };
 
-  const getTemplatePublicUrl = () => (loadedTemplateId ? `${window.location.origin}/template-feed/${loadedTemplateId}` : '');
+  const getTemplatePublicUrl = () => {
+    if (!loadedTemplate) return '';
+    return buildTemplateFeedUrl(window.location.origin, loadedTemplate);
+  };
 
   const copyTemplatePublicUrl = async () => {
     const url = getTemplatePublicUrl();

@@ -5,6 +5,7 @@ import { DataEngineRoute } from './DataEngineRoute';
 import { ControlRoomRoute } from './ControlRoomRoute';
 import { OutputRoute } from './OutputRoute';
 import { PublicTemplateRoute } from './PublicTemplateRoute';
+import { PublicOutputRoute } from './PublicOutputRoute';
 import { usePlayoutStore } from '../store/usePlayoutStore';
 
 const tabs = [
@@ -21,11 +22,13 @@ export function AppRoutes() {
 
   const location = useLocation();
   const isPublicTemplateFeed = location.pathname.startsWith('/template-feed/');
+  const isPublicOutputFeed = location.pathname.startsWith('/output-feed');
 
-  if (isPublicTemplateFeed) {
+  if (isPublicTemplateFeed || isPublicOutputFeed) {
     return (
       <Routes>
         <Route path="/template-feed/:templateId" element={<PublicTemplateRoute />} />
+        <Route path="/output-feed" element={<PublicOutputRoute />} />
       </Routes>
     );
   }
@@ -63,6 +66,8 @@ export function AppRoutes() {
           <Route path="/control-room" element={<ControlRoomRoute />} />
           <Route path="/output" element={<OutputRoute />} />
           <Route path="/template-feed/:templateId" element={<PublicTemplateRoute />} />
+          <Route path="/output-feed" element={<PublicOutputRoute />} />
+        <Route path="/output-feed" element={<PublicOutputRoute />} />
         </Routes>
       </main>
     </div>

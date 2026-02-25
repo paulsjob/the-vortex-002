@@ -3,6 +3,7 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { usePlayoutStore } from '../store/usePlayoutStore';
 import { TemplatePreview } from '../features/playout/TemplatePreview';
 import { useDataEngineStore } from '../store/useDataEngineStore';
+import { buildTemplateFeedUrl } from '../features/playout/publicUrl';
 
 export function ControlRoomRoute() {
   const templateStore = useTemplateStore();
@@ -21,7 +22,9 @@ export function ControlRoomRoute() {
 
 
   const copyTemplateUrl = async (templateId: string) => {
-    const url = `${window.location.origin}/template-feed/${templateId}`;
+    const template = templateStore.getTemplateById(templateId);
+    if (!template) return;
+    const url = buildTemplateFeedUrl(window.location.origin, template);
     try {
       await navigator.clipboard.writeText(url);
     } catch {

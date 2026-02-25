@@ -1,11 +1,23 @@
 import { useMemo } from 'react';
 import { usePlayoutStore } from '../store/usePlayoutStore';
 import { TemplatePreview } from '../features/playout/TemplatePreview';
+import { buildOutputFeedUrl } from '../features/playout/publicUrl';
 
 export function OutputRoute() {
   const programTemplate = usePlayoutStore((s) => s.programTemplate);
   const lastTakeAt = usePlayoutStore((s) => s.lastTakeAt);
   const clearProgram = usePlayoutStore((s) => s.clearProgram);
+
+
+  const copyOutputUrl = async () => {
+    if (!programTemplate) return;
+    const url = buildOutputFeedUrl(window.location.origin, programTemplate);
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      window.prompt('Copy output URL', url);
+    }
+  };
 
   const summary = useMemo(() => {
     if (!programTemplate) return null;
@@ -22,7 +34,10 @@ export function OutputRoute() {
           <h2 className="text-2xl font-bold text-slate-100">Output Monitor (Client Feed)</h2>
           <p className="text-slate-400">This is the actual program output feed only.</p>
         </div>
-        <button className="rounded border border-slate-700 px-3 py-1 text-xs text-slate-300" onClick={clearProgram}>Clear Output</button>
+        <div className="flex items-center gap-2">
+          <button className="rounded border border-emerald-700 px-3 py-1 text-xs text-emerald-300 disabled:opacity-50" onClick={copyOutputUrl} disabled={!programTemplate}>Copy Output URL</button>
+          <button className="rounded border border-slate-700 px-3 py-1 text-xs text-slate-300" onClick={clearProgram}>Clear Output</button>
+        </div>
       </div>
 
       <div className="grid gap-3 rounded-lg border border-slate-700 bg-slate-950 p-3 text-sm md:grid-cols-2">
