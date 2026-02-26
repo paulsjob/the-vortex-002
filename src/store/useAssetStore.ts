@@ -76,6 +76,7 @@ interface AssetStore {
   uploadFiles: (files: File[], targetFolderId: string, kind: 'branded' | 'templates') => Promise<void>;
   addFolder: (name: string, parentId: string, kind: 'branded' | 'templates') => void;
   renameFolder: (id: string, name: string, kind: 'branded' | 'templates') => void;
+  renameNode: (id: string, name: string, kind: 'branded' | 'templates') => void;
   deleteFolder: (id: string, kind: 'branded' | 'templates') => void;
   deleteNode: (id: string, kind: 'branded' | 'templates') => void;
   toggleExpanded: (id: string, kind: 'branded' | 'templates') => void;
@@ -151,6 +152,18 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
     folder.name = name;
     persist(kind, next);
     set({ [key]: next } as Partial<AssetStore>);
+  },
+  renameNode: (id, name, kind) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const key = kind === 'branded' ? 'brandedExplorer' : 'templateExplorer';
+    const next = structuredClone(get()[key]);
+    const node = next.nodes.find((n) => n.id === id);
+    if (!node) return;
+    node.name = trimmed;
+    persist(kind, next);
+    const patch = { [key]: next } as Partial<AssetStore>;
+    set({ ...patch, assets: extractAssets(kind === 'branded' ? next : get().brandedExplorer, kind === 'templates' ? next : get().templateExplorer) });
   },
   deleteFolder: (id, kind) => {
     const key = kind === 'branded' ? 'brandedExplorer' : 'templateExplorer';

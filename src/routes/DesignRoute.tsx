@@ -63,6 +63,7 @@ export function DesignRoute() {
   const [showGuides, setShowGuides] = useState(true);
   const [showGrid, setShowGrid] = useState(true);
   const [snapToGrid, setSnapToGrid] = useState(true);
+  const [showSafeZones, setShowSafeZones] = useState(false);
 
   const stageViewportRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -629,16 +630,31 @@ export function DesignRoute() {
                   {renderFolderTree(assetStore.brandedExplorer.rootId)}
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  {filtered.filter((item) => item.type === 'file').map((item) => {
-                    const dims = parseAssetDimensions(item.dimension);
+                  {filtered.map((item) => {
+                    const dims = item.type === 'file' ? parseAssetDimensions(item.dimension) : null;
                     return (
-                      <button key={item.id} className="rounded border border-zinc-700 bg-zinc-900 p-1 text-left" onClick={() => addAssetLayer(item.id, dims ?? undefined)}>
-                        <img src={item.src} alt={item.name} className="mb-1 h-20 w-full rounded object-cover" />
-                        <span className="block truncate text-xs text-zinc-300">{item.name}</span>
+                      <button
+                        key={item.id}
+                        className="rounded border border-zinc-700 bg-zinc-900 p-1 text-left hover:border-blue-500/60"
+                        onClick={() => {
+                          if (item.type === 'folder') setFolderId(item.id);
+                          else addAssetLayer(item.id, dims ?? undefined);
+                        }}
+                        onDoubleClick={() => {
+                          const next = window.prompt('Rename item', item.name)?.trim();
+                          if (next && next !== item.name) assetStore.renameNode(item.id, next, 'branded');
+                        }}
+                      >
+                        {item.type === 'file' ? (
+                          <img src={item.src} alt={item.name} className="mb-1 h-20 w-full rounded object-cover" />
+                        ) : (
+                          <div className="mb-1 grid h-20 w-full place-items-center rounded border border-dashed border-zinc-600 bg-zinc-950 text-3xl">📁</div>
+                        )}
+                        <span className="block truncate text-xs text-zinc-300">{item.type === 'folder' ? `📁 ${item.name}` : item.name}</span>
                       </button>
                     );
                   })}
-                  {!filtered.some((item) => item.type === 'file') && <p className="text-sm text-zinc-500">No files in this folder.</p>}
+                  {!filtered.length && <p className="text-sm text-zinc-500">No files in this folder.</p>}
                 </div>
               </div>
             )}
@@ -652,7 +668,6 @@ export function DesignRoute() {
               <button className="rounded border border-slate-700 px-2 py-1" onClick={() => setStageZoom((z) => Math.max(0.3, z - 0.1))}>-</button>
               <span>{Math.round(stageZoom * 100)}%</span>
               <button className="rounded border border-slate-700 px-2 py-1" onClick={() => setStageZoom((z) => Math.min(3, z + 0.1))}>+</button>
-              <button className="rounded border border-slate-700 px-2 py-1" onClick={resetViewport}>Fit</button>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <input className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs" placeholder="Template name" value={templateName} onChange={(e) => setTemplateName(e.target.value)} />
@@ -695,14 +710,25 @@ export function DesignRoute() {
             <button className={`rounded border px-2 py-1 ${showGuides ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => setShowGuides((v) => !v)}>Guides</button>
             <button className={`rounded border px-2 py-1 ${showGrid ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => setShowGrid((v) => !v)}>Grid</button>
             <button className={`rounded border px-2 py-1 ${snapToGrid ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => setSnapToGrid((v) => !v)}>Snap</button>
+            <button className={`rounded border px-2 py-1 ${showSafeZones ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => setShowSafeZones((v) => !v)}>Safe Zones</button>
+            <button className="rounded border border-slate-700 px-2 py-1" onClick={resetViewport}>Fit to View</button>
             <span className="text-slate-500">Ctrl + wheel to zoom canvas.</span>
           </div>
           <div ref={stageViewportRef} className="grid flex-1 min-h-0 place-items-center overflow-hidden rounded-lg border border-slate-700 bg-slate-800 p-6">
             <div className="relative" style={{ width: `${canvasWidth * stageScale}px`, height: `${canvasHeight * stageScale}px` }}>
               <div ref={stageRef} className="relative overflow-hidden rounded border border-slate-500 bg-slate-900 shadow-[0_0_0_1px_rgba(148,163,184,0.25),0_20px_60px_rgba(0,0,0,0.45)]" style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px`, transform: `scale(${stageScale})`, transformOrigin: 'top left' }} onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedLayerIds([]); }}>
               {showGrid && <div className="pointer-events-none absolute inset-0 opacity-40" style={{ backgroundImage: 'linear-gradient(to right, rgba(148,163,184,0.3) 1px, transparent 1px), linear-gradient(to bottom, rgba(148,163,184,0.3) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />}
-              {showRulers && <><div className="pointer-events-none absolute left-0 right-0 top-0 h-5 border-b border-slate-600/70 bg-slate-900/70" /><div className="pointer-events-none absolute bottom-0 left-0 top-0 w-5 border-r border-slate-600/70 bg-slate-900/70" /></>}
+              {showRulers && <>
+                <div className="pointer-events-none absolute left-0 right-0 top-0 h-5 border-b border-slate-600/70 bg-slate-900/70" />
+                <div className="pointer-events-none absolute bottom-0 left-0 top-0 w-5 border-r border-slate-600/70 bg-slate-900/70" />
+                <div className="pointer-events-none absolute left-5 right-0 top-0 h-5" style={{ backgroundImage: 'repeating-linear-gradient(to right, rgba(148,163,184,0.6), rgba(148,163,184,0.6) 1px, transparent 1px, transparent 40px)' }} />
+                <div className="pointer-events-none absolute bottom-0 left-0 top-5 w-5" style={{ backgroundImage: 'repeating-linear-gradient(to bottom, rgba(148,163,184,0.6), rgba(148,163,184,0.6) 1px, transparent 1px, transparent 40px)' }} />
+              </>}
               {showGuides && <><div className="pointer-events-none absolute left-1/2 top-0 h-full w-px bg-cyan-400/60" /><div className="pointer-events-none absolute left-0 top-1/2 h-px w-full bg-cyan-400/60" /></>}
+              {showSafeZones && <>
+                <div className="pointer-events-none absolute" style={{ left: `${canvasWidth * 0.05}px`, top: `${canvasHeight * 0.05}px`, width: `${canvasWidth * 0.9}px`, height: `${canvasHeight * 0.9}px`, border: '1px dashed rgba(251,191,36,0.8)' }} />
+                <div className="pointer-events-none absolute" style={{ left: `${canvasWidth * 0.1}px`, top: `${canvasHeight * 0.1}px`, width: `${canvasWidth * 0.8}px`, height: `${canvasHeight * 0.8}px`, border: '1px dashed rgba(52,211,153,0.8)' }} />
+              </>}
               {!canvasLayers.length ? <p className="absolute inset-0 grid place-items-center text-xl text-slate-400">Stage is blank.</p> : canvasLayers.map(renderLayerPreview)}
               </div>
             </div>

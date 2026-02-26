@@ -19,6 +19,12 @@ export function TemplateExplorer() {
     [templateStore, currentFolderId, query],
   );
 
+  const renameFolder = (folderId: string, currentName: string) => {
+    const next = window.prompt('Rename folder', currentName)?.trim();
+    if (!next || next === currentName) return;
+    templateStore.renameFolder(folderId, next);
+  };
+
   const renderFolderTree = (folderId: string, depth = 0): JSX.Element | null => {
     const folder = getFolder(folderId);
     if (!folder) return null;
@@ -28,7 +34,7 @@ export function TemplateExplorer() {
       <div key={folderId} style={{ marginLeft: depth * 12 }} className="space-y-1">
         <div className="flex items-center gap-1">
           {childFolders.length ? <button className="h-5 w-5 rounded border border-slate-700 bg-slate-800 text-xs" onClick={() => templateStore.toggleExpanded(folderId)}>{isOpen ? '▾' : '▸'}</button> : <span className="inline-block h-5 w-5" />}
-          <button className={`w-full rounded border px-2 py-1 text-left ${currentFolderId === folder.id ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'}`} onClick={() => setCurrentFolderId(folder.id)}>{folder.name}</button>
+          <button className={`w-full rounded border px-2 py-1 text-left ${currentFolderId === folder.id ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'}`} onClick={() => setCurrentFolderId(folder.id)} onDoubleClick={() => renameFolder(folder.id, folder.name)}>{folder.name}</button>
         </div>
         {isOpen && childFolders.map((child) => renderFolderTree(child.id, depth + 1))}
       </div>
@@ -55,7 +61,12 @@ export function TemplateExplorer() {
         <div className="grid gap-2 text-sm">
           <div className="grid grid-cols-[1.6fr_0.8fr_1fr_1fr_auto_auto] text-slate-400"><span>Name</span><span>Type</span><span>Dimensions</span><span>Modified</span><span>Load</span><span>Delete</span></div>
           {templates.map((template) => (
-            <div key={template.id} className="grid grid-cols-[1.6fr_0.8fr_1fr_1fr_auto_auto] items-center gap-2 rounded border border-slate-800 bg-slate-900 p-2">
+            <div key={template.id} className="grid grid-cols-[1.6fr_0.8fr_1fr_1fr_auto_auto] items-center gap-2 rounded border border-slate-800 bg-slate-900 p-2 hover:border-blue-500/60 hover:bg-slate-800" onDoubleClick={() => {
+              const next = window.prompt('Rename template', template.name)?.trim();
+              if (next && next !== template.name) {
+                templateStore.updateTemplate(template.id, { name: next, folderId: template.folderId, canvasWidth: template.canvasWidth, canvasHeight: template.canvasHeight, layers: template.layers });
+              }
+            }}>
               <span>🧩 {template.name}</span>
               <span>Template</span>
               <span>{template.canvasWidth}x{template.canvasHeight}</span>

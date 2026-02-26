@@ -25,6 +25,12 @@ export function AssetExplorer({ kind, title }: Props) {
 
   const filteredChildren = children.filter((item) => item.name.toLowerCase().includes(query.toLowerCase()));
 
+  const renameItem = (item: ExplorerNode) => {
+    const nextName = window.prompt('Rename item', item.name)?.trim();
+    if (!nextName || nextName === item.name) return;
+    store.renameNode(item.id, nextName, kind);
+  };
+
   const renderTree = (folderId: string, depth = 0): JSX.Element | null => {
     const folder = getNode(folderId);
     if (!folder || folder.type !== 'folder') return null;
@@ -38,7 +44,7 @@ export function AssetExplorer({ kind, title }: Props) {
           {childFolders.length > 0 ? (
             <button className="h-5 w-5 rounded border border-slate-700 bg-slate-800 text-xs" onClick={() => store.toggleExpanded(folderId, kind)}>{isOpen ? '▾' : '▸'}</button>
           ) : <span className="inline-block h-5 w-5" />}
-          <button className={`w-full rounded border px-2 py-1 text-left ${currentFolderId === folder.id ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'}`} onClick={() => setCurrentFolderId(folder.id)} onDoubleClick={() => setCurrentFolderId(folder.id)}>{folder.name}</button>
+          <button className={`w-full rounded border px-2 py-1 text-left ${currentFolderId === folder.id ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'}`} onClick={() => setCurrentFolderId(folder.id)} onDoubleClick={() => renameItem(folder)}>{folder.name}</button>
         </div>
         {isOpen && childFolders.map((c) => renderTree(c.id, depth + 1))}
       </div>
@@ -84,14 +90,24 @@ export function AssetExplorer({ kind, title }: Props) {
         <div className="grid gap-2 text-sm">
           <div className="grid grid-cols-[1.8fr_1fr_1fr_1fr_auto] text-slate-400"><span>Name</span><span>Type</span><span>Dimension</span><span>Modified</span><span /></div>
           {filteredChildren.map((item) => (
-            <div key={item.id} className="grid grid-cols-[1.8fr_1fr_1fr_1fr_auto] items-center gap-2 rounded border border-slate-800 bg-slate-900 p-2 hover:border-blue-500/60 hover:bg-slate-800">
-              <button className="text-left" onDoubleClick={() => { if (item.type === 'folder') setCurrentFolderId(item.id); }}>
-                <span>{item.type === 'folder' ? `📁 ${item.name}` : `🖼️ ${item.name}`}</span>
-              </button>
+            <div
+              key={item.id}
+              className="grid grid-cols-[1.8fr_1fr_1fr_1fr_auto] items-center gap-2 rounded border border-slate-800 bg-slate-900 p-2 text-left hover:border-blue-500/60 hover:bg-slate-800"
+              role="button"
+              tabIndex={0}
+              onClick={() => { if (item.type === 'folder') setCurrentFolderId(item.id); }}
+              onDoubleClick={() => renameItem(item)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  if (item.type === 'folder') setCurrentFolderId(item.id);
+                }
+              }}
+            >
+              <span>{item.type === 'folder' ? `📁 ${item.name}` : `🖼️ ${item.name}`}</span>
               <span>{item.type === 'folder' ? 'Folder' : 'File'}</span>
               <span>{item.type === 'folder' ? `${item.children.length} item(s)` : item.dimension}</span>
               <span>{new Date(item.createdAt).toLocaleDateString()}</span>
-              <button className={iconBtn} title="Delete" onClick={() => store.deleteNode(item.id, kind)}>🗑</button>
+              <button className={iconBtn} title="Delete" onClick={(event) => { event.stopPropagation(); store.deleteNode(item.id, kind); }}>🗑</button>
             </div>
           ))}
           {!children.length && <p className="text-slate-500">This folder is empty.</p>}
