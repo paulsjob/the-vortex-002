@@ -67,7 +67,6 @@ export function AppRoutes() {
           <Route path="/output" element={<OutputRoute />} />
           <Route path="/template-feed/:templateId" element={<PublicTemplateRoute />} />
           <Route path="/output-feed" element={<PublicOutputRoute />} />
-        <Route path="/output-feed" element={<PublicOutputRoute />} />
         </Routes>
       </main>
     </div>
