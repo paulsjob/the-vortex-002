@@ -58,6 +58,11 @@ export function DesignRoute() {
   const [keyObjectId, setKeyObjectId] = useState<string | null>(null);
   const [distributeSpacingValue, setDistributeSpacingValue] = useState('20');
   const [dragLayerId, setDragLayerId] = useState<string | null>(null);
+  const [stageZoom, setStageZoom] = useState(1);
+  const [showRulers, setShowRulers] = useState(true);
+  const [showGuides, setShowGuides] = useState(true);
+  const [showGrid, setShowGrid] = useState(true);
+  const [snapToGrid, setSnapToGrid] = useState(true);
 
   const stageViewportRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -385,7 +390,11 @@ export function DesignRoute() {
         else dx = 0;
       }
       dragRef.current.base.forEach((start, id) => {
-        updateLayer(id, { x: Math.round(start.x + dx), y: Math.round(start.y + dy) });
+        const nextX = Math.round(start.x + dx);
+        const nextY = Math.round(start.y + dy);
+        const snappedX = snapToGrid ? Math.round(nextX / 10) * 10 : nextX;
+        const snappedY = snapToGrid ? Math.round(nextY / 10) * 10 : nextY;
+        updateLayer(id, { x: snappedX, y: snappedY });
       });
     };
     const onUp = () => {
@@ -499,11 +508,29 @@ export function DesignRoute() {
   const actionBtn = 'h-8 w-8 rounded border border-slate-600 text-sm text-slate-200 hover:bg-slate-700';
 
 
-  const stageScale = useMemo(() => {
+  const fitScale = useMemo(() => {
     const safeW = Math.max(1, stageViewport.width);
     const safeH = Math.max(1, stageViewport.height);
     return Math.max(0.01, Math.min(safeW / canvasWidth, safeH / canvasHeight));
-  }, [stageViewport]);
+  }, [stageViewport, canvasWidth, canvasHeight]);
+
+  const stageScale = fitScale * stageZoom;
+
+  const resetViewport = () => setStageZoom(1);
+
+
+  useEffect(() => {
+    const viewport = stageViewportRef.current;
+    if (!viewport) return;
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      const delta = -event.deltaY * 0.0015;
+      setStageZoom((prev) => Math.min(3, Math.max(0.3, prev + delta)));
+    };
+    viewport.addEventListener('wheel', onWheel, { passive: false });
+    return () => viewport.removeEventListener('wheel', onWheel);
+  }, []);
 
   const renderLayerPreview = (layer: Layer) => {
     const transform = getTransform(layer);
@@ -538,7 +565,7 @@ export function DesignRoute() {
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commitStageTextEdit(); } }}
             />
           ) : (
-            <div className="h-full w-full" onDoubleClick={(e) => { e.stopPropagation(); startStageTextEdit(layer); }} style={{ fontSize: `${layer.size}px`, color: layer.color, fontWeight: 700, fontFamily: layer.fontFamily, textAlign: layer.textAlign, lineHeight: 1.15, whiteSpace: layer.textMode === 'point' ? 'pre' : 'pre-wrap', overflow: layer.textMode === 'point' ? 'visible' : 'hidden' }}>{getTextContent(layer)}</div>
+            <div className="h-full w-full" onDoubleClick={(e) => { e.stopPropagation(); startStageTextEdit(layer); }} style={{ fontSize: `${layer.size}px`, color: layer.color, fontWeight: 700, fontFamily: layer.fontFamily, textAlign: layer.textAlign, lineHeight: 1.15, whiteSpace: layer.textMode === 'point' ? 'pre' : 'pre-wrap', overflow: layer.textMode === 'point' ? 'visible' : 'hidden', display: 'flex', justifyContent: layer.textAlign === 'left' ? 'flex-start' : layer.textAlign === 'center' ? 'center' : 'flex-end' }}>{getTextContent(layer)}</div>
           )
         )}
         <div className="pointer-events-none absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber-400" style={{ left: `${(transform.anchorX / bounds.width) * 100}%`, top: `${(transform.anchorY / bounds.height) * 100}%` }} />
@@ -621,6 +648,12 @@ export function DesignRoute() {
         <div className="flex min-h-0 flex-col gap-2 rounded-lg border border-slate-700 bg-slate-950 p-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">Canvas · {canvasWidth} × {canvasHeight}</h3>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+              <button className="rounded border border-slate-700 px-2 py-1" onClick={() => setStageZoom((z) => Math.max(0.3, z - 0.1))}>-</button>
+              <span>{Math.round(stageZoom * 100)}%</span>
+              <button className="rounded border border-slate-700 px-2 py-1" onClick={() => setStageZoom((z) => Math.min(3, z + 0.1))}>+</button>
+              <button className="rounded border border-slate-700 px-2 py-1" onClick={resetViewport}>Fit</button>
+            </div>
             <div className="flex flex-wrap items-center gap-2">
               <input className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs" placeholder="Template name" value={templateName} onChange={(e) => setTemplateName(e.target.value)} />
               <select className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs" value={`${canvasWidth}x${canvasHeight}`} onChange={(e) => { const [w, h] = e.target.value.split('x').map(Number); setCanvasSize(w, h); }}>
@@ -657,9 +690,19 @@ export function DesignRoute() {
             <button className="rounded bg-emerald-700 px-3 py-1 font-semibold" onClick={copyTemplatePublicUrl}>Copy Public URL</button>
           </div>
           {saveNotice && <p className="rounded border border-emerald-700 bg-emerald-900/20 px-3 py-2 text-xs text-emerald-200">{saveNotice}</p>}
+          <div className="flex flex-wrap items-center gap-2 rounded border border-slate-700 bg-slate-900 p-2 text-xs text-slate-300">
+            <button className={`rounded border px-2 py-1 ${showRulers ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => setShowRulers((v) => !v)}>Rulers</button>
+            <button className={`rounded border px-2 py-1 ${showGuides ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => setShowGuides((v) => !v)}>Guides</button>
+            <button className={`rounded border px-2 py-1 ${showGrid ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => setShowGrid((v) => !v)}>Grid</button>
+            <button className={`rounded border px-2 py-1 ${snapToGrid ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => setSnapToGrid((v) => !v)}>Snap</button>
+            <span className="text-slate-500">Ctrl + wheel to zoom canvas.</span>
+          </div>
           <div ref={stageViewportRef} className="grid flex-1 min-h-0 place-items-center overflow-hidden rounded-lg border border-slate-700 bg-slate-800 p-6">
             <div className="relative" style={{ width: `${canvasWidth * stageScale}px`, height: `${canvasHeight * stageScale}px` }}>
               <div ref={stageRef} className="relative overflow-hidden rounded border border-slate-500 bg-slate-900 shadow-[0_0_0_1px_rgba(148,163,184,0.25),0_20px_60px_rgba(0,0,0,0.45)]" style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px`, transform: `scale(${stageScale})`, transformOrigin: 'top left' }} onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedLayerIds([]); }}>
+              {showGrid && <div className="pointer-events-none absolute inset-0 opacity-40" style={{ backgroundImage: 'linear-gradient(to right, rgba(148,163,184,0.3) 1px, transparent 1px), linear-gradient(to bottom, rgba(148,163,184,0.3) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />}
+              {showRulers && <><div className="pointer-events-none absolute left-0 right-0 top-0 h-5 border-b border-slate-600/70 bg-slate-900/70" /><div className="pointer-events-none absolute bottom-0 left-0 top-0 w-5 border-r border-slate-600/70 bg-slate-900/70" /></>}
+              {showGuides && <><div className="pointer-events-none absolute left-1/2 top-0 h-full w-px bg-cyan-400/60" /><div className="pointer-events-none absolute left-0 top-1/2 h-px w-full bg-cyan-400/60" /></>}
               {!canvasLayers.length ? <p className="absolute inset-0 grid place-items-center text-xl text-slate-400">Stage is blank.</p> : canvasLayers.map(renderLayerPreview)}
               </div>
             </div>
