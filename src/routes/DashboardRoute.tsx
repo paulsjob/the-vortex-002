@@ -35,6 +35,32 @@ export function DashboardRoute() {
     return templates.find((template) => template.id === previewTemplateId) ?? templates[0];
   }, [templates, previewTemplateId]);
 
+  const renameBrandedNode = (node: ExplorerNode) => {
+    const next = window.prompt('Rename item', node.name)?.trim();
+    if (!next || next === node.name) return;
+    assetStore.renameNode(node.id, next, 'branded');
+  };
+
+  const renameTemplateFolder = (folderId: string, currentName: string) => {
+    const next = window.prompt('Rename folder', currentName)?.trim();
+    if (!next || next === currentName) return;
+    templateStore.renameFolder(folderId, next);
+  };
+
+  const renameTemplate = (templateId: string) => {
+    const current = templateStore.getTemplateById(templateId);
+    if (!current) return;
+    const next = window.prompt('Rename template', current.name)?.trim();
+    if (!next || next === current.name) return;
+    templateStore.updateTemplate(templateId, {
+      name: next,
+      folderId: current.folderId,
+      canvasWidth: current.canvasWidth,
+      canvasHeight: current.canvasHeight,
+      layers: current.layers,
+    });
+  };
+
   const renderBrandedTree = (id: string, depth = 0): JSX.Element | null => {
     const node = brandedGetNode(id);
     if (!node || node.type !== 'folder') return null;
@@ -50,7 +76,7 @@ export function DashboardRoute() {
           ) : (
             <span className="inline-block h-5 w-5" />
           )}
-          <button className={`flex-1 rounded border px-2 py-1 text-left ${selectedRoot === 'branded' && selectedBrandedFolderId === id ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'}`} onClick={() => { setSelectedRoot('branded'); setSelectedBrandedFolderId(id); }}>
+          <button className={`flex-1 rounded border px-2 py-1 text-left ${selectedRoot === 'branded' && selectedBrandedFolderId === id ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'}`} onClick={() => { setSelectedRoot('branded'); setSelectedBrandedFolderId(id); }} onDoubleClick={() => renameBrandedNode(node)}>
             {node.name}
           </button>
         </div>
@@ -74,7 +100,7 @@ export function DashboardRoute() {
           ) : (
             <span className="inline-block h-5 w-5" />
           )}
-          <button className={`flex-1 rounded border px-2 py-1 text-left ${selectedRoot === 'templates' && selectedTemplateFolderId === id ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'}`} onClick={() => { setSelectedRoot('templates'); setSelectedTemplateFolderId(id); }}>
+          <button className={`flex-1 rounded border px-2 py-1 text-left ${selectedRoot === 'templates' && selectedTemplateFolderId === id ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'}`} onClick={() => { setSelectedRoot('templates'); setSelectedTemplateFolderId(id); }} onDoubleClick={() => renameTemplateFolder(folder.id, folder.name)}>
             {folder.name}
           </button>
         </div>
@@ -90,11 +116,11 @@ export function DashboardRoute() {
         <div className="space-y-2 text-sm">
           <div className="rounded border border-slate-700 bg-slate-900 p-2">
             <div className="mb-2 font-semibold text-slate-200">Branded Assets</div>
-            {renderBrandedTree(assetStore.brandedExplorer.rootId)}
+            {(() => { const root = assetStore.brandedExplorer.nodes.find((n) => n.id === assetStore.brandedExplorer.rootId); if (!root || root.type !== 'folder') return null; return root.children.map((childId: string) => renderBrandedTree(childId)).filter(Boolean); })()}
           </div>
           <div className="rounded border border-slate-700 bg-slate-900 p-2">
             <div className="mb-2 font-semibold text-slate-200">Templates</div>
-            {renderTemplateTree(templateStore.rootId)}
+            {templateStore.getRootFolder().children.map((childId) => renderTemplateTree(childId)).filter(Boolean)}
           </div>
           <button className={`w-full rounded border px-2 py-2 text-left font-semibold ${selectedRoot === 'fonts' ? 'border-blue-500 bg-slate-800 text-slate-100' : 'border-slate-700 bg-slate-900 text-slate-300'}`} onClick={() => setSelectedRoot('fonts')}>
             Fonts
@@ -118,7 +144,7 @@ export function DashboardRoute() {
         {selectedRoot === 'branded' && (
           <div className={viewMode === 'grid' ? 'grid grid-cols-2 gap-3 lg:grid-cols-4' : 'space-y-2'}>
             {brandedChildren.map((item) => (
-              <article key={item.id} className={`rounded border border-slate-700 bg-slate-900 p-2 ${viewMode === 'list' ? 'flex items-center justify-between' : ''}`}>
+              <article key={item.id} className={`cursor-pointer rounded border border-slate-700 bg-slate-900 p-2 hover:border-blue-500/60 ${viewMode === 'list' ? 'flex items-center justify-between' : ''}`} onClick={() => { if (item.type === 'folder') setSelectedBrandedFolderId(item.id); }} onDoubleClick={() => renameBrandedNode(item)}>
                 <div>
                   <p className="font-semibold text-slate-100">{item.type === 'folder' ? `📁 ${item.name}` : item.name}</p>
                   <p className="text-xs text-slate-400">{item.type === 'folder' ? `${item.children.length} items` : item.dimension}</p>
@@ -136,14 +162,13 @@ export function DashboardRoute() {
           <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_420px]">
             <div className={viewMode === 'grid' ? 'grid grid-cols-1 gap-3 md:grid-cols-2' : 'space-y-2'}>
               {templates.map((template) => (
-                <article key={template.id} className={`rounded border border-slate-700 bg-slate-900 p-3 ${viewMode === 'list' ? 'flex items-center justify-between' : ''}`}>
+                <article key={template.id} className={`cursor-pointer rounded border border-slate-700 bg-slate-900 p-3 hover:border-blue-500/60 ${viewMode === 'list' ? 'flex items-center justify-between' : ''}`} onClick={() => setPreviewTemplateId(template.id)} onDoubleClick={() => renameTemplate(template.id)}>
                   <div>
                     <p className="font-semibold text-slate-100">🧩 {template.name}</p>
                     <p className="text-xs text-slate-400">{template.canvasWidth} × {template.canvasHeight} · {template.layers.length} layers</p>
                   </div>
                   <div className="mt-2 flex gap-2 text-xs">
-                    <button className="rounded border border-slate-700 px-2 py-1" onClick={() => setPreviewTemplateId(template.id)}>Preview</button>
-                    <button className="rounded bg-blue-700 px-2 py-1" onClick={() => { loadTemplate(template); navigate('/design'); }}>Load</button>
+                    <button className="rounded bg-blue-700 px-2 py-1" onClick={(event) => { event.stopPropagation(); loadTemplate(template); navigate('/design'); }}>Load</button>
                   </div>
                 </article>
               ))}

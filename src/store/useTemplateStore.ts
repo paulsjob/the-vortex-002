@@ -54,6 +54,7 @@ interface TemplateStore extends PersistedTemplateState {
   expanded: Record<string, boolean>;
   addFolder: (name: string, parentId: string) => void;
   deleteFolder: (folderId: string) => void;
+  renameFolder: (folderId: string, name: string) => void;
   toggleExpanded: (folderId: string) => void;
   saveTemplate: (input: { name: string; folderId: string; canvasWidth: number; canvasHeight: number; layers: Layer[] }) => string | null;
   updateTemplate: (templateId: string, input: { name: string; folderId: string; canvasWidth: number; canvasHeight: number; layers: Layer[] }) => void;
@@ -78,6 +79,17 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     const id = `tpl-folder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     parent.children.push(id);
     folders.push({ id, name: trimmed, parentId, children: [], createdAt: new Date().toISOString() });
+    const next = { rootId: get().rootId, folders, templates: get().templates };
+    persist(next);
+    set({ folders });
+  },
+  renameFolder: (folderId, name) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const folders = structuredClone(get().folders);
+    const folder = folders.find((f) => f.id === folderId);
+    if (!folder) return;
+    folder.name = trimmed;
     const next = { rootId: get().rootId, folders, templates: get().templates };
     persist(next);
     set({ folders });
