@@ -3,7 +3,7 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { usePlayoutStore } from '../store/usePlayoutStore';
 import { TemplatePreview } from '../features/playout/TemplatePreview';
 import { useDataEngineStore } from '../store/useDataEngineStore';
-import { buildTemplateFeedUrl } from '../features/playout/publicUrl';
+import { buildOutputFeedUrl, buildTemplateFeedUrl } from '../features/playout/publicUrl';
 
 export function ControlRoomRoute() {
   const templateStore = useTemplateStore();
@@ -29,6 +29,16 @@ export function ControlRoomRoute() {
       await navigator.clipboard.writeText(url);
     } catch {
       window.prompt('Copy template URL', url);
+    }
+  };
+
+  const copyAggregateOutputUrl = async () => {
+    if (!programTemplate) return;
+    const url = buildOutputFeedUrl(window.location.origin, programTemplate);
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      window.prompt('Copy Control Room output URL', url);
     }
   };
 
@@ -77,6 +87,13 @@ export function ControlRoomRoute() {
           <span className="font-semibold text-slate-200">{programTemplate?.name || 'Nothing on-air'}</span>
         </p>
         {lastTakeAt && <p>Last take: {new Date(lastTakeAt).toLocaleString()}</p>}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-700 bg-slate-950 p-3 text-xs">
+        <p className="text-slate-400">Control Room Output URL (aggregate feed for OBS/browser source).</p>
+        <button className="rounded border border-emerald-700 px-3 py-1 font-semibold text-emerald-300 disabled:opacity-50" onClick={copyAggregateOutputUrl} disabled={!programTemplate}>
+          Copy Output URL
+        </button>
       </div>
 
       <div className="overflow-hidden rounded-lg border border-slate-700">
