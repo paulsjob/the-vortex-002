@@ -34,11 +34,11 @@ export function TemplatePreview({ template, label, tone = 'preview' }: Props) {
             <span className="font-semibold text-slate-200">{template.name}</span>
             <span>{template.canvasWidth} × {template.canvasHeight}</span>
           </div>
-          <div className="relative overflow-hidden rounded-lg border border-slate-700 bg-slate-950">
+          <div className="relative overflow-hidden rounded-lg border border-slate-700 bg-slate-950" style={{ aspectRatio: `${template.canvasWidth} / ${template.canvasHeight}` }}>
             <div className="absolute inset-0 bg-[linear-gradient(45deg,#0f172a_25%,#111827_25%,#111827_50%,#0f172a_50%,#0f172a_75%,#111827_75%,#111827_100%)] bg-[length:18px_18px] opacity-70" />
             <svg
               viewBox={`0 0 ${template.canvasWidth} ${template.canvasHeight}`}
-              className="relative z-10 h-auto w-full"
+              className="absolute inset-0 z-10 h-full w-full"
               aria-label={`${label} template preview`}
               role="img"
             >
