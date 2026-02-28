@@ -186,6 +186,24 @@ export function DesignRoute() {
     rotation: layer.rotation ?? 0,
   });
 
+  const getLayerRect = (layer: Layer) => {
+    const { width, height } = getLayerBounds(layer);
+    const left = layer.kind === 'shape' ? layer.x : (layer.x - (layer.anchorX ?? 0));
+    const top = layer.kind === 'shape' ? layer.y : (layer.y - (layer.anchorY ?? 0));
+    return { layer, width, height, left, top, right: left + width, bottom: top + height, centerX: left + width / 2, centerY: top + height / 2 };
+  };
+
+  const getSelectionRect = () => {
+    if (!selectedLayers.length) return null;
+    const rects = selectedLayers.map(getLayerRect);
+    return {
+      left: Math.min(...rects.map((r) => r.left)),
+      top: Math.min(...rects.map((r) => r.top)),
+      right: Math.max(...rects.map((r) => r.right)),
+      bottom: Math.max(...rects.map((r) => r.bottom)),
+    };
+  };
+
   const applyToSelected = (patchFactory: (layer: Layer) => Partial<Layer>) => {
     selectedLayerIds.forEach((id) => {
       const layer = layerById.get(id);
@@ -197,6 +215,13 @@ export function DesignRoute() {
   const setNumeric = (key: string, value: string) => {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return;
+    if ((key === 'x' || key === 'y') && selectedLayerIds.length > 1) {
+      const selectionRect = getSelectionRect();
+      if (!selectionRect) return;
+      const delta = parsed - (key === 'x' ? selectionRect.left : selectionRect.top);
+      applyToSelected((layer) => ({ [key]: layer[key] + delta } as Partial<Layer>));
+      return;
+    }
     applyToSelected(() => ({ [key]: parsed } as Partial<Layer>));
   };
 
@@ -374,7 +399,10 @@ export function DesignRoute() {
     const stage = stageRef.current;
     if (!stage) return;
     const base = new Map<string, { x: number; y: number }>();
-    const activeIds = (event.metaKey || event.ctrlKey) ? (selectedLayerIds.includes(layer.id) ? selectedLayerIds : [...selectedLayerIds, layer.id]) : [layer.id];
+    const isAlreadySelected = selectedLayerIds.includes(layer.id);
+    const activeIds = (event.metaKey || event.ctrlKey)
+      ? (isAlreadySelected ? selectedLayerIds : [...selectedLayerIds, layer.id])
+      : (isAlreadySelected ? selectedLayerIds : [layer.id]);
     activeIds.forEach((id) => {
       const l = layerById.get(id);
       if (l && !l.locked) base.set(id, { x: l.x, y: l.y });
@@ -405,13 +433,6 @@ export function DesignRoute() {
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-  };
-
-  const getLayerRect = (layer: Layer) => {
-    const { width, height } = getLayerBounds(layer);
-    const left = layer.kind === 'shape' ? layer.x : (layer.x - (layer.anchorX ?? 0));
-    const top = layer.kind === 'shape' ? layer.y : (layer.y - (layer.anchorY ?? 0));
-    return { layer, width, height, left, top, right: left + width, bottom: top + height, centerX: left + width / 2, centerY: top + height / 2 };
   };
 
   const alignLayers = (mode: 'left' | 'hCenter' | 'right' | 'top' | 'vCenter' | 'bottom') => {
