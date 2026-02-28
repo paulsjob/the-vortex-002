@@ -108,6 +108,18 @@ export function DesignRoute() {
   const stageViewportRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ startX: number; startY: number; base: Map<string, { x: number; y: number }> } | null>(null);
+  const resizeRef = useRef<{
+    layerId: string;
+    handle: 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
+    startX: number;
+    startY: number;
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+    anchorX: number;
+    anchorY: number;
+  } | null>(null);
   const guideDragRef = useRef<{ id: string; orientation: 'vertical' | 'horizontal' } | null>(null);
   const measureCtxRef = useRef<CanvasRenderingContext2D | null>(null);
 
@@ -288,6 +300,10 @@ export function DesignRoute() {
     if (!Number.isFinite(parsed)) return;
     updateGuidePosition(guide.id, clampGuidePosition(guide.orientation, parsed));
   };
+
+  const isAreaTextLayer = (layer: Layer): layer is Extract<Layer, { kind: 'text' }> => (
+    layer.kind === 'text' && layer.textMode === 'area'
+  );
 
   const measureTextBounds = (layer: Extract<Layer, { kind: 'text' }>) => {
     if (layer.textMode === 'area') {
@@ -565,6 +581,61 @@ export function DesignRoute() {
     window.addEventListener('mouseup', onUp);
   };
 
+
+  const startAreaTextResize = (
+    layer: Extract<Layer, { kind: 'text' }>,
+    handle: 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw',
+    event: ReactMouseEvent
+  ) => {
+    if (event.button !== 0 || layer.locked || layer.textMode !== 'area') return;
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = getLayerRect(layer);
+    resizeRef.current = {
+      layerId: layer.id,
+      handle,
+      startX: event.clientX,
+      startY: event.clientY,
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+      anchorX: layer.anchorX ?? 0,
+      anchorY: layer.anchorY ?? 0,
+    };
+
+    const onMove = (move: globalThis.MouseEvent) => {
+      if (!resizeRef.current) return;
+      const session = resizeRef.current;
+      const active = layerById.get(session.layerId);
+      if (!active || active.kind !== 'text' || active.textMode !== 'area') return;
+      const dx = (move.clientX - session.startX) / stageScale;
+      const dy = (move.clientY - session.startY) / stageScale;
+
+      const minSize = 16;
+      const nextLeft = session.left + ((session.handle.includes('w')) ? Math.min(dx, session.width - minSize) : 0);
+      const nextTop = session.top + ((session.handle.includes('n')) ? Math.min(dy, session.height - minSize) : 0);
+      const nextWidth = Math.max(minSize, session.width + (session.handle.includes('e') ? dx : 0) - (session.handle.includes('w') ? dx : 0));
+      const nextHeight = Math.max(minSize, session.height + (session.handle.includes('s') ? dy : 0) - (session.handle.includes('n') ? dy : 0));
+
+      updateLayer(session.layerId, {
+        x: Math.round(nextLeft + session.anchorX),
+        y: Math.round(nextTop + session.anchorY),
+        width: Math.round(nextWidth),
+        height: Math.round(nextHeight),
+      } as Partial<Layer>);
+    };
+
+    const onUp = () => {
+      resizeRef.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
   const alignLayers = (mode: 'left' | 'hCenter' | 'right' | 'top' | 'vCenter' | 'bottom') => {
     if (!selectedLayers.length) return;
     const rects = selectedLayers.map(getLayerRect);
@@ -724,6 +795,28 @@ export function DesignRoute() {
           )
         )}
         <div className="pointer-events-none absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber-400" style={{ left: `${(transform.anchorX / bounds.width) * 100}%`, top: `${(transform.anchorY / bounds.height) * 100}%` }} />
+        {isAreaTextLayer(layer) && selectedLayerIds.length === 1 && selectedLayerIds.includes(layer.id) && (
+          <>
+            {[
+              { key: 'nw', left: '0%', top: '0%', cursor: 'nwse-resize' },
+              { key: 'n', left: '50%', top: '0%', cursor: 'ns-resize' },
+              { key: 'ne', left: '100%', top: '0%', cursor: 'nesw-resize' },
+              { key: 'e', left: '100%', top: '50%', cursor: 'ew-resize' },
+              { key: 'se', left: '100%', top: '100%', cursor: 'nwse-resize' },
+              { key: 's', left: '50%', top: '100%', cursor: 'ns-resize' },
+              { key: 'sw', left: '0%', top: '100%', cursor: 'nesw-resize' },
+              { key: 'w', left: '0%', top: '50%', cursor: 'ew-resize' },
+            ].map((handle) => (
+              <button
+                key={handle.key}
+                type="button"
+                className="absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-sm border border-blue-300 bg-slate-950"
+                style={{ left: handle.left, top: handle.top, cursor: handle.cursor }}
+                onMouseDown={(event) => startAreaTextResize(layer, handle.key as 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw', event)}
+              />
+            ))}
+          </>
+        )}
       </div>
     );
   };

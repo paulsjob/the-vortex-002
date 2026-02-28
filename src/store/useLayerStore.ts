@@ -43,14 +43,19 @@ const DEFAULT_TRANSFORM = {
   locked: false,
 };
 
-const withTextDefaults = (layer: TextLayer): TextLayer => ({
-  ...layer,
-  fontFamily: layer.fontFamily || 'Inter',
-  dataBindingSource: layer.dataBindingSource || 'manual',
-  dataBindingField: layer.dataBindingField || '',
-  textAlign: layer.textAlign || 'left',
-  textMode: layer.textMode || 'point',
-});
+const withTextDefaults = (layer: TextLayer): TextLayer => {
+  const textMode = layer.textMode || 'point';
+  return {
+    ...layer,
+    fontFamily: layer.fontFamily || 'Inter',
+    dataBindingSource: layer.dataBindingSource || 'manual',
+    dataBindingField: layer.dataBindingField || '',
+    textAlign: layer.textAlign || 'left',
+    textMode,
+    width: textMode === 'area' ? Math.max(8, layer.width ?? 420) : layer.width,
+    height: textMode === 'area' ? Math.max(8, layer.height ?? layer.size * 1.2) : layer.height,
+  };
+};
 
 export const useLayerStore = create<LayerStore>((set) => ({
   layers: [],

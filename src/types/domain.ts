@@ -60,6 +60,8 @@ export interface TextLayer extends LayerBase {
   dataBindingField: string;
   textAlign: 'left' | 'center' | 'right';
   textMode: 'point' | 'area';
+  width?: number;
+  height?: number;
 }
 
 export interface ShapeLayer extends LayerBase {
