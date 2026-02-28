@@ -7,12 +7,15 @@ import type { ExplorerNode, Layer } from '../types/domain';
 import { getLiveTextContent } from '../features/playout/liveBindings';
 import { buildTemplateFeedUrl } from '../features/playout/publicUrl';
 
-const TEMPLATE_SIZES = [
-  { value: '1920x1080', label: '1920 × 1080' },
-  { value: '1080x1920', label: '1080 × 1920' },
-  { value: '1080x1350', label: '1080 × 1350' },
-  { value: '1080x1080', label: '1080 × 1080' },
-];
+const TEMPLATE_FORMATS = [
+  { id: '16:9', value: '1920x1080', label: '16:9 (1920x1080)', width: 1920, height: 1080 },
+  { id: '1:1', value: '1080x1080', label: '1:1 (1080x1080)', width: 1080, height: 1080 },
+  { id: '4:5', value: '1080x1350', label: '4:5 (1080x1350)', width: 1080, height: 1350 },
+  { id: '9:16', value: '1080x1920', label: '9:16 (1080x1920)', width: 1080, height: 1920 },
+] as const;
+
+type TemplateFormatId = typeof TEMPLATE_FORMATS[number]['id'];
+type FormatLayoutVariant = { canvasWidth: number; canvasHeight: number; layers: Layer[] };
 
 const FONT_OPTIONS = ['Inter', 'Arial', 'Helvetica', 'Roboto', 'Montserrat', 'Oswald', 'Georgia', 'Times New Roman'];
 const DATA_FIELDS = ['score.home', 'score.away', 'inning.number', 'inning.state', 'count.balls', 'count.strikes', 'count.outs', 'runners.first', 'runners.second', 'runners.third', 'pitch.type', 'pitch.velocity', 'pitch.location', 'bat.batspeed', 'bat.exitvelo', 'bat.launchangle', 'bat.distance', 'matchup.pitcher', 'matchup.batter'];
@@ -56,6 +59,32 @@ const buildRulerTicks = (canvasSpan: number, scale: number) => {
     const major = Math.abs((value / majorStep) - Math.round(value / majorStep)) < 0.0005 || value === canvasSpan;
     return { value, position: value * scale, major };
   });
+};
+
+const getFormatBySize = (width: number, height: number) => (
+  TEMPLATE_FORMATS.find((format) => format.width === width && format.height === height)
+);
+
+const scaleLayerForCanvas = (layer: Layer, scaleX: number, scaleY: number): Layer => {
+  const scaled = {
+    ...structuredClone(layer),
+    x: Math.round(layer.x * scaleX),
+    y: Math.round(layer.y * scaleY),
+    anchorX: Math.round((layer.anchorX ?? 0) * scaleX),
+    anchorY: Math.round((layer.anchorY ?? 0) * scaleY),
+  } as Layer;
+
+  if (scaled.kind === 'shape' || scaled.kind === 'asset') {
+    scaled.width = Math.max(1, Math.round(scaled.width * scaleX));
+    scaled.height = Math.max(1, Math.round(scaled.height * scaleY));
+  }
+
+  if (scaled.kind === 'text' && scaled.textMode === 'area') {
+    scaled.width = Math.max(8, Math.round((scaled.width ?? 420) * scaleX));
+    scaled.height = Math.max(8, Math.round((scaled.height ?? (scaled.size * 1.2)) * scaleY));
+  }
+
+  return scaled;
 };
 
 export function DesignRoute() {
@@ -108,6 +137,8 @@ export function DesignRoute() {
   const [showSafeZones, setShowSafeZones] = useState(false);
   const [guides, setGuides] = useState<Guide[]>([]);
   const [fontStatusByFamily, setFontStatusByFamily] = useState<Record<string, 'loading' | 'ready' | 'error'>>({});
+  const [currentFormatId, setCurrentFormatId] = useState<TemplateFormatId>(() => getFormatBySize(1920, 1080)?.id ?? '16:9');
+  const [layoutVariants, setLayoutVariants] = useState<Partial<Record<TemplateFormatId, FormatLayoutVariant>>>({});
 
   const stageViewportRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -134,6 +165,9 @@ export function DesignRoute() {
   const selectedLayers = useMemo(() => selectedLayerIds.map((id) => layerById.get(id)).filter(Boolean) as Layer[], [selectedLayerIds, layerById]);
   const selectedPrimary = selectedLayers[0] || null;
   const loadedTemplate = useMemo(() => (loadedTemplateId ? templateStore.getTemplateById(loadedTemplateId) : undefined), [loadedTemplateId, templateStore.templates]);
+  const activeFormatId = useMemo<TemplateFormatId>(() => (
+    getFormatBySize(canvasWidth, canvasHeight)?.id ?? currentFormatId
+  ), [canvasWidth, canvasHeight, currentFormatId]);
   const textFontFamilies = useMemo(() => {
     const families = new Set<string>();
     layers.forEach((layer) => {
@@ -170,6 +204,20 @@ export function DesignRoute() {
   useEffect(() => {
     textFontFamilies.forEach((fontFamily) => ensureFontLoaded(fontFamily));
   }, [textFontFamilies, ensureFontLoaded]);
+
+  useEffect(() => {
+    setCurrentFormatId(activeFormatId);
+  }, [activeFormatId]);
+
+  useEffect(() => {
+    setLayoutVariants({
+      [activeFormatId]: {
+        canvasWidth,
+        canvasHeight,
+        layers: structuredClone(layers),
+      },
+    });
+  }, [loadedTemplateId]);
 
   useEffect(() => {
     try {
@@ -503,7 +551,7 @@ export function DesignRoute() {
     }
   };
 
-  const exportTemplateImage = async (format: 'jpg' | 'png' | 'png-green') => {
+  const exportTemplateImage = async (format: 'jpg' | 'png') => {
     const canvas = document.createElement('canvas');
     canvas.width = canvasWidth;
     canvas.height = canvasHeight;
@@ -511,10 +559,6 @@ export function DesignRoute() {
     if (!ctx) return;
     if (format === 'jpg') {
       ctx.fillStyle = '#0f172a';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
-    if (format === 'png-green') {
-      ctx.fillStyle = '#00b140';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
     const sorted = [...layers].filter((layer) => layer.visible !== false).sort((a, b) => a.zIndex - b.zIndex);
@@ -551,13 +595,59 @@ export function DesignRoute() {
       ctx.restore();
     }
     const mime = format === 'jpg' ? 'image/jpeg' : 'image/png';
-    const url = canvas.toDataURL(mime, 0.92);
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((nextBlob) => resolve(nextBlob), mime, 0.95);
+    });
+    if (!blob) {
+      setSaveNotice('Export failed: unable to serialize image.');
+      return;
+    }
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     const safeName = (templateName || loadedTemplate?.name || 'template').replace(/\s+/g, '-').toLowerCase();
     a.href = url;
     a.download = `${safeName}.${format === 'jpg' ? 'jpg' : 'png'}`;
     a.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     setSaveNotice(`Exported ${format.toUpperCase()}.`);
+  };
+
+  const handleFormatSwitch = (nextFormatId: TemplateFormatId) => {
+    if (nextFormatId === activeFormatId) return;
+    const nextFormat = TEMPLATE_FORMATS.find((format) => format.id === nextFormatId);
+    if (!nextFormat) return;
+
+    const currentSnapshot: FormatLayoutVariant = {
+      canvasWidth,
+      canvasHeight,
+      layers: structuredClone(layers),
+    };
+
+    const existingVariant = layoutVariants[nextFormatId];
+    const nextVariant = existingVariant || {
+      canvasWidth: nextFormat.width,
+      canvasHeight: nextFormat.height,
+      layers: currentSnapshot.layers.map((layer) => scaleLayerForCanvas(layer, nextFormat.width / canvasWidth, nextFormat.height / canvasHeight)),
+    };
+
+    setLayoutVariants((prev) => ({
+      ...prev,
+      [activeFormatId]: currentSnapshot,
+      [nextFormatId]: nextVariant,
+    }));
+    setCanvasSize(nextVariant.canvasWidth, nextVariant.canvasHeight);
+    loadTemplate({
+      id: loadedTemplateId ?? `format-variant-${nextFormatId}`,
+      name: templateName.trim() || loadedTemplate?.name || 'Working Template',
+      folderId: loadedTemplate?.folderId ?? templateStore.rootId,
+      canvasWidth: nextVariant.canvasWidth,
+      canvasHeight: nextVariant.canvasHeight,
+      layers: structuredClone(nextVariant.layers),
+      createdAt: loadedTemplate?.createdAt ?? new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    setLoadedTemplateId(loadedTemplateId);
+    setCurrentFormatId(nextFormatId);
   };
 
   useEffect(() => {
@@ -1011,8 +1101,8 @@ export function DesignRoute() {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <input className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs" placeholder="Template name" value={templateName} onChange={(e) => setTemplateName(e.target.value)} />
-              <select className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs" value={`${canvasWidth}x${canvasHeight}`} onChange={(e) => { const [w, h] = e.target.value.split('x').map(Number); setCanvasSize(w, h); }}>
-                {TEMPLATE_SIZES.map((size) => <option key={size.value} value={size.value}>{size.label}</option>)}
+              <select className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs" value={activeFormatId} onChange={(e) => handleFormatSwitch(e.target.value as TemplateFormatId)}>
+                {TEMPLATE_FORMATS.map((format) => <option key={format.id} value={format.id}>{format.label}</option>)}
               </select>
               <button className="rounded bg-blue-700 px-3 py-1 text-xs font-semibold" onClick={() => saveCurrentTemplate('new')}>Save Template</button>
               <button className="rounded border border-blue-700 px-3 py-1 text-xs font-semibold text-blue-300 disabled:opacity-50" disabled={!loadedTemplateId} onClick={() => saveCurrentTemplate('update')}>Update</button>
@@ -1040,8 +1130,7 @@ export function DesignRoute() {
           <div className="flex flex-wrap items-center gap-2 rounded border border-slate-700 bg-slate-900 p-2 text-xs">
             <span className="font-semibold uppercase tracking-wider text-slate-400">Export</span>
             <button className="rounded border border-slate-700 px-2 py-1" onClick={() => exportTemplateImage('jpg')}>Export JPG</button>
-            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => exportTemplateImage('png')}>Export PNG α</button>
-            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => exportTemplateImage('png-green')}>Export PNG Green</button>
+            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => exportTemplateImage('png')}>Export PNG</button>
             <button className="rounded bg-emerald-700 px-3 py-1 font-semibold" onClick={copyTemplatePublicUrl}>Copy Public URL</button>
           </div>
           {saveNotice && <p className="rounded border border-emerald-700 bg-emerald-900/20 px-3 py-2 text-xs text-emerald-200">{saveNotice}</p>}
