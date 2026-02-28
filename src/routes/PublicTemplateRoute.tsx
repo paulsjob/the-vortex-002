@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useDataEngineStore } from '../store/useDataEngineStore';
@@ -11,6 +12,11 @@ import { getManifestFormat } from '../features/packages/loadVortexPackage';
 import { FontGateOverlay } from '../features/playout/FontGateOverlay';
 import { usePlayoutStore } from '../store/usePlayoutStore';
 import { applyBindingsToScene, normalizeBindingSchema } from '../features/playout/vortexBindings';
+import { runVortexRenderValidation, type VortexRenderValidationReport } from '../features/playout/vortexRenderValidation';
+
+const meta = import.meta as ImportMeta & { env?: Record<string, unknown> };
+const env = meta.env ?? {};
+const VORTEX_VALIDATE_RENDER = Boolean(env.DEV) && (env.VORTEX_VALIDATE_RENDER === true || env.VORTEX_VALIDATE_RENDER === 'true' || env.VITE_VORTEX_VALIDATE_RENDER === true || env.VITE_VORTEX_VALIDATE_RENDER === 'true');
 
 export function PublicTemplateRoute() {
   const { templateId = '' } = useParams();
@@ -20,6 +26,9 @@ export function PublicTemplateRoute() {
   const fontOverrides = usePlayoutStore((s) => s.fontOverrides);
   const setFontOverride = usePlayoutStore((s) => s.setFontOverride);
   const [fontGateResult, setFontGateResult] = useState<FontLoadResult | null>(null);
+  const [validationReport, setValidationReport] = useState<VortexRenderValidationReport | null>(null);
+  const [validationStatus, setValidationStatus] = useState<'idle' | 'running' | 'failed'>('idle');
+  const [sourceSvgMarkup, setSourceSvgMarkup] = useState<string | null>(null);
   const initializeBindings = usePlayoutStore((s) => s.initializeBindings);
   const getBindingState = usePlayoutStore((s) => s.getBindingState);
   const setBindingFontGateSatisfied = usePlayoutStore((s) => s.setBindingFontGateSatisfied);
@@ -69,6 +78,12 @@ export function PublicTemplateRoute() {
 
     return { error: 'Template not found.' };
   }, [searchParams, templateStore.templates, templateStore.vortexPackages, templateId]);
+  const template = renderState.template ?? null;
+  const override = renderState.source === 'vortex' && template ? fontOverrides[template.id] : undefined;
+  const bindingState = renderState.source === 'vortex' && template ? getBindingState(template.id) : undefined;
+  const transformedTemplate = renderState.source === 'vortex' && template
+    ? applyBindingsToScene(template, renderState.schema, bindingState)
+    : template;
 
   useEffect(() => {
     if (renderState.source !== 'vortex' || !renderState.packageRef) {
@@ -101,6 +116,113 @@ export function PublicTemplateRoute() {
     setBindingFontGateSatisfied(renderState.template.id, satisfied);
   }, [renderState, fontOverrides, fontGateResult, setBindingFontGateSatisfied]);
 
+  useEffect(() => {
+    if (!VORTEX_VALIDATE_RENDER || renderState.source !== 'vortex') {
+      setSourceSvgMarkup(null);
+      return;
+    }
+
+    const sourceEntry = Object.entries(renderState.packageRef.files.source).find(([path]) => path.endsWith('.svg'));
+    if (!sourceEntry) {
+      setSourceSvgMarkup(null);
+      return;
+    }
+
+    let active = true;
+    sourceEntry[1].text().then((text) => {
+      if (active) setSourceSvgMarkup(text);
+    });
+    return () => {
+      active = false;
+    };
+  }, [renderState]);
+
+  useEffect(() => {
+    if (!VORTEX_VALIDATE_RENDER || renderState.source !== 'vortex' || !sourceSvgMarkup || !template || !transformedTemplate) {
+      setValidationReport(null);
+      return;
+    }
+
+    const run = async () => {
+      setValidationStatus('running');
+      let hidden: HTMLDivElement | null = null;
+      try {
+        hidden = document.createElement('div');
+        hidden.style.position = 'fixed';
+        hidden.style.left = '-10000px';
+        hidden.style.top = '-10000px';
+        hidden.style.width = `${template.canvasWidth}px`;
+        hidden.style.height = `${template.canvasHeight}px`;
+        document.body.appendChild(hidden);
+
+        hidden.innerHTML = sourceSvgMarkup;
+        const originalSvgElement = hidden.querySelector('svg');
+
+        const runtimeSvgFirst = renderToStaticMarkup(
+          <TemplateSceneSvg
+            template={transformedTemplate}
+            className="h-full w-full"
+            assetResolver={(path) => getVortexAssetUrl(template.id, path)}
+          />,
+        );
+        const runtimeSvgSecond = renderToStaticMarkup(
+          <TemplateSceneSvg
+            template={transformedTemplate}
+            className="h-full w-full"
+            assetResolver={(path) => getVortexAssetUrl(template.id, path)}
+          />,
+        );
+
+        const runtimeContainer = document.createElement('div');
+        runtimeContainer.innerHTML = runtimeSvgFirst;
+        hidden.appendChild(runtimeContainer);
+        const runtimeSvgElement = runtimeContainer.querySelector('svg');
+
+        if (!originalSvgElement || !runtimeSvgElement) {
+          throw new Error('Could not prepare validation SVG containers.');
+        }
+
+        const report = await runVortexRenderValidation({
+          originalSvg: originalSvgElement.outerHTML,
+          runtimeSvgFirst,
+          runtimeSvgSecond,
+          originalSvgElement,
+          runtimeSvgElement,
+          template,
+          width: template.canvasWidth,
+          height: template.canvasHeight,
+          allowFallback: Boolean(override?.enabled),
+        });
+        console.groupCollapsed(`[vortex-validate] ${template.name}`);
+        console.table({
+          passed: report.passed,
+          diffPercentage: report.pixelDiff.diffPercentage,
+          mismatchedPixels: report.pixelDiff.mismatchedPixels,
+          totalPixels: report.pixelDiff.totalPixels,
+          deterministic: report.deterministic.passed,
+          fontsOk: report.fontValidation.passed,
+        });
+        if (report.textBoundingBoxes.length > 0) {
+          console.table(report.textBoundingBoxes);
+        }
+        if (report.notes.length > 0) {
+          console.warn(report.notes);
+        }
+        console.groupEnd();
+
+        setValidationReport(report);
+        setValidationStatus(report.passed ? 'idle' : 'failed');
+      } catch (error) {
+        console.error('[vortex-validate] Validation failed to run', error);
+        setValidationStatus('failed');
+      } finally {
+        if (hidden && hidden.parentNode) hidden.parentNode.removeChild(hidden);
+      }
+    };
+
+    run();
+  }, [renderState, sourceSvgMarkup, template, transformedTemplate, override]);
+
   if (renderState.error) {
     return (
       <main className="grid min-h-screen place-items-center bg-black text-slate-300">
@@ -112,7 +234,6 @@ export function PublicTemplateRoute() {
     );
   }
 
-  const template = renderState.template;
   if (!template) {
     return (
       <main className="grid min-h-screen place-items-center bg-black text-slate-300">
@@ -124,12 +245,9 @@ export function PublicTemplateRoute() {
     );
   }
 
-  const override = renderState.source === 'vortex' ? fontOverrides[template.id] : undefined;
+  const renderedTemplate = transformedTemplate ?? template;
+
   const shouldBlockForFonts = Boolean(renderState.source === 'vortex' && fontGateResult && !fontGateResult.ok && !override?.enabled);
-  const bindingState = renderState.source === 'vortex' ? getBindingState(template.id) : undefined;
-  const transformedTemplate = renderState.source === 'vortex'
-    ? applyBindingsToScene(template, renderState.schema, bindingState)
-    : template;
   const shouldBlockForBindings = Boolean(renderState.source === 'vortex' && bindingState && !bindingState.readyToAir);
 
   return (
@@ -163,10 +281,22 @@ export function PublicTemplateRoute() {
 
         {!shouldBlockForFonts && !shouldBlockForBindings && (
           <TemplateSceneSvg
-            template={transformedTemplate}
+            template={renderedTemplate}
             className="h-full w-full"
             assetResolver={renderState.source === 'vortex' ? (path) => getVortexAssetUrl(template.id, path) : undefined}
           />
+        )}
+
+        {VORTEX_VALIDATE_RENDER && validationStatus === 'running' && (
+          <div className="absolute left-2 top-2 z-30 rounded bg-slate-900/90 px-2 py-1 text-[11px] font-semibold text-slate-200">
+            Validation running…
+          </div>
+        )}
+
+        {VORTEX_VALIDATE_RENDER && validationStatus === 'failed' && (
+          <div className="absolute left-2 top-2 z-30 rounded bg-rose-900/90 px-2 py-1 text-[11px] font-semibold text-rose-100">
+            Validation Failed{validationReport ? ` · ${validationReport.pixelDiff.diffPercentage.toFixed(3)}%` : ''}
+          </div>
         )}
       </div>
     </main>

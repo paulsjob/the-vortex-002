@@ -29,6 +29,7 @@ export interface VortexPackage {
     assets: Record<string, Blob>;
     fonts: Record<string, Blob>;
     previews: Record<string, Blob>;
+    source: Record<string, Blob>;
     checksums?: any;
   };
 }
@@ -298,10 +299,11 @@ export const loadVortexPackage = async (file: File): Promise<VortexPackage> => {
 
   assertManifest(manifest);
 
-  const [assets, fonts, previews] = await Promise.all([
+  const [assets, fonts, previews, source] = await Promise.all([
     collectFolderFiles(entriesByPath, fileBytes, 'assets/'),
     collectFolderFiles(entriesByPath, fileBytes, 'fonts/'),
     collectFolderFiles(entriesByPath, fileBytes, 'previews/'),
+    collectFolderFiles(entriesByPath, fileBytes, 'source/'),
   ]);
 
   let checksums: any;
@@ -317,6 +319,7 @@ export const loadVortexPackage = async (file: File): Promise<VortexPackage> => {
       assets,
       fonts,
       previews,
+      source,
       ...(checksums !== undefined ? { checksums } : {}),
     },
   };

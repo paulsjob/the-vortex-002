@@ -41,7 +41,7 @@ export function TemplateSceneSvg({ template, className, assetResolver }: Props) 
       const textAnchor = layer.textAlign === 'center' ? 'middle' : layer.textAlign === 'right' ? 'end' : 'start';
       const textX = layer.textAlign === 'center' ? anchorX : layer.textAlign === 'right' ? anchorX * 2 : 0;
       return (
-        <g key={layer.id} transform={transform} opacity={opacity}>
+        <g key={layer.id} transform={transform} opacity={opacity} data-layer-id={layer.id}>
           <text
             x={textX}
             y={0}
@@ -60,7 +60,7 @@ export function TemplateSceneSvg({ template, className, assetResolver }: Props) 
 
     if (layer.kind === 'shape') {
       return (
-        <g key={layer.id} transform={transform} opacity={opacity}>
+        <g key={layer.id} transform={transform} opacity={opacity} data-layer-id={layer.id}>
           {layer.shapeType === 'ellipse' ? (
             <ellipse
               cx={Math.max(1, layer.width / 2)}
@@ -81,7 +81,7 @@ export function TemplateSceneSvg({ template, className, assetResolver }: Props) 
     const resolvedAssetUrl = assetResolver?.(resolvedAssetPath);
     const imageUrl = asset?.src ?? resolvedAssetUrl;
     return (
-      <g key={layer.id} transform={transform} opacity={opacity}>
+      <g key={layer.id} transform={transform} opacity={opacity} data-layer-id={layer.id}>
         {imageUrl ? (
           <image
             href={imageUrl}
