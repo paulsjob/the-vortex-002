@@ -9,23 +9,59 @@ import { getManifestFormat } from '../features/packages/loadVortexPackage';
 import { FontGateOverlay } from '../features/playout/FontGateOverlay';
 import { applyBindingsToScene, normalizeBindingSchema } from '../features/playout/vortexBindings';
 import { StatusBadge } from '../components/ui/StatusBadge';
+import { useDemoSessionStore, type DemoStat } from '../store/useDemoSessionStore';
+
+const players = ['A. Jones', 'B. Cruz', 'C. Watts', 'J. Cole', 'K. Ford', 'L. Pope'];
+const statOptions: DemoStat[] = ['pitch.velocity', 'pitch.type', 'bat.exitvelo', 'score.home'];
+
+const mapDemoBindingDefaults = (
+  keys: string[],
+  session: { player: string; stat: string; sponsor: string },
+): Record<string, unknown> => {
+  const next: Record<string, unknown> = {};
+  keys.forEach((key) => {
+    const normalized = key.toLowerCase();
+    if (normalized.includes('player') || normalized.includes('batter') || normalized.includes('athlete')) {
+      next[key] = session.player;
+    } else if (normalized.includes('stat') || normalized.includes('metric')) {
+      next[key] = session.stat;
+    } else if (normalized.includes('sponsor') || normalized.includes('brand')) {
+      next[key] = session.sponsor;
+    }
+  });
+  return next;
+};
 
 export function OutputRoute() {
   const templateStore = useTemplateStore();
+  const previewTemplate = usePlayoutStore((s) => s.previewTemplate);
   const programTemplate = usePlayoutStore((s) => s.programTemplate);
   const fontOverrides = usePlayoutStore((s) => s.fontOverrides);
   const initializeBindings = usePlayoutStore((s) => s.initializeBindings);
   const getBindingState = usePlayoutStore((s) => s.getBindingState);
   const setBindingFontGateSatisfied = usePlayoutStore((s) => s.setBindingFontGateSatisfied);
   const setFontOverride = usePlayoutStore((s) => s.setFontOverride);
+  const setBindingValues = usePlayoutStore((s) => s.setBindingValues);
+
+  const selectedPlayer = useDemoSessionStore((s) => s.selectedPlayer);
+  const selectedStat = useDemoSessionStore((s) => s.selectedStat);
+  const selectedSponsor = useDemoSessionStore((s) => s.selectedSponsor);
+  const sponsorChoices = useDemoSessionStore((s) => s.sponsorChoices);
+  const updateSelections = useDemoSessionStore((s) => s.updateSelections);
 
   const selectedTemplate = templateStore.selectedTemplate;
   const [fontGateResult, setFontGateResult] = useState<FontLoadResult | null>(null);
   const [fontGateLoading, setFontGateLoading] = useState(false);
 
+  const activeTemplateRef = useMemo(() => {
+    if (programTemplate) return { source: 'native' as const, id: programTemplate.id };
+    if (previewTemplate) return { source: 'native' as const, id: previewTemplate.id };
+    return selectedTemplate;
+  }, [programTemplate, previewTemplate, selectedTemplate]);
+
   const vortexRenderState = useMemo(() => {
-    if (!selectedTemplate || selectedTemplate.source !== 'vortex') return null;
-    const pkg = templateStore.getVortexPackage(selectedTemplate.id);
+    if (!activeTemplateRef || activeTemplateRef.source !== 'vortex') return null;
+    const pkg = templateStore.getVortexPackage(activeTemplateRef.id);
     if (!pkg) return { error: 'Selected Vortex template package is missing.' as const };
 
     try {
@@ -47,12 +83,20 @@ export function OutputRoute() {
     } catch (error) {
       return { error: error instanceof Error ? error.message : 'Invalid Vortex scene data.' };
     }
-  }, [selectedTemplate, templateStore.vortexPackages]);
+  }, [activeTemplateRef, templateStore.vortexPackages]);
 
   useEffect(() => {
     if (!vortexRenderState || !('template' in vortexRenderState) || !vortexRenderState.template || !vortexRenderState.schema) return;
     initializeBindings(vortexRenderState.template.id, vortexRenderState.schema);
-  }, [vortexRenderState, initializeBindings]);
+    const autoValues = mapDemoBindingDefaults(vortexRenderState.schema.bindings.map((binding) => binding.key), {
+      player: selectedPlayer,
+      stat: selectedStat,
+      sponsor: selectedSponsor,
+    });
+    if (Object.keys(autoValues).length > 0) {
+      setBindingValues(vortexRenderState.template.id, autoValues);
+    }
+  }, [vortexRenderState, initializeBindings, selectedPlayer, selectedStat, selectedSponsor, setBindingValues]);
 
   useEffect(() => {
     if (!vortexRenderState || !('template' in vortexRenderState) || !vortexRenderState.packageRef) {
@@ -88,70 +132,117 @@ export function OutputRoute() {
   const vortexSchema = vortexRenderState && 'template' in vortexRenderState ? vortexRenderState.schema : undefined;
   const bindingState = vortexTemplate ? getBindingState(vortexTemplate.id) : undefined;
   const transformedVortexTemplate = vortexTemplate && vortexSchema ? applyBindingsToScene(vortexTemplate, vortexSchema, bindingState) : undefined;
-  const activeTemplate = transformedVortexTemplate || programTemplate;
+  const activeTemplate = transformedVortexTemplate || programTemplate || previewTemplate;
   const override = vortexTemplate ? fontOverrides[vortexTemplate.id] : undefined;
 
   const shouldBlockForFonts = Boolean(vortexRenderState?.template && fontGateResult && !fontGateResult.ok && !override?.enabled);
   const shouldBlockForBindings = Boolean(vortexRenderState?.template && bindingState && !bindingState.readyToAir);
+  const missing = bindingState?.validation.missingRequired ?? [];
 
   return (
-    <section className="relative h-screen w-full overflow-hidden bg-slate-950 text-slate-100">
-      <div className="absolute left-4 top-4 z-20 flex items-center gap-2">
-        {activeTemplate ? <StatusBadge tone="on-air">ON AIR</StatusBadge> : <StatusBadge tone="not-ready">NOT READY</StatusBadge>}
-        {vortexTemplate && bindingState?.readyToAir ? <StatusBadge tone="ready">READY</StatusBadge> : null}
-      </div>
-
-      {vortexRenderState?.error ? (
-        <div className="grid h-full place-items-center text-sm text-rose-300">{vortexRenderState.error}</div>
-      ) : !activeTemplate ? (
-        <div className="grid h-full place-items-center text-sm text-slate-500">No template on air.</div>
-      ) : (
-        <div className="relative grid h-full place-items-center p-4">
-          {fontGateLoading && vortexRenderState?.template && (
-            <div className="absolute inset-0 z-20 grid place-items-center text-sm text-slate-200">Loading template fonts…</div>
+    <section className="grid h-screen grid-cols-[320px_minmax(0,1fr)] overflow-hidden bg-slate-950 text-slate-100">
+      <aside className="flex h-full flex-col border-r border-slate-800 bg-slate-900 p-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-200">Binding Panel</h2>
+        <p className="mt-1 text-xs text-slate-400">Deterministic operator bindings.</p>
+        <div className="mt-4 rounded-md border border-slate-700 bg-slate-950 p-3">
+          {bindingState?.readyToAir ? <StatusBadge tone="ready">READY</StatusBadge> : <StatusBadge tone="not-ready">NOT READY</StatusBadge>}
+          {missing.length > 0 && (
+            <p className="mt-2 text-xs text-rose-300">Missing: {missing.join(', ')}</p>
           )}
+        </div>
 
-          {shouldBlockForFonts && vortexRenderState?.template && fontGateResult && (
-            <FontGateOverlay
-              templateName={vortexRenderState.template.name}
-              formatLabel={vortexRenderState.formatLabel}
-              missingFamilies={fontGateResult.missingFamilies}
-              loadedFamilies={fontGateResult.loadedFamilies}
-              onKeepStopped={() => undefined}
-              onOverride={(fallbackFamily) => {
-                if (!vortexTemplate) return;
-                setFontOverride(vortexTemplate.id, {
-                  enabled: true,
-                  fallbackFamily,
-                  timestamp: new Date().toISOString(),
-                });
-              }}
-            />
-          )}
+        <div className="mt-4 space-y-3">
+          <label className="block text-xs text-slate-300">
+            Player
+            <select
+              className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
+              value={selectedPlayer}
+              onChange={(e) => updateSelections({ player: e.target.value })}
+            >
+              {players.map((player) => <option key={player} value={player}>{player}</option>)}
+            </select>
+          </label>
+          <label className="block text-xs text-slate-300">
+            Stat
+            <select
+              className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
+              value={selectedStat}
+              onChange={(e) => updateSelections({ stat: e.target.value as DemoStat })}
+            >
+              {statOptions.map((stat) => <option key={stat} value={stat}>{stat}</option>)}
+            </select>
+          </label>
+          <label className="block text-xs text-slate-300">
+            Sponsor
+            <select
+              className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
+              value={selectedSponsor}
+              onChange={(e) => updateSelections({ sponsor: e.target.value })}
+            >
+              {sponsorChoices.map((sponsor) => <option key={sponsor} value={sponsor}>{sponsor}</option>)}
+            </select>
+          </label>
+        </div>
+      </aside>
 
-          {shouldBlockForBindings && (
-            <div className="absolute inset-0 z-20 grid place-items-center bg-black/70 p-6 text-center text-sm text-rose-200">
-              Rendering blocked: required bindings are missing.
-            </div>
-          )}
+      <div className="relative h-full overflow-hidden">
+        <div className="absolute left-4 top-4 z-20 flex items-center gap-2">
+          {activeTemplate ? <StatusBadge tone="on-air">ON AIR</StatusBadge> : <StatusBadge tone="not-ready">NOT READY</StatusBadge>}
+          {vortexTemplate && bindingState?.readyToAir ? <StatusBadge tone="ready">READY</StatusBadge> : null}
+        </div>
 
-          <div
-            className="relative w-full max-w-full"
-            style={{
-              aspectRatio: `${activeTemplate.canvasWidth} / ${activeTemplate.canvasHeight}`,
-              fontFamily: override?.enabled ? override.fallbackFamily : undefined,
-            }}
-          >
-            {!shouldBlockForFonts && !shouldBlockForBindings && (
-              <TemplateSceneSvg
-                template={activeTemplate}
-                className="absolute inset-0 h-full w-full"
-                assetResolver={vortexTemplate ? (path) => getVortexAssetUrl(vortexTemplate.id, path) : undefined}
+        {vortexRenderState?.error ? (
+          <div className="grid h-full place-items-center text-sm text-rose-300">{vortexRenderState.error}</div>
+        ) : !activeTemplate ? (
+          <div className="grid h-full place-items-center text-sm text-slate-500">No template on air.</div>
+        ) : (
+          <div className="relative grid h-full place-items-center p-4">
+            {fontGateLoading && vortexRenderState?.template && (
+              <div className="absolute inset-0 z-20 grid place-items-center text-sm text-slate-200">Loading template fonts…</div>
+            )}
+
+            {shouldBlockForFonts && vortexRenderState?.template && fontGateResult && (
+              <FontGateOverlay
+                templateName={vortexRenderState.template.name}
+                formatLabel={vortexRenderState.formatLabel}
+                missingFamilies={fontGateResult.missingFamilies}
+                loadedFamilies={fontGateResult.loadedFamilies}
+                onKeepStopped={() => undefined}
+                onOverride={(fallbackFamily) => {
+                  if (!vortexTemplate) return;
+                  setFontOverride(vortexTemplate.id, {
+                    enabled: true,
+                    fallbackFamily,
+                    timestamp: new Date().toISOString(),
+                  });
+                }}
               />
             )}
+
+            {shouldBlockForBindings && (
+              <div className="absolute inset-0 z-20 grid place-items-center bg-black/70 p-6 text-center text-sm text-rose-200">
+                Rendering blocked: required bindings are missing.
+              </div>
+            )}
+
+            <div
+              className="relative w-full max-w-full"
+              style={{
+                aspectRatio: `${activeTemplate.canvasWidth} / ${activeTemplate.canvasHeight}`,
+                fontFamily: override?.enabled ? override.fallbackFamily : undefined,
+              }}
+            >
+              {!shouldBlockForFonts && !shouldBlockForBindings && (
+                <TemplateSceneSvg
+                  template={activeTemplate}
+                  className="absolute inset-0 h-full w-full"
+                  assetResolver={vortexTemplate ? (path) => getVortexAssetUrl(vortexTemplate.id, path) : undefined}
+                />
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </section>
   );
 }

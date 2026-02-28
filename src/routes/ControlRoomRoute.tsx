@@ -50,8 +50,8 @@ export function ControlRoomRoute() {
   const takeTime = lastTakeAt ? new Date(lastTakeAt).toLocaleTimeString() : 'No take yet';
 
   return (
-    <section className="grid gap-6 rounded-xl border border-slate-800 bg-slate-900 p-5 xl:grid-cols-[320px_minmax(0,1fr)]">
-      <aside className="space-y-4 rounded-lg border border-slate-700 bg-slate-950 p-4">
+    <section className="grid h-[calc(100vh-11.5rem)] gap-6 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-5 xl:grid-cols-[320px_minmax(0,1fr)]">
+      <aside className="space-y-4 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-4">
         <div>
           <h2 className="text-base font-semibold text-slate-100">Control Room</h2>
           <p className="mt-1 text-xs text-slate-400">Broadcast playout authority.</p>
@@ -78,7 +78,7 @@ export function ControlRoomRoute() {
         </div>
       </aside>
 
-      <section className="space-y-5 rounded-lg border border-slate-700 bg-slate-950 p-4">
+      <section className="flex h-full flex-col gap-5 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-4">
         <div className="grid gap-4 md:grid-cols-2">
           <TemplatePreview template={previewTemplate} label="PREVIEW" tone="preview" />
           <TemplatePreview template={programTemplate} label="PROGRAM" tone="program" />
@@ -94,11 +94,11 @@ export function ControlRoomRoute() {
           </button>
         </div>
 
-        <div className="overflow-hidden rounded-md border border-slate-700">
+        <div className="min-h-0 overflow-hidden rounded-md border border-slate-700">
           <div className="grid grid-cols-[1.8fr_1fr_1fr_1fr] bg-slate-900 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
             <span>Template</span><span>Status</span><span>Feed</span><span>Actions</span>
           </div>
-          <div className="divide-y divide-slate-800">
+          <div className="h-[260px] divide-y divide-slate-800 overflow-auto">
             {templates.map((template) => {
               const isPreview = previewTemplate?.id === template.id;
               const isProgram = programTemplate?.id === template.id;
