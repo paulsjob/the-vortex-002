@@ -1,17 +1,8 @@
 import { useDataEngineStore } from '../store/useDataEngineStore';
 import { StatusBadge } from '../components/ui/StatusBadge';
-import { useDemoSessionStore, type DemoStat } from '../store/useDemoSessionStore';
-
-const players = ['A. Jones', 'B. Cruz', 'C. Watts', 'J. Cole', 'K. Ford', 'L. Pope'];
-const statOptions: DemoStat[] = ['pitch.velocity', 'pitch.type', 'bat.exitvelo', 'score.home'];
 
 export function DataEngineRoute() {
   const { game, history, running, speed, start, stop, reset, setSpeed, stepPitch } = useDataEngineStore();
-  const selectedPlayer = useDemoSessionStore((s) => s.selectedPlayer);
-  const selectedStat = useDemoSessionStore((s) => s.selectedStat);
-  const selectedSponsor = useDemoSessionStore((s) => s.selectedSponsor);
-  const sponsorChoices = useDemoSessionStore((s) => s.sponsorChoices);
-  const updateSelections = useDemoSessionStore((s) => s.updateSelections);
 
   return (
     <section className="space-y-6 rounded-xl border border-slate-800 bg-slate-900 p-5">
@@ -22,42 +13,34 @@ export function DataEngineRoute() {
         </div>
         <div className="mb-5 flex flex-wrap items-center gap-2">
           <button className="rounded border border-blue-600 bg-blue-700 px-3 py-2 text-sm font-semibold hover:bg-blue-600" onClick={running ? stop : start}>{running ? 'Pause' : 'Start'}</button>
-          <button className="rounded border border-slate-600 bg-slate-700 px-3 py-2 text-sm hover:bg-slate-600" onClick={stepPitch}>Step Pitch</button>
+          <button className="rounded border border-slate-600 bg-slate-700 px-3 py-2 text-sm hover:bg-slate-600" onClick={stepPitch}>Poll Feed</button>
           <button className="rounded border border-slate-600 bg-slate-700 px-3 py-2 text-sm hover:bg-slate-600" onClick={reset}>Reset</button>
           <select className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm" value={speed} onChange={(e) => setSpeed(e.target.value as 'slow' | 'normal' | 'fast')}>
             <option value="slow">Slow</option>
             <option value="normal">Normal</option>
             <option value="fast">Fast</option>
           </select>
-          <select className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm" value={selectedPlayer} onChange={(e) => updateSelections({ player: e.target.value })}>
-            {players.map((player) => <option key={player} value={player}>{player}</option>)}
-          </select>
-          <select className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm" value={selectedStat} onChange={(e) => updateSelections({ stat: e.target.value as DemoStat })}>
-            {statOptions.map((stat) => <option key={stat} value={stat}>{stat}</option>)}
-          </select>
-          <select className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm" value={selectedSponsor} onChange={(e) => updateSelections({ sponsor: e.target.value })}>
-            {sponsorChoices.map((sponsor) => <option key={sponsor} value={sponsor}>{sponsor}</option>)}
-          </select>
         </div>
 
         <div className="grid gap-3 md:grid-cols-3">
           <div className="rounded border border-slate-700 bg-slate-900 p-3 text-sm">
-            <p className="text-slate-400">Game</p>
+            <p className="text-slate-400">Feed Configuration</p>
             <p className="font-semibold text-slate-100">{game.awayTeam} {game.scoreAway} - {game.homeTeam} {game.scoreHome}</p>
-            <p>Inning {game.half === 'top' ? 'TOP' : 'BOTTOM'} {game.inning}</p>
-            <p>Count {game.balls}-{game.strikes} · Outs {game.outs}</p>
+            <p>Polling mode: {running ? 'Live' : 'Paused'}</p>
+            <p>Rate profile: {speed}</p>
           </div>
           <div className="rounded border border-slate-700 bg-slate-900 p-3 text-sm">
-            <p className="text-slate-400">Matchup</p>
+            <p className="text-slate-400">Endpoint</p>
+            <p>GET /api/feed/live-game</p>
+            <p>POST /api/endpoint/template-bindings</p>
+            <p>Health: {running ? 'Healthy' : 'Standby'}</p>
+          </div>
+          <div className="rounded border border-slate-700 bg-slate-900 p-3 text-sm">
+            <p className="text-slate-400">Mapping + Validation</p>
             <p>Pitcher: {game.pitcher}</p>
             <p>Batter: {game.batter}</p>
-            <p>Selected Player: {selectedPlayer}</p>
-          </div>
-          <div className="rounded border border-slate-700 bg-slate-900 p-3 text-sm">
-            <p className="text-slate-400">Demo State</p>
-            <p>Stat: {selectedStat}</p>
-            <p>Sponsor: {selectedSponsor}</p>
-            <p>{game.lastPitch.result}</p>
+            <p>Last payload: {game.lastPitch.result}</p>
+            <p>{history.length ? 'Validation passing' : 'No data yet'}</p>
           </div>
         </div>
       </section>

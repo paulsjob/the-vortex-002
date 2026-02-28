@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { usePlayoutStore } from '../store/usePlayoutStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { TemplateSceneSvg } from '../features/playout/TemplateSceneSvg';
@@ -9,10 +10,7 @@ import { getManifestFormat } from '../features/packages/loadVortexPackage';
 import { FontGateOverlay } from '../features/playout/FontGateOverlay';
 import { applyBindingsToScene, normalizeBindingSchema } from '../features/playout/vortexBindings';
 import { StatusBadge } from '../components/ui/StatusBadge';
-import { useDemoSessionStore, type DemoStat } from '../store/useDemoSessionStore';
-
-const players = ['A. Jones', 'B. Cruz', 'C. Watts', 'J. Cole', 'K. Ford', 'L. Pope'];
-const statOptions: DemoStat[] = ['pitch.velocity', 'pitch.type', 'bat.exitvelo', 'score.home'];
+import { useDemoSessionStore } from '../store/useDemoSessionStore';
 
 const mapDemoBindingDefaults = (
   keys: string[],
@@ -33,6 +31,7 @@ const mapDemoBindingDefaults = (
 };
 
 export function OutputRoute() {
+  const navigate = useNavigate();
   const templateStore = useTemplateStore();
   const previewTemplate = usePlayoutStore((s) => s.previewTemplate);
   const programTemplate = usePlayoutStore((s) => s.programTemplate);
@@ -46,8 +45,6 @@ export function OutputRoute() {
   const selectedPlayer = useDemoSessionStore((s) => s.selectedPlayer);
   const selectedStat = useDemoSessionStore((s) => s.selectedStat);
   const selectedSponsor = useDemoSessionStore((s) => s.selectedSponsor);
-  const sponsorChoices = useDemoSessionStore((s) => s.sponsorChoices);
-  const updateSelections = useDemoSessionStore((s) => s.updateSelections);
 
   const selectedTemplate = templateStore.selectedTemplate;
   const [fontGateResult, setFontGateResult] = useState<FontLoadResult | null>(null);
@@ -84,6 +81,14 @@ export function OutputRoute() {
       return { error: error instanceof Error ? error.message : 'Invalid Vortex scene data.' };
     }
   }, [activeTemplateRef, templateStore.vortexPackages]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') navigate('/control-room');
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [navigate]);
 
   useEffect(() => {
     if (!vortexRenderState || !('template' in vortexRenderState) || !vortexRenderState.template || !vortexRenderState.schema) return;
@@ -140,53 +145,10 @@ export function OutputRoute() {
   const missing = bindingState?.validation.missingRequired ?? [];
 
   return (
-    <section className="grid h-screen grid-cols-[320px_minmax(0,1fr)] overflow-hidden bg-slate-950 text-slate-100">
-      <aside className="flex h-full flex-col border-r border-slate-800 bg-slate-900 p-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-200">Binding Panel</h2>
-        <p className="mt-1 text-xs text-slate-400">Deterministic operator bindings.</p>
-        <div className="mt-4 rounded-md border border-slate-700 bg-slate-950 p-3">
-          {bindingState?.readyToAir ? <StatusBadge tone="ready">READY</StatusBadge> : <StatusBadge tone="not-ready">NOT READY</StatusBadge>}
-          {missing.length > 0 && (
-            <p className="mt-2 text-xs text-rose-300">Missing: {missing.join(', ')}</p>
-          )}
-        </div>
-
-        <div className="mt-4 space-y-3">
-          <label className="block text-xs text-slate-300">
-            Player
-            <select
-              className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
-              value={selectedPlayer}
-              onChange={(e) => updateSelections({ player: e.target.value })}
-            >
-              {players.map((player) => <option key={player} value={player}>{player}</option>)}
-            </select>
-          </label>
-          <label className="block text-xs text-slate-300">
-            Stat
-            <select
-              className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
-              value={selectedStat}
-              onChange={(e) => updateSelections({ stat: e.target.value as DemoStat })}
-            >
-              {statOptions.map((stat) => <option key={stat} value={stat}>{stat}</option>)}
-            </select>
-          </label>
-          <label className="block text-xs text-slate-300">
-            Sponsor
-            <select
-              className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
-              value={selectedSponsor}
-              onChange={(e) => updateSelections({ sponsor: e.target.value })}
-            >
-              {sponsorChoices.map((sponsor) => <option key={sponsor} value={sponsor}>{sponsor}</option>)}
-            </select>
-          </label>
-        </div>
-      </aside>
-
+    <section className="relative h-screen overflow-hidden bg-slate-950 text-slate-100">
       <div className="relative h-full overflow-hidden">
         <div className="absolute left-4 top-4 z-20 flex items-center gap-2">
+          <button className="rounded border border-slate-600 bg-slate-900 px-3 py-1 text-xs font-semibold text-slate-200" onClick={() => navigate('/control-room')}>Back to Control Room</button>
           {activeTemplate ? <StatusBadge tone="on-air">ON AIR</StatusBadge> : <StatusBadge tone="not-ready">NOT READY</StatusBadge>}
           {vortexTemplate && bindingState?.readyToAir ? <StatusBadge tone="ready">READY</StatusBadge> : null}
         </div>

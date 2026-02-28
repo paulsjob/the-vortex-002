@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { usePlayoutStore } from '../store/usePlayoutStore';
 import { TemplatePreview } from '../features/playout/TemplatePreview';
@@ -27,6 +27,13 @@ export function ControlRoomRoute() {
     () => [...templateStore.templates].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
     [templateStore.templates],
   );
+  const [treeOpen, setTreeOpen] = useState<Record<string, boolean>>({ main: true, lowerthirds: true, stats: true });
+
+  const templateGroups = useMemo(() => ({
+    main: templates.filter((template) => /main|full/i.test(template.name)),
+    lowerthirds: templates.filter((template) => /lower|lt/i.test(template.name)),
+    stats: templates.filter((template) => !/main|full|lower|lt/i.test(template.name)),
+  }), [templates]);
 
   const copyTemplateUrl = async (templateId: string) => {
     const template = templateStore.getTemplateById(templateId);
@@ -64,24 +71,37 @@ export function ControlRoomRoute() {
     <section className="grid h-[calc(100vh-11.5rem)] min-h-[560px] gap-4 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-4 xl:grid-cols-[280px_minmax(0,1fr)]">
       <aside className="grid h-full grid-rows-[repeat(5,minmax(0,1fr))] gap-3 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-3">
         <div className="rounded-md border border-slate-700 bg-slate-900 p-3">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Template Name</p>
-          <select className="mt-2 w-full rounded border border-slate-600 bg-slate-950 px-2 py-2 text-sm text-slate-100" value={previewTemplate?.id ?? ''} onChange={(e) => setPreviewTemplate(templateStore.getTemplateById(e.target.value) ?? null)}>
-            <option value="">Select template</option>
-            {templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
-          </select>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Template Library</p>
+          <div className="mt-2 space-y-1 text-sm">
+            {Object.entries(templateGroups).map(([groupKey, groupedTemplates]) => (
+              <div key={groupKey}>
+                <button className="flex w-full items-center justify-between rounded px-2 py-1 text-slate-200 hover:bg-slate-800" onClick={() => setTreeOpen((prev) => ({ ...prev, [groupKey]: !prev[groupKey] }))}>
+                  <span>{treeOpen[groupKey] ? '▾' : '▸'} {groupKey === 'main' ? 'Main Packages' : groupKey === 'lowerthirds' ? 'Lower Thirds' : 'Stats / Other'}</span>
+                </button>
+                {treeOpen[groupKey] && (
+                  <div className="ml-4 border-l border-slate-700 pl-2">
+                    {groupedTemplates.map((template) => (
+                      <button key={template.id} className={`block w-full rounded px-2 py-1 text-left ${previewTemplate?.id === template.id ? 'bg-blue-900/40 text-blue-100' : 'text-slate-300 hover:bg-slate-800'}`} onClick={() => setPreviewTemplate(template)}>{template.name}</button>
+                    ))}
+                    {!groupedTemplates.length && <p className="px-2 py-1 text-xs text-slate-500">No templates</p>}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="rounded-md border border-slate-700 bg-slate-900 p-3">
+        {previewTemplate && <div className="rounded-md border border-slate-700 bg-slate-900 p-3">
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Sponsor</p>
           <select className="mt-2 w-full rounded border border-slate-600 bg-slate-950 px-2 py-2 text-sm text-slate-100" value={selectedSponsor} onChange={(e) => updateSelections({ sponsor: e.target.value })}>
             {sponsorChoices.map((sponsor) => <option key={sponsor} value={sponsor}>{sponsor}</option>)}
           </select>
-        </div>
-        <div className="rounded-md border border-slate-700 bg-slate-900 p-3">
+        </div>}
+        {previewTemplate && <div className="rounded-md border border-slate-700 bg-slate-900 p-3">
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Player</p>
           <select className="mt-2 w-full rounded border border-slate-600 bg-slate-950 px-2 py-2 text-sm text-slate-100" value={selectedPlayer} onChange={(e) => updateSelections({ player: e.target.value })}>
             {players.map((player) => <option key={player} value={player}>{player}</option>)}
           </select>
-        </div>
+        </div>}
         <div className="rounded-md border border-slate-700 bg-slate-900 p-3">
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Ready Status</p>
           <div className="mt-2">{previewReady ? <StatusBadge tone="ready">READY</StatusBadge> : <StatusBadge tone="not-ready">NOT READY</StatusBadge>}</div>
@@ -100,7 +120,7 @@ export function ControlRoomRoute() {
           <TemplatePreview template={programTemplate} label="PROGRAM" tone="program" />
         </div>
 
-        <div className="flex items-center justify-center rounded-md border border-slate-700 bg-slate-900 p-4">
+        {previewTemplate && <div className="flex items-center justify-center rounded-md border border-slate-700 bg-slate-900 p-4">
           <button
             className={`rounded-md border px-10 py-3 text-base font-bold tracking-[0.2em] text-white disabled:opacity-50 ${previewTemplate ? 'border-red-500 bg-red-600 hover:bg-red-500' : 'border-slate-700 bg-slate-700'}`}
             onClick={takeToProgram}
@@ -108,7 +128,7 @@ export function ControlRoomRoute() {
           >
             TAKE
           </button>
-        </div>
+        </div>}
 
         <div className="rounded-md border border-slate-700 bg-slate-900 p-3 text-sm text-slate-300">
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Broadcast Notes</p>

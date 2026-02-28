@@ -136,6 +136,7 @@ export function DesignRoute() {
   const [snapToGrid, setSnapToGrid] = useState(true);
   const [showSafeZones, setShowSafeZones] = useState(false);
   const [guides, setGuides] = useState<Guide[]>([]);
+  const [selectedGuideId, setSelectedGuideId] = useState<string | null>(null);
   const [fontStatusByFamily, setFontStatusByFamily] = useState<Record<string, 'loading' | 'ready' | 'error'>>({});
   const [currentFormatId, setCurrentFormatId] = useState<TemplateFormatId>(() => getFormatBySize(1920, 1080)?.id ?? '16:9');
   const [layoutVariants, setLayoutVariants] = useState<Partial<Record<TemplateFormatId, FormatLayoutVariant>>>({});
@@ -273,12 +274,8 @@ export function DesignRoute() {
   }, [canvasWidth, canvasHeight]);
 
   useEffect(() => {
-    if (!selectedLayerIds.length && stackLayers.length) {
-      setSelectedLayerIds([stackLayers[0].id]);
-      setLastClickedLayerId(stackLayers[0].id);
-    }
     setSelectedLayerIds((ids) => ids.filter((id) => layerById.has(id)));
-  }, [stackLayers, selectedLayerIds.length, layerById]);
+  }, [stackLayers, layerById]);
 
 
   useEffect(() => {
@@ -291,6 +288,17 @@ export function DesignRoute() {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+      if (event.key === 'Escape') {
+        setSelectedLayerIds([]);
+        setSelectedGuideId(null);
+        return;
+      }
+      if ((event.key === 'Backspace' || event.key === 'Delete') && selectedGuideId) {
+        event.preventDefault();
+        setGuides((prev) => prev.filter((guide) => guide.id !== selectedGuideId));
+        setSelectedGuideId(null);
+        return;
+      }
       if (!selectedLayerIds.length) return;
       const step = event.shiftKey ? 10 : 1;
       const patches: Record<string, Partial<Layer>> = {};
@@ -305,7 +313,7 @@ export function DesignRoute() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selectedLayerIds, layerById, updateLayer]);
+  }, [selectedLayerIds, layerById, updateLayer, selectedGuideId]);
 
   const getNode = (id: string) => assetStore.brandedExplorer.nodes.find((n) => n.id === id);
   const folderChildren = useMemo(() => {
@@ -365,7 +373,18 @@ export function DesignRoute() {
       if (nextPosition === null) return;
       updateGuidePosition(guideId, nextPosition);
     };
-    const onUp = () => {
+    const onUp = (upEvent: globalThis.MouseEvent) => {
+      const stage = stageRef.current;
+      if (stage) {
+        const rect = stage.getBoundingClientRect();
+        const shouldDelete = orientation === 'vertical'
+          ? upEvent.clientX <= rect.left
+          : upEvent.clientY <= rect.top;
+        if (shouldDelete) {
+          setGuides((prev) => prev.filter((guide) => guide.id !== guideId));
+          if (selectedGuideId === guideId) setSelectedGuideId(null);
+        }
+      }
       guideDragRef.current = null;
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
@@ -388,6 +407,7 @@ export function DesignRoute() {
     if (event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
+    setSelectedGuideId(guide.id);
     beginGuidePointerMove(guide.id, guide.orientation);
   };
 
@@ -1008,7 +1028,7 @@ export function DesignRoute() {
 
             {leftPanelTab === 'layers' ? (
               <>
-          {!stackLayers.length ? <p className="text-slate-400">No layers yet.</p> : <div className="space-y-2">{stackLayers.map((layer) => (
+          {!stackLayers.length ? <p className="text-slate-400">No layers yet.</p> : <div className="space-y-2" onClick={(event) => { if (event.target === event.currentTarget) setSelectedLayerIds([]); }}>{stackLayers.map((layer) => (
             <div key={layer.id} draggable className={`select-none rounded border p-2 ${selectedLayerIds.includes(layer.id) ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'}`} onClick={(event) => selectLayer(layer.id, event)} onDragStart={() => setDragLayerId(layer.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (dragLayerId) moveLayer(dragLayerId, layer.id); setDragLayerId(null); }} onDragEnd={() => setDragLayerId(null)}>
               <div className="flex items-center gap-2">
                 <button className={actionBtn} onClick={(event) => { event.stopPropagation(); setZOrder(layer.id, 'up'); }} title="Move up">↑</button>
@@ -1180,8 +1200,8 @@ export function DesignRoute() {
                   key={guide.id}
                   className="absolute z-50"
                   style={guide.orientation === 'vertical'
-                    ? { left: `${guide.position}px`, top: 0, width: '1px', height: '100%', background: 'rgba(34,211,238,0.9)', cursor: 'ew-resize' }
-                    : { left: 0, top: `${guide.position}px`, width: '100%', height: '1px', background: 'rgba(34,211,238,0.9)', cursor: 'ns-resize' }}
+                    ? { left: `${guide.position}px`, top: 0, width: '1px', height: '100%', background: selectedGuideId === guide.id ? 'rgba(251,191,36,1)' : 'rgba(34,211,238,0.9)', cursor: 'ew-resize' }
+                    : { left: 0, top: `${guide.position}px`, width: '100%', height: '1px', background: selectedGuideId === guide.id ? 'rgba(251,191,36,1)' : 'rgba(34,211,238,0.9)', cursor: 'ns-resize' }}
                   onMouseDown={(event) => onGuideMouseDown(guide, event)}
                   onDoubleClick={(event) => onGuideDoubleClick(guide, event)}
                 />
