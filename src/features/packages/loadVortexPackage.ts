@@ -1,3 +1,5 @@
+import type { BindingSchema } from '../playout/vortexBindings';
+
 export interface ManifestV1 {
   packageVersion: string;
   templateId: string;
@@ -11,7 +13,7 @@ export interface ManifestV1 {
   [key: string]: unknown;
 }
 
-export type BindingsV1 = Record<string, unknown>;
+export type BindingsV1 = BindingSchema;
 
 export interface VortexPackage {
   manifest: ManifestV1;

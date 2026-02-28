@@ -7,6 +7,7 @@ import { sceneFromVortexPackage } from '../features/packages/vortexSceneAdapter'
 import { getVortexAssetUrl } from '../features/packages/vortexAssetResolver';
 import { type FontLoadResult, loadVortexFonts } from '../features/packages/vortexFontGate';
 import { FontGateOverlay } from '../features/playout/FontGateOverlay';
+import { applyBindingsToScene, normalizeBindingSchema, type BindingDefinition } from '../features/playout/vortexBindings';
 
 export function OutputRoute() {
   const templateStore = useTemplateStore();
@@ -15,6 +16,10 @@ export function OutputRoute() {
   const clearProgram = usePlayoutStore((s) => s.clearProgram);
   const fontOverrides = usePlayoutStore((s) => s.fontOverrides);
   const setFontOverride = usePlayoutStore((s) => s.setFontOverride);
+  const initializeBindings = usePlayoutStore((s) => s.initializeBindings);
+  const setBindingValue = usePlayoutStore((s) => s.setBindingValue);
+  const getBindingState = usePlayoutStore((s) => s.getBindingState);
+  const setBindingFontGateSatisfied = usePlayoutStore((s) => s.setBindingFontGateSatisfied);
 
   const selectedTemplate = templateStore.selectedTemplate;
   const [fontGateResult, setFontGateResult] = useState<FontLoadResult | null>(null);
@@ -30,6 +35,7 @@ export function OutputRoute() {
     }
     try {
       const scene = sceneFromVortexPackage(pkg);
+      const schema = normalizeBindingSchema(pkg.bindings);
       return {
         template: {
           id: pkg.manifest.templateId,
@@ -38,6 +44,7 @@ export function OutputRoute() {
           canvasHeight: scene.canvas.height,
           layers: scene.layers,
         },
+        schema,
         formatLabel: `${pkg.manifest.format.formatId} · ${scene.canvas.width} × ${scene.canvas.height}`,
         packageRef: pkg,
       };
@@ -45,6 +52,11 @@ export function OutputRoute() {
       return { error: error instanceof Error ? error.message : 'Invalid Vortex scene data.' };
     }
   }, [selectedTemplate, templateStore.vortexPackages]);
+
+  useEffect(() => {
+    if (!vortexRenderState || !('template' in vortexRenderState) || !vortexRenderState.template || !vortexRenderState.schema) return;
+    initializeBindings(vortexRenderState.template.id, vortexRenderState.schema);
+  }, [vortexRenderState, initializeBindings]);
 
   useEffect(() => {
     if (!vortexRenderState || !('template' in vortexRenderState) || !vortexRenderState.packageRef) {
@@ -70,6 +82,13 @@ export function OutputRoute() {
     };
   }, [vortexRenderState]);
 
+  useEffect(() => {
+    if (!vortexRenderState || !('template' in vortexRenderState) || !vortexRenderState.template) return;
+    const override = fontOverrides[vortexRenderState.template.id];
+    const satisfied = Boolean(!fontGateResult || fontGateResult.ok || override?.enabled);
+    setBindingFontGateSatisfied(vortexRenderState.template.id, satisfied);
+  }, [vortexRenderState, fontGateResult, fontOverrides, setBindingFontGateSatisfied]);
+
   const copyOutputUrl = async () => {
     if (!programTemplate) return;
     const url = buildOutputFeedUrl(window.location.origin, programTemplate);
@@ -80,9 +99,57 @@ export function OutputRoute() {
     }
   };
 
-  const activeTemplate = vortexRenderState?.template || programTemplate;
-  const override = vortexRenderState?.template ? fontOverrides[vortexRenderState.template.id] : undefined;
+  const vortexTemplate = vortexRenderState && 'template' in vortexRenderState ? vortexRenderState.template : undefined;
+  const vortexSchema = vortexRenderState && 'template' in vortexRenderState ? vortexRenderState.schema : undefined;
+  const bindingState = vortexTemplate ? getBindingState(vortexTemplate.id) : undefined;
+  const transformedVortexTemplate = vortexTemplate && vortexSchema
+    ? applyBindingsToScene(vortexTemplate, vortexSchema, bindingState)
+    : undefined;
+
+  const activeTemplate = transformedVortexTemplate || programTemplate;
+  const override = vortexTemplate ? fontOverrides[vortexTemplate.id] : undefined;
   const shouldBlockForFonts = Boolean(vortexRenderState?.template && fontGateResult && !fontGateResult.ok && !override?.enabled);
+  const shouldBlockForBindings = Boolean(vortexRenderState?.template && bindingState && !bindingState.readyToAir);
+
+  const renderBindingInput = (binding: BindingDefinition) => {
+    if (!vortexTemplate || !bindingState) return null;
+
+    const value = bindingState.values[binding.key];
+    const required = binding.required === true;
+    const label = (
+      <label className="mb-1 block text-xs text-slate-300">
+        {binding.key}
+        {required && <span className="ml-1 text-rose-300">*</span>}
+      </label>
+    );
+
+    if (binding.type === 'color') {
+      return (
+        <div key={binding.key}>
+          {label}
+          <input
+            type="color"
+            className="h-8 w-full rounded border border-slate-700 bg-slate-900"
+            value={typeof value === 'string' && value ? value : '#ffffff'}
+            onChange={(event) => setBindingValue(vortexTemplate.id, binding.key, event.target.value)}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div key={binding.key}>
+        {label}
+        <input
+          type={binding.type === 'number' ? 'number' : binding.type === 'image' ? 'url' : 'text'}
+          className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100"
+          value={typeof value === 'string' || typeof value === 'number' ? String(value) : ''}
+          placeholder={binding.type === 'image' ? 'assets/... or https://...' : undefined}
+          onChange={(event) => setBindingValue(vortexTemplate.id, binding.key, event.target.value)}
+        />
+      </div>
+    );
+  };
 
   return (
     <section className="flex h-[calc(100vh-11.75rem)] min-h-[36rem] flex-col gap-4 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-6">
@@ -98,7 +165,7 @@ export function OutputRoute() {
       </div>
 
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="grid content-start gap-3 rounded-lg border border-slate-700 bg-slate-950 p-4 text-sm">
+        <aside className="grid content-start gap-3 overflow-auto rounded-lg border border-slate-700 bg-slate-950 p-4 text-sm">
           <div>
             <p className="text-xs uppercase tracking-wider text-slate-400">Template Info</p>
             <p className="font-semibold text-red-300">{vortexRenderState?.template?.name || programTemplate?.name || 'No live graphic'}</p>
@@ -110,6 +177,44 @@ export function OutputRoute() {
               <p className="text-xs text-slate-500">Waiting for Take from Control Room</p>
             )}
           </div>
+
+          {vortexRenderState?.template && bindingState && (
+            <div className="space-y-2 rounded border border-slate-700 bg-slate-900/40 p-2">
+              <p className={`text-xs font-semibold ${bindingState.readyToAir ? 'text-emerald-300' : 'text-rose-300'}`}>
+                {bindingState.readyToAir ? 'READY TO AIR' : 'NOT READY'}
+              </p>
+              {!bindingState.readyToAir && (
+                <>
+                  {!!bindingState.validation.missingRequired.length && (
+                    <div>
+                      <p className="text-xs text-rose-300">Missing required:</p>
+                      <ul className="ml-4 list-disc text-xs text-rose-200">
+                        {bindingState.validation.missingRequired.map((key) => <li key={key}>{key}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {!!bindingState.validation.errors.length && (
+                    <div>
+                      <p className="text-xs text-rose-300">Validation errors:</p>
+                      <ul className="ml-4 list-disc text-xs text-rose-200">
+                        {bindingState.validation.errors.map((error) => <li key={`${error.key}-${error.message}`}>{error.key}: {error.message}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {vortexTemplate && (
+            <div className="space-y-2 rounded border border-slate-700 bg-slate-900/40 p-2">
+              <p className="text-xs uppercase tracking-wider text-slate-400">Vortex Bindings</p>
+              {vortexSchema?.bindings.map(renderBindingInput)}
+              {!vortexSchema?.bindings.length && (
+                <p className="text-xs text-slate-500">No bindings defined in bindings.json</p>
+              )}
+            </div>
+          )}
 
           <div>
             <p className="text-xs uppercase tracking-wider text-slate-400">Stream Health</p>
@@ -174,13 +279,23 @@ export function OutputRoute() {
                   loadedFamilies={fontGateResult.loadedFamilies}
                   onKeepStopped={() => undefined}
                   onOverride={(fallbackFamily) => {
-                    setFontOverride(vortexRenderState.template.id, {
+                    if (!vortexTemplate) return;
+                    setFontOverride(vortexTemplate.id, {
                       enabled: true,
                       fallbackFamily,
                       timestamp: new Date().toISOString(),
                     });
                   }}
                 />
+              )}
+
+              {shouldBlockForBindings && vortexRenderState?.template && bindingState && (
+                <div className="absolute inset-0 z-20 grid place-items-center bg-black/70 p-6 text-center text-sm text-rose-200">
+                  <div>
+                    <p className="text-base font-semibold">Rendering blocked: Vortex bindings are not ready.</p>
+                    <p className="mt-2 text-xs text-rose-300">Complete required bindings to render this scene.</p>
+                  </div>
+                </div>
               )}
 
               <div className="relative z-10 grid h-full place-items-center p-2">
@@ -191,11 +306,11 @@ export function OutputRoute() {
                     fontFamily: override?.enabled ? override.fallbackFamily : undefined,
                   }}
                 >
-                  {!shouldBlockForFonts && (
+                  {!shouldBlockForFonts && !shouldBlockForBindings && (
                     <TemplateSceneSvg
                       template={activeTemplate!}
                       className="absolute inset-0 h-full w-full"
-                      assetResolver={vortexRenderState?.template ? (path) => getVortexAssetUrl(vortexRenderState.template.id, path) : undefined}
+                      assetResolver={vortexTemplate ? (path) => getVortexAssetUrl(vortexTemplate.id, path) : undefined}
                     />
                   )}
                 </div>
