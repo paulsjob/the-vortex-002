@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { AssetItem, ExplorerNode, ExplorerState } from '../types/domain';
+import type { SavedTemplate } from './useTemplateStore';
 
 const STORAGE_KEYS = {
   branded: 'renderless.fileExplorer.v1',
@@ -80,6 +81,8 @@ interface AssetStore {
   deleteFolder: (id: string, kind: 'branded' | 'templates') => void;
   deleteNode: (id: string, kind: 'branded' | 'templates') => void;
   toggleExpanded: (id: string, kind: 'branded' | 'templates') => void;
+  upsertTemplateAsset: (template: SavedTemplate) => void;
+  removeTemplateAsset: (templateId: string) => void;
 }
 
 const brandedExplorer = loadExplorer(STORAGE_KEYS.branded, 'root', 'Branded Assets');
@@ -182,5 +185,52 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
   toggleExpanded: (id, kind) => {
     if (kind === 'branded') set((s) => ({ expandedBranded: { ...s.expandedBranded, [id]: !s.expandedBranded[id] } }));
     else set((s) => ({ expandedTemplates: { ...s.expandedTemplates, [id]: !s.expandedTemplates[id] } }));
+  },
+  upsertTemplateAsset: (template) => {
+    const next = structuredClone(get().templateExplorer);
+    const parentId = next.nodes.some((node) => node.type === 'folder' && node.id === template.folderId)
+      ? template.folderId
+      : next.rootId;
+    const folder = next.nodes.find((node) => node.type === 'folder' && node.id === parentId);
+    if (!folder || folder.type !== 'folder') return;
+
+    const existing = next.nodes.find((node) => node.type === 'file' && node.id === template.id);
+    const dimension = `${template.canvasWidth}x${template.canvasHeight}`;
+    if (existing && existing.type === 'file') {
+      existing.name = template.name;
+      existing.parentId = parentId;
+      existing.dimension = dimension;
+      if (!folder.children.includes(template.id)) folder.children.push(template.id);
+      next.nodes.forEach((node) => {
+        if (node.type === 'folder' && node.id !== folder.id) {
+          node.children = node.children.filter((childId) => childId !== template.id);
+        }
+      });
+    } else {
+      folder.children.push(template.id);
+      next.nodes.push({
+        id: template.id,
+        type: 'file',
+        name: template.name,
+        parentId,
+        src: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="480" height="270"><rect width="100%" height="100%" fill="%230f172a"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%23e2e8f0" font-family="Arial" font-size="22">Template</text></svg>',
+        dimension,
+        createdAt: template.createdAt,
+      });
+    }
+
+    persist('templates', next);
+    set({
+      templateExplorer: next,
+      assets: extractAssets(get().brandedExplorer, next),
+    });
+  },
+  removeTemplateAsset: (templateId) => {
+    const next = removeNodeFromExplorer(get().templateExplorer, templateId);
+    persist('templates', next);
+    set({
+      templateExplorer: next,
+      assets: extractAssets(get().brandedExplorer, next),
+    });
   },
 }));
