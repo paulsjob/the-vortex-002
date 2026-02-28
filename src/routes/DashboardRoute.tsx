@@ -74,7 +74,7 @@ export function DashboardRoute() {
               return (
                 <button
                   key={template.id}
-                  className={`grid w-full grid-cols-[2.2fr_0.9fr_0.9fr_0.8fr_0.7fr] items-center px-3 py-3 text-left text-sm transition-colors ${isActive ? 'bg-blue-900/25 text-blue-50' : 'bg-transparent text-slate-200 hover:bg-slate-900/70'}`}
+                  className={`grid w-full grid-cols-[2.2fr_0.9fr_0.9fr_0.8fr_0.7fr] items-center px-3 py-3 text-left text-sm ${isActive ? 'bg-blue-900/25 text-blue-50' : 'bg-transparent text-slate-200 hover:bg-slate-900/70'}`}
                   onClick={() => selectTemplate({ source: 'native', id: template.id })}
                 >
                   <span className="font-medium">{template.name}</span>

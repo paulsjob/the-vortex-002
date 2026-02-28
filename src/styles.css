@@ -2,5 +2,37 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: dark; }
-body { font-family: Inter, system-ui, sans-serif; }
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, system-ui, sans-serif;
+  background-color: #020617;
+  color: #e2e8f0;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+a,
+button,
+select {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: 120ms;
+  transition-timing-function: linear;
+}
+
+button,
+[role='button'],
+select,
+summary,
+a {
+  cursor: pointer;
+}

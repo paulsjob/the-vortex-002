@@ -16,16 +16,16 @@ export function DataEngineRoute() {
   const setSelectedSponsor = useDemoSessionStore((s) => s.setSelectedSponsor);
 
   return (
-    <section className="space-y-4 rounded-xl border border-slate-800 bg-slate-900 p-4">
+    <section className="space-y-6 rounded-xl border border-slate-800 bg-slate-900 p-5">
       <section className="rounded-lg border border-slate-700 bg-slate-950 p-4">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-base font-semibold text-slate-100">Data Engine</h2>
           {running ? <StatusBadge tone="ready">READY</StatusBadge> : <StatusBadge tone="not-ready">NOT READY</StatusBadge>}
         </div>
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <button className="rounded bg-blue-700 px-3 py-2 text-sm font-semibold" onClick={running ? stop : start}>{running ? 'Pause' : 'Start'}</button>
-          <button className="rounded bg-slate-700 px-3 py-2 text-sm" onClick={stepPitch}>Step Pitch</button>
-          <button className="rounded bg-slate-700 px-3 py-2 text-sm" onClick={reset}>Reset</button>
+        <div className="mb-5 flex flex-wrap items-center gap-2">
+          <button className="rounded border border-blue-600 bg-blue-700 px-3 py-2 text-sm font-semibold hover:bg-blue-600" onClick={running ? stop : start}>{running ? 'Pause' : 'Start'}</button>
+          <button className="rounded border border-slate-600 bg-slate-700 px-3 py-2 text-sm hover:bg-slate-600" onClick={stepPitch}>Step Pitch</button>
+          <button className="rounded border border-slate-600 bg-slate-700 px-3 py-2 text-sm hover:bg-slate-600" onClick={reset}>Reset</button>
           <select className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm" value={speed} onChange={(e) => setSpeed(e.target.value as 'slow' | 'normal' | 'fast')}>
             <option value="slow">Slow</option>
             <option value="normal">Normal</option>
