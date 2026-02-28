@@ -16423,14 +16423,14 @@ function wireBrandedAssetInteractions() {
     });
   }
 
-  document.querySelectorAll('[data-open-folder-id]').forEach((el) => el.addEventListener('click', () => navigateToFolder(el.dataset.openFolderId)));
-  document.querySelectorAll('[data-toggle-tree-id]').forEach((el) => el.addEventListener('click', () => toggleTreeFolder(el.dataset.toggleTreeId)));
-  document.querySelectorAll('[data-rename-folder-id]').forEach((el) => {
+  document.querySelectorAll('[data-open-folder-id]').forEach((el) => {
+    el.addEventListener('click', () => toggleTreeFolder(el.dataset.openFolderId));
     el.addEventListener('dblclick', (event) => {
       event.preventDefault();
-      startFolderRename(el.dataset.renameFolderId);
+      navigateToFolder(el.dataset.openFolderId);
     });
   });
+  document.querySelectorAll('[data-toggle-tree-id]').forEach((el) => el.addEventListener('click', () => toggleTreeFolder(el.dataset.toggleTreeId)));
 
   document.querySelectorAll('[data-rename-input-id]').forEach((input) => {
     input.focus();
@@ -16447,14 +16447,14 @@ function wireBrandedAssetInteractions() {
   document.querySelectorAll('[data-asset-id]').forEach((row) => row.addEventListener('click', () => setState({ designSelectedAssetId: row.dataset.assetId, activeTab: 'Design' })));
   document.querySelectorAll('[data-template-id]').forEach((row) => row.addEventListener('click', () => applyTemplateToDesign(row.dataset.templateId)));
 
-  document.querySelectorAll('[data-template-open-folder-id]').forEach((el) => el.addEventListener('click', () => navigateToTemplateFolder(el.dataset.templateOpenFolderId)));
-  document.querySelectorAll('[data-template-toggle-tree-id]').forEach((el) => el.addEventListener('click', () => toggleTemplateTreeFolder(el.dataset.templateToggleTreeId)));
-  document.querySelectorAll('[data-template-rename-folder-id]').forEach((el) => {
+  document.querySelectorAll('[data-template-open-folder-id]').forEach((el) => {
+    el.addEventListener('click', () => toggleTemplateTreeFolder(el.dataset.templateOpenFolderId));
     el.addEventListener('dblclick', (event) => {
       event.preventDefault();
-      startTemplateFolderRename(el.dataset.templateRenameFolderId);
+      navigateToTemplateFolder(el.dataset.templateOpenFolderId);
     });
   });
+  document.querySelectorAll('[data-template-toggle-tree-id]').forEach((el) => el.addEventListener('click', () => toggleTemplateTreeFolder(el.dataset.templateToggleTreeId)));
 
   document.querySelectorAll('[data-template-rename-input-id]').forEach((input) => {
     input.focus();
