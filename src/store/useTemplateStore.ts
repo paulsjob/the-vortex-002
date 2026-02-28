@@ -4,6 +4,7 @@ import type { VortexPackage } from '../features/packages/loadVortexPackage';
 import { revokeVortexAssetUrls } from '../features/packages/vortexAssetResolver';
 import { clearVortexFontCache } from '../features/packages/vortexFontGate';
 import { useAssetStore } from './useAssetStore';
+import { usePlayoutStore } from './usePlayoutStore';
 
 const STORAGE_KEY = 'renderless.savedDesignTemplates.v1';
 
@@ -220,6 +221,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     }
     const { [templateId]: _removedPackage, ...vortexPackages } = state.vortexPackages;
     const { [templateId]: _removedPreview, ...vortexPreviewUrls } = state.vortexPreviewUrls;
+    usePlayoutStore.getState().clearBindings(templateId);
     set({
       vortexPackages,
       vortexPreviewUrls,

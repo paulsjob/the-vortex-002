@@ -9,6 +9,7 @@ import { getVortexAssetUrl } from '../features/packages/vortexAssetResolver';
 import { type FontLoadResult, loadVortexFonts } from '../features/packages/vortexFontGate';
 import { FontGateOverlay } from '../features/playout/FontGateOverlay';
 import { usePlayoutStore } from '../store/usePlayoutStore';
+import { applyBindingsToScene, normalizeBindingSchema } from '../features/playout/vortexBindings';
 
 export function PublicTemplateRoute() {
   const { templateId = '' } = useParams();
@@ -18,6 +19,9 @@ export function PublicTemplateRoute() {
   const fontOverrides = usePlayoutStore((s) => s.fontOverrides);
   const setFontOverride = usePlayoutStore((s) => s.setFontOverride);
   const [fontGateResult, setFontGateResult] = useState<FontLoadResult | null>(null);
+  const initializeBindings = usePlayoutStore((s) => s.initializeBindings);
+  const getBindingState = usePlayoutStore((s) => s.getBindingState);
+  const setBindingFontGateSatisfied = usePlayoutStore((s) => s.setBindingFontGateSatisfied);
 
   useEffect(() => {
     startEngine();
@@ -37,10 +41,12 @@ export function PublicTemplateRoute() {
     if (vortexPackage) {
       try {
         const scene = sceneFromVortexPackage(vortexPackage);
+        const schema = normalizeBindingSchema(vortexPackage.bindings);
         return {
           source: 'vortex' as const,
           packageRef: vortexPackage,
           formatLabel: `${vortexPackage.manifest.format.formatId} · ${scene.canvas.width} × ${scene.canvas.height}`,
+          schema,
           template: {
             id: vortexPackage.manifest.templateId,
             name: vortexPackage.manifest.templateName,
@@ -80,6 +86,19 @@ export function PublicTemplateRoute() {
     };
   }, [renderState]);
 
+
+  useEffect(() => {
+    if (renderState.source !== 'vortex') return;
+    initializeBindings(renderState.template.id, renderState.schema);
+  }, [renderState, initializeBindings]);
+
+  useEffect(() => {
+    if (renderState.source !== 'vortex') return;
+    const override = fontOverrides[renderState.template.id];
+    const satisfied = Boolean(!fontGateResult || fontGateResult.ok || override?.enabled);
+    setBindingFontGateSatisfied(renderState.template.id, satisfied);
+  }, [renderState, fontOverrides, fontGateResult, setBindingFontGateSatisfied]);
+
   if (renderState.error) {
     return (
       <main className="grid min-h-screen place-items-center bg-black text-slate-300">
@@ -105,6 +124,11 @@ export function PublicTemplateRoute() {
 
   const override = renderState.source === 'vortex' ? fontOverrides[template.id] : undefined;
   const shouldBlockForFonts = Boolean(renderState.source === 'vortex' && fontGateResult && !fontGateResult.ok && !override?.enabled);
+  const bindingState = renderState.source === 'vortex' ? getBindingState(template.id) : undefined;
+  const transformedTemplate = renderState.source === 'vortex'
+    ? applyBindingsToScene(template, renderState.schema, bindingState)
+    : template;
+  const shouldBlockForBindings = Boolean(renderState.source === 'vortex' && bindingState && !bindingState.readyToAir);
 
   return (
     <main className="grid min-h-screen place-items-center bg-black p-4">
@@ -126,9 +150,18 @@ export function PublicTemplateRoute() {
           />
         )}
 
-        {!shouldBlockForFonts && (
+        {shouldBlockForBindings && (
+          <div className="absolute inset-0 z-20 grid place-items-center bg-black/70 text-center text-sm text-rose-200">
+            <div>
+              <p className="font-semibold">Rendering blocked: Vortex bindings are not ready.</p>
+              <p className="text-xs text-rose-300">Complete required bindings in the operator Output route.</p>
+            </div>
+          </div>
+        )}
+
+        {!shouldBlockForFonts && !shouldBlockForBindings && (
           <TemplateSceneSvg
-            template={template}
+            template={transformedTemplate}
             className="h-full w-full"
             assetResolver={renderState.source === 'vortex' ? (path) => getVortexAssetUrl(template.id, path) : undefined}
           />
