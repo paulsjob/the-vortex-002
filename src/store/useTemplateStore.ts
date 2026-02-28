@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Layer } from '../types/domain';
 import type { VortexPackage } from '../features/packages/loadVortexPackage';
 import { revokeVortexAssetUrls } from '../features/packages/vortexAssetResolver';
+import { clearVortexFontCache } from '../features/packages/vortexFontGate';
 import { useAssetStore } from './useAssetStore';
 
 const STORAGE_KEY = 'renderless.savedDesignTemplates.v1';
@@ -197,6 +198,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
   registerVortexPackage: (pkg) => {
     const templateId = pkg.manifest.templateId;
     revokeVortexAssetUrls(templateId);
+    clearVortexFontCache(templateId);
     const previewBlob = pkg.files.previews['previews/poster.png'];
     const previewUrl = previewBlob ? URL.createObjectURL(previewBlob) : undefined;
     const previousPreview = get().vortexPreviewUrls[templateId];
@@ -211,6 +213,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
   removeVortexPackage: (templateId) => {
     const state = get();
     revokeVortexAssetUrls(templateId);
+    clearVortexFontCache(templateId);
     const previewUrl = state.vortexPreviewUrls[templateId];
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
