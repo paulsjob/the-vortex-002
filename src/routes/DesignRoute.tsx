@@ -22,7 +22,7 @@ const DATA_FIELDS = ['score.home', 'score.away', 'inning.number', 'inning.state'
 const transformDefaults = { anchorX: 0, anchorY: 0, scaleX: 100, scaleY: 100, rotation: 0 };
 const RULER_SIZE = 24;
 const RULER_TARGET_MAJOR_SPACING = 90;
-const GUIDE_SESSION_KEY = 'design-route-guides-v1';
+const GUIDE_SESSION_KEY = 'design-route-guides-v2';
 type AssetBin = 'graphics' | 'videos' | 'templates';
 
 type Guide = {
@@ -221,12 +221,20 @@ export function DesignRoute() {
   }, [loadedTemplateId]);
 
   useEffect(() => {
+    const guideStateKey = loadedTemplateId ?? '__untitled__';
     try {
       const raw = window.sessionStorage.getItem(GUIDE_SESSION_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as Guide[];
-      if (!Array.isArray(parsed)) return;
-      setGuides(parsed
+      if (!raw) {
+        setGuides([]);
+        return;
+      }
+      const parsed = JSON.parse(raw) as Record<string, Guide[]>;
+      const list = Array.isArray(parsed) ? parsed : parsed?.[guideStateKey];
+      if (!Array.isArray(list)) {
+        setGuides([]);
+        return;
+      }
+      setGuides(list
         .filter((guide) => guide && (guide.orientation === 'vertical' || guide.orientation === 'horizontal') && Number.isFinite(guide.position))
         .map((guide) => ({
           id: guide.id || `guide-${Date.now()}-${Math.random()}`,
@@ -234,17 +242,29 @@ export function DesignRoute() {
           position: clampGuidePosition(guide.orientation, guide.position),
         })));
     } catch {
-      // ignore invalid session payload
+      setGuides([]);
     }
-  }, []);
+  }, [loadedTemplateId]);
 
   useEffect(() => {
     setGuides((prev) => prev.map((guide) => ({ ...guide, position: clampGuidePosition(guide.orientation, guide.position) })));
   }, [canvasWidth, canvasHeight]);
 
   useEffect(() => {
-    window.sessionStorage.setItem(GUIDE_SESSION_KEY, JSON.stringify(guides));
-  }, [guides]);
+    const guideStateKey = loadedTemplateId ?? '__untitled__';
+    let payload: Record<string, Guide[]> = {};
+    try {
+      const raw = window.sessionStorage.getItem(GUIDE_SESSION_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, Guide[]>;
+        if (parsed && !Array.isArray(parsed)) payload = parsed;
+      }
+    } catch {
+      payload = {};
+    }
+    payload[guideStateKey] = guides;
+    window.sessionStorage.setItem(GUIDE_SESSION_KEY, JSON.stringify(payload));
+  }, [guides, loadedTemplateId]);
 
 
   useEffect(() => {
@@ -697,13 +717,10 @@ export function DesignRoute() {
 
   const selectLayer = (layerId: string, event?: { shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean }) => {
     const additive = !!event?.metaKey || !!event?.ctrlKey;
-    const range = !!event?.shiftKey;
-    if (range && lastClickedLayerId) {
-      const ids = stackLayers.map((l) => l.id);
-      const a = ids.indexOf(lastClickedLayerId);
-      const b = ids.indexOf(layerId);
-      const [start, end] = a < b ? [a, b] : [b, a];
-      setSelectedLayerIds((prev) => [...new Set([...prev, ...ids.slice(start, end + 1)])]);
+    const additiveShift = !!event?.shiftKey;
+    if (additiveShift) {
+      setSelectedLayerIds((prev) => (prev.includes(layerId) ? prev : [...prev, layerId]));
+      setLastClickedLayerId(layerId);
       return;
     }
     if (additive) {
@@ -1157,6 +1174,7 @@ export function DesignRoute() {
           <div className="flex flex-wrap items-center gap-2 rounded border border-slate-700 bg-slate-900 p-2 text-xs text-slate-300">
             <button className={`rounded border px-2 py-1 ${showRulers ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => setShowRulers((v) => !v)}>Rulers</button>
             <button className={`rounded border px-2 py-1 ${showGuides ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => setShowGuides((v) => !v)}>Guides</button>
+            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => { setGuides([]); setSelectedGuideId(null); }}>Clear Guides</button>
             <button className={`rounded border px-2 py-1 ${showGrid ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => setShowGrid((v) => !v)}>Grid</button>
             <button className={`rounded border px-2 py-1 ${snapToGrid ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => setSnapToGrid((v) => !v)}>Snap</button>
             <button className={`rounded border px-2 py-1 ${showSafeZones ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => setShowSafeZones((v) => !v)}>Safe Zones</button>
@@ -1171,7 +1189,7 @@ export function DesignRoute() {
                   <div
                     className="absolute top-0 overflow-hidden border-b border-slate-600/80 bg-slate-900/95"
                     style={{ left: `${RULER_SIZE}px`, width: `${canvasWidth * stageScale}px`, height: `${RULER_SIZE}px` }}
-                    onMouseDown={(event) => startGuideFromRuler('vertical', event)}
+                    onMouseDown={(event) => startGuideFromRuler('horizontal', event)}
                   >
                     {horizontalRulerTicks.map((tick) => (
                       <div key={`hx-${tick.value}`} className="pointer-events-none absolute bottom-0" style={{ left: `${tick.position}px`, height: `${tick.major ? 14 : 8}px`, borderLeft: tick.major ? '1px solid rgba(148,163,184,0.95)' : '1px solid rgba(148,163,184,0.55)' }}>
@@ -1182,7 +1200,7 @@ export function DesignRoute() {
                   <div
                     className="absolute left-0 overflow-hidden border-r border-slate-600/80 bg-slate-900/95"
                     style={{ top: `${RULER_SIZE}px`, width: `${RULER_SIZE}px`, height: `${canvasHeight * stageScale}px` }}
-                    onMouseDown={(event) => startGuideFromRuler('horizontal', event)}
+                    onMouseDown={(event) => startGuideFromRuler('vertical', event)}
                   >
                     {verticalRulerTicks.map((tick) => (
                       <div key={`vy-${tick.value}`} className="pointer-events-none absolute right-0" style={{ top: `${tick.position}px`, width: `${tick.major ? 14 : 8}px`, borderTop: tick.major ? '1px solid rgba(148,163,184,0.95)' : '1px solid rgba(148,163,184,0.55)' }}>
@@ -1193,7 +1211,7 @@ export function DesignRoute() {
                 </div>
               )}
               <div className="absolute" style={{ left: `${rulerOffset}px`, top: `${rulerOffset}px`, width: `${canvasWidth * stageScale}px`, height: `${canvasHeight * stageScale}px` }}>
-              <div ref={stageRef} className="relative overflow-hidden rounded border border-slate-500 bg-slate-900 shadow-[0_0_0_1px_rgba(148,163,184,0.25),0_20px_60px_rgba(0,0,0,0.45)]" style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px`, transform: `scale(${stageScale})`, transformOrigin: 'top left' }} onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedLayerIds([]); }}>
+              <div ref={stageRef} className="relative overflow-hidden rounded border border-slate-500 bg-slate-900 shadow-[0_0_0_1px_rgba(148,163,184,0.25),0_20px_60px_rgba(0,0,0,0.45)]" style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px`, transform: `scale(${stageScale})`, transformOrigin: 'top left' }} onMouseDown={(event) => { if (event.target === event.currentTarget) { setSelectedLayerIds([]); setSelectedGuideId(null); } }}>
               {showGrid && <div className="pointer-events-none absolute inset-0 opacity-40" style={{ backgroundImage: 'linear-gradient(to right, rgba(148,163,184,0.3) 1px, transparent 1px), linear-gradient(to bottom, rgba(148,163,184,0.3) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />}
               {showGuides && guides.map((guide) => (
                 <div

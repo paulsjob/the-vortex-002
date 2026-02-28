@@ -3,11 +3,14 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { usePlayoutStore } from '../store/usePlayoutStore';
 import { TemplatePreview } from '../features/playout/TemplatePreview';
 import { useDataEngineStore } from '../store/useDataEngineStore';
-import { useDemoSessionStore } from '../store/useDemoSessionStore';
+import { useDemoSessionStore, type DemoStat } from '../store/useDemoSessionStore';
 import { buildOutputFeedUrl, buildTemplateFeedUrl } from '../features/playout/publicUrl';
 import { StatusBadge } from '../components/ui/StatusBadge';
 
 const players = ['A. Jones', 'B. Cruz', 'C. Watts', 'J. Cole', 'K. Ford', 'L. Pope'];
+const stats: DemoStat[] = ['pitch.velocity', 'pitch.type', 'bat.exitvelo', 'score.home'];
+
+type TreeNode = { id: string; type: 'folder'; name: string; children: TreeNode[] } | { id: string; type: 'template'; name: string };
 
 export function ControlRoomRoute() {
   const templateStore = useTemplateStore();
@@ -20,20 +23,44 @@ export function ControlRoomRoute() {
   const engineRunning = useDataEngineStore((s) => s.running);
   const selectedSponsor = useDemoSessionStore((s) => s.selectedSponsor);
   const selectedPlayer = useDemoSessionStore((s) => s.selectedPlayer);
+  const selectedStat = useDemoSessionStore((s) => s.selectedStat);
   const sponsorChoices = useDemoSessionStore((s) => s.sponsorChoices);
   const updateSelections = useDemoSessionStore((s) => s.updateSelections);
 
-  const templates = useMemo(
-    () => [...templateStore.templates].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
-    [templateStore.templates],
-  );
-  const [treeOpen, setTreeOpen] = useState<Record<string, boolean>>({ main: true, lowerthirds: true, stats: true });
+  const [treeOpen, setTreeOpen] = useState<Record<string, boolean>>({ [templateStore.rootId]: true });
 
-  const templateGroups = useMemo(() => ({
-    main: templates.filter((template) => /main|full/i.test(template.name)),
-    lowerthirds: templates.filter((template) => /lower|lt/i.test(template.name)),
-    stats: templates.filter((template) => !/main|full|lower|lt/i.test(template.name)),
-  }), [templates]);
+  const templateMap = useMemo(() => {
+    const map = new Map<string, typeof templateStore.templates[number][]>();
+    templateStore.templates.forEach((template) => {
+      const list = map.get(template.folderId) ?? [];
+      list.push(template);
+      map.set(template.folderId, list);
+    });
+    map.forEach((list, key) => map.set(key, [...list].sort((a, b) => a.name.localeCompare(b.name))));
+    return map;
+  }, [templateStore.templates]);
+
+  const folderById = useMemo(() => new Map(templateStore.folders.map((folder) => [folder.id, folder])), [templateStore.folders]);
+
+  const tree = useMemo(() => {
+    const walk = (folderId: string): TreeNode => {
+      const folder = folderById.get(folderId);
+      const childFolders = (folder?.children ?? [])
+        .map((id) => folderById.get(id))
+        .filter((child): child is NonNullable<typeof child> => !!child)
+        .sort((a, b) => a.name.localeCompare(b.name));
+      return {
+        id: folderId,
+        type: 'folder',
+        name: folder?.name ?? 'Templates',
+        children: [
+          ...childFolders.map((child) => walk(child.id)),
+          ...(templateMap.get(folderId) ?? []).map((template) => ({ id: template.id, type: 'template' as const, name: template.name })),
+        ],
+      };
+    };
+    return walk(templateStore.rootId);
+  }, [folderById, templateMap, templateStore.rootId]);
 
   const copyTemplateUrl = async (templateId: string) => {
     const template = templateStore.getTemplateById(templateId);
@@ -67,50 +94,78 @@ export function ControlRoomRoute() {
         ? 'Program is clear. Press TAKE to move Preview to Program.'
         : null;
 
+  const renderTreeNode = (node: TreeNode, depth = 0) => {
+    if (node.type === 'template') {
+      return (
+        <button
+          key={node.id}
+          className={`block w-full rounded px-2 py-1 text-left text-sm ${previewTemplate?.id === node.id ? 'bg-blue-900/40 text-blue-100' : 'text-slate-300 hover:bg-slate-800'}`}
+          style={{ paddingLeft: `${depth * 14 + 8}px` }}
+          onClick={() => {
+            const template = templateStore.getTemplateById(node.id);
+            if (template) setPreviewTemplate(template);
+          }}
+        >
+          📄 {node.name}
+        </button>
+      );
+    }
+
+    const isOpen = treeOpen[node.id] ?? node.id === templateStore.rootId;
+    return (
+      <div key={node.id}>
+        <button
+          className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm text-slate-200 hover:bg-slate-800"
+          style={{ paddingLeft: `${depth * 14 + 8}px` }}
+          onClick={() => setTreeOpen((prev) => ({ ...prev, [node.id]: !isOpen }))}
+        >
+          <span>{isOpen ? '▾' : '▸'}</span>
+          <span>📁 {node.name}</span>
+        </button>
+        {isOpen && node.children.map((child) => renderTreeNode(child, depth + 1))}
+      </div>
+    );
+  };
+
   return (
-    <section className="grid h-[calc(100vh-11.5rem)] min-h-[560px] gap-4 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-4 xl:grid-cols-[280px_minmax(0,1fr)]">
-      <aside className="grid h-full grid-rows-[repeat(5,minmax(0,1fr))] gap-3 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-3">
-        <div className="rounded-md border border-slate-700 bg-slate-900 p-3">
+    <section className="grid h-[calc(100vh-11.5rem)] min-h-[560px] gap-4 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-4 xl:grid-cols-[300px_minmax(0,1fr)]">
+      <aside className="grid h-full grid-rows-[minmax(0,1fr)_auto_auto] gap-3 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-3">
+        <div className="min-h-0 rounded-md border border-slate-700 bg-slate-900 p-3">
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Template Library</p>
-          <div className="mt-2 space-y-1 text-sm">
-            {Object.entries(templateGroups).map(([groupKey, groupedTemplates]) => (
-              <div key={groupKey}>
-                <button className="flex w-full items-center justify-between rounded px-2 py-1 text-slate-200 hover:bg-slate-800" onClick={() => setTreeOpen((prev) => ({ ...prev, [groupKey]: !prev[groupKey] }))}>
-                  <span>{treeOpen[groupKey] ? '▾' : '▸'} {groupKey === 'main' ? 'Main Packages' : groupKey === 'lowerthirds' ? 'Lower Thirds' : 'Stats / Other'}</span>
-                </button>
-                {treeOpen[groupKey] && (
-                  <div className="ml-4 border-l border-slate-700 pl-2">
-                    {groupedTemplates.map((template) => (
-                      <button key={template.id} className={`block w-full rounded px-2 py-1 text-left ${previewTemplate?.id === template.id ? 'bg-blue-900/40 text-blue-100' : 'text-slate-300 hover:bg-slate-800'}`} onClick={() => setPreviewTemplate(template)}>{template.name}</button>
-                    ))}
-                    {!groupedTemplates.length && <p className="px-2 py-1 text-xs text-slate-500">No templates</p>}
-                  </div>
-                )}
-              </div>
-            ))}
+          <div className="mt-2 h-full overflow-auto pr-1">{renderTreeNode(tree)}</div>
+        </div>
+
+        {previewTemplate && (
+          <div className="space-y-2 rounded-md border border-slate-700 bg-slate-900 p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Contextual Controls</p>
+            <select className="w-full rounded border border-slate-600 bg-slate-950 px-2 py-2 text-sm text-slate-100" value={selectedSponsor} onChange={(e) => updateSelections({ sponsor: e.target.value })}>
+              {sponsorChoices.map((sponsor) => <option key={sponsor} value={sponsor}>{sponsor}</option>)}
+            </select>
+            <select className="w-full rounded border border-slate-600 bg-slate-950 px-2 py-2 text-sm text-slate-100" value={selectedPlayer} onChange={(e) => updateSelections({ player: e.target.value })}>
+              {players.map((player) => <option key={player} value={player}>{player}</option>)}
+            </select>
+            <select className="w-full rounded border border-slate-600 bg-slate-950 px-2 py-2 text-sm text-slate-100" value={selectedStat} onChange={(e) => updateSelections({ stat: e.target.value as DemoStat })}>
+              {stats.map((stat) => <option key={stat} value={stat}>{stat}</option>)}
+            </select>
+            {previewReady && (
+              <button className="w-full rounded-md border border-red-500 bg-red-600 px-6 py-2 text-sm font-bold tracking-[0.2em] text-white hover:bg-red-500" onClick={takeToProgram}>
+                TAKE
+              </button>
+            )}
           </div>
-        </div>
-        {previewTemplate && <div className="rounded-md border border-slate-700 bg-slate-900 p-3">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Sponsor</p>
-          <select className="mt-2 w-full rounded border border-slate-600 bg-slate-950 px-2 py-2 text-sm text-slate-100" value={selectedSponsor} onChange={(e) => updateSelections({ sponsor: e.target.value })}>
-            {sponsorChoices.map((sponsor) => <option key={sponsor} value={sponsor}>{sponsor}</option>)}
-          </select>
-        </div>}
-        {previewTemplate && <div className="rounded-md border border-slate-700 bg-slate-900 p-3">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Player</p>
-          <select className="mt-2 w-full rounded border border-slate-600 bg-slate-950 px-2 py-2 text-sm text-slate-100" value={selectedPlayer} onChange={(e) => updateSelections({ player: e.target.value })}>
-            {players.map((player) => <option key={player} value={player}>{player}</option>)}
-          </select>
-        </div>}
-        <div className="rounded-md border border-slate-700 bg-slate-900 p-3">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Ready Status</p>
-          <div className="mt-2">{previewReady ? <StatusBadge tone="ready">READY</StatusBadge> : <StatusBadge tone="not-ready">NOT READY</StatusBadge>}</div>
-          <p className="mt-2 text-xs text-slate-400">Engine {engineRunning ? 'Live' : 'Paused'} · Last TAKE {takeTime}</p>
-        </div>
-        <div className="rounded-md border border-slate-700 bg-slate-900 p-3">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">On-Air Status</p>
-          <div className="mt-2">{programTemplate ? <StatusBadge tone="on-air">ON AIR</StatusBadge> : <StatusBadge tone="not-ready">OFF AIR</StatusBadge>}</div>
-          <p className="mt-2 truncate text-xs text-slate-400">{programTemplate?.name ?? 'Program clear'}</p>
+        )}
+
+        <div className="grid grid-cols-2 gap-2 rounded-md border border-slate-700 bg-slate-900 p-3">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Ready Status</p>
+            <div className="mt-2">{previewReady ? <StatusBadge tone="ready">READY</StatusBadge> : <StatusBadge tone="not-ready">NOT READY</StatusBadge>}</div>
+            <p className="mt-2 text-xs text-slate-400">Engine {engineRunning ? 'Live' : 'Paused'} · Last TAKE {takeTime}</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">On-Air Status</p>
+            <div className="mt-2">{programTemplate ? <StatusBadge tone="on-air">ON AIR</StatusBadge> : <StatusBadge tone="not-ready">OFF AIR</StatusBadge>}</div>
+            <p className="mt-2 truncate text-xs text-slate-400">{programTemplate?.name ?? 'Program clear'}</p>
+          </div>
         </div>
       </aside>
 
@@ -119,16 +174,6 @@ export function ControlRoomRoute() {
           <TemplatePreview template={previewTemplate} label="PREVIEW" tone="preview" />
           <TemplatePreview template={programTemplate} label="PROGRAM" tone="program" />
         </div>
-
-        {previewTemplate && <div className="flex items-center justify-center rounded-md border border-slate-700 bg-slate-900 p-4">
-          <button
-            className={`rounded-md border px-10 py-3 text-base font-bold tracking-[0.2em] text-white disabled:opacity-50 ${previewTemplate ? 'border-red-500 bg-red-600 hover:bg-red-500' : 'border-slate-700 bg-slate-700'}`}
-            onClick={takeToProgram}
-            disabled={!previewTemplate}
-          >
-            TAKE
-          </button>
-        </div>}
 
         <div className="rounded-md border border-slate-700 bg-slate-900 p-3 text-sm text-slate-300">
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Broadcast Notes</p>
