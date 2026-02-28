@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { useAssetStore } from '../store/useAssetStore';
 import { useDataEngineStore } from '../store/useDataEngineStore';
 import { useLayerStore } from '../store/useLayerStore';
@@ -104,6 +104,7 @@ export function DesignRoute() {
   const [snapToGrid, setSnapToGrid] = useState(true);
   const [showSafeZones, setShowSafeZones] = useState(false);
   const [guides, setGuides] = useState<Guide[]>([]);
+  const [fontStatusByFamily, setFontStatusByFamily] = useState<Record<string, 'loading' | 'ready' | 'error'>>({});
 
   const stageViewportRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -130,6 +131,30 @@ export function DesignRoute() {
   const selectedLayers = useMemo(() => selectedLayerIds.map((id) => layerById.get(id)).filter(Boolean) as Layer[], [selectedLayerIds, layerById]);
   const selectedPrimary = selectedLayers[0] || null;
   const loadedTemplate = useMemo(() => (loadedTemplateId ? templateStore.getTemplateById(loadedTemplateId) : undefined), [loadedTemplateId, templateStore.templates]);
+  const textFontFamilies = useMemo(() => {
+    const families = new Set<string>();
+    layers.forEach((layer) => {
+      if (layer.kind === 'text' && layer.fontFamily) families.add(layer.fontFamily);
+    });
+    return [...families];
+  }, [layers]);
+
+  const ensureFontLoaded = useCallback((fontFamily: string, size = 56) => {
+    if (typeof document === 'undefined' || !('fonts' in document) || !fontFamily) return;
+    const descriptor = `700 ${size}px "${fontFamily}"`;
+    if (document.fonts.check(descriptor)) {
+      setFontStatusByFamily((prev) => (prev[fontFamily] === 'ready' ? prev : { ...prev, [fontFamily]: 'ready' }));
+      return;
+    }
+    setFontStatusByFamily((prev) => ({ ...prev, [fontFamily]: 'loading' }));
+    document.fonts.load(descriptor)
+      .then(() => {
+        setFontStatusByFamily((prev) => ({ ...prev, [fontFamily]: 'ready' }));
+      })
+      .catch(() => {
+        setFontStatusByFamily((prev) => ({ ...prev, [fontFamily]: 'error' }));
+      });
+  }, []);
 
 
   useEffect(() => {
@@ -138,6 +163,10 @@ export function DesignRoute() {
       measureCtxRef.current = canvas.getContext('2d');
     }
   }, []);
+
+  useEffect(() => {
+    textFontFamilies.forEach((fontFamily) => ensureFontLoaded(fontFamily));
+  }, [textFontFamilies, ensureFontLoaded]);
 
   useEffect(() => {
     try {
@@ -1046,7 +1075,12 @@ export function DesignRoute() {
                     <h4 className="font-semibold">Text</h4>
                     <label className="block text-sm">Content<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" value={selectedPrimary.text} onChange={(e) => applyToSelected((layer) => layer.kind === 'text' ? ({ text: e.target.value } as Partial<Layer>) : ({}))} /></label>
                     <div className="grid grid-cols-2 gap-2"><label className="text-sm">Color<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="color" value={selectedPrimary.color} onChange={(e) => applyToSelected((layer) => layer.kind === 'text' ? ({ color: e.target.value } as Partial<Layer>) : ({}))} /></label><label className="text-sm">Size<input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" type="number" value={selectedPrimary.size} onChange={(e) => setNumeric('size', e.target.value)} /></label></div>
-                    <label className="text-sm">Font<select className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" value={selectedPrimary.fontFamily} onChange={(e) => applyToSelected((layer) => layer.kind === 'text' ? ({ fontFamily: e.target.value } as Partial<Layer>) : ({}))}>{FONT_OPTIONS.map((font) => <option key={font} value={font}>{font}</option>)}</select></label>
+                    <label className="text-sm">Font<select className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" value={selectedPrimary.fontFamily} onChange={(e) => {
+                      const nextFontFamily = e.target.value;
+                      applyToSelected((layer) => layer.kind === 'text' ? ({ fontFamily: nextFontFamily } as Partial<Layer>) : ({}));
+                      ensureFontLoaded(nextFontFamily, selectedPrimary.size);
+                    }}>{FONT_OPTIONS.map((font) => <option key={font} value={font}>{font}</option>)}</select></label>
+                    <p className="text-xs text-slate-500">Font load: {fontStatusByFamily[selectedPrimary.fontFamily] ?? 'ready'}</p>
                     <div className="flex gap-2 text-xs"><button className={`rounded border px-2 py-1 ${selectedPrimary.textAlign === 'left' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => applyToSelected((layer) => layer.kind === 'text' ? ({ textAlign: 'left' } as Partial<Layer>) : ({}))}>Left</button><button className={`rounded border px-2 py-1 ${selectedPrimary.textAlign === 'center' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => applyToSelected((layer) => layer.kind === 'text' ? ({ textAlign: 'center' } as Partial<Layer>) : ({}))}>Center</button><button className={`rounded border px-2 py-1 ${selectedPrimary.textAlign === 'right' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => applyToSelected((layer) => layer.kind === 'text' ? ({ textAlign: 'right' } as Partial<Layer>) : ({}))}>Right</button></div>
                     <div className="flex gap-2 text-xs"><button className={`rounded border px-2 py-1 ${selectedPrimary.textMode === 'point' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => applyToSelected((layer) => layer.kind === 'text' ? ({ textMode: 'point' } as Partial<Layer>) : ({}))}>Point Text</button><button className={`rounded border px-2 py-1 ${selectedPrimary.textMode === 'area' ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => applyToSelected((layer) => layer.kind === 'text' ? ({ textMode: 'area', width: 500, height: selectedPrimary.size * 1.2 } as unknown as Partial<Layer>) : ({}))}>Area Text</button></div>
                   </div>
