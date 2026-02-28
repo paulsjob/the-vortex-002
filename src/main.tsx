@@ -6,11 +6,9 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import './styles.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <ErrorBoundary>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
-    </ErrorBoundary>
-  </React.StrictMode>,
+  <ErrorBoundary>
+    <BrowserRouter>
+      <AppRoutes />
+    </BrowserRouter>
+  </ErrorBoundary>,
 );
