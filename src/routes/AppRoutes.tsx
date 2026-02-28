@@ -7,6 +7,7 @@ import { OutputRoute } from './OutputRoute';
 import { PublicTemplateRoute } from './PublicTemplateRoute';
 import { PublicOutputRoute } from './PublicOutputRoute';
 import { usePlayoutStore } from '../store/usePlayoutStore';
+import { StatusBadge } from '../components/ui/StatusBadge';
 
 const tabs = [
   { to: '/', label: 'Dashboard' },
@@ -23,6 +24,7 @@ export function AppRoutes() {
   const location = useLocation();
   const isPublicTemplateFeed = location.pathname.startsWith('/template-feed/');
   const isPublicOutputFeed = location.pathname.startsWith('/output-feed');
+  const isOutputRoute = location.pathname === '/output';
 
   if (isPublicTemplateFeed || isPublicOutputFeed) {
     return (
@@ -33,27 +35,37 @@ export function AppRoutes() {
     );
   }
 
+  if (isOutputRoute) {
+    return (
+      <div className="h-screen overflow-hidden bg-slate-950 text-slate-100">
+        <Routes>
+          <Route path="/output" element={<OutputRoute />} />
+        </Routes>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="border-b border-slate-800 bg-slate-900/80 px-6 py-4 backdrop-blur">
-        <div className="flex items-center justify-between">
-          <h1 className="text-4xl font-bold tracking-wide text-slate-100">Renderless</h1>
-          <div className="flex items-center gap-6">
-            <nav className="flex gap-2 rounded-xl border border-slate-700 bg-slate-950 p-2">
+      <header className="border-b border-slate-800 bg-slate-900 px-6 py-4">
+        <div className="flex items-center justify-between gap-4">
+          <h1 className="text-2xl font-bold tracking-wide text-slate-100">Renderless</h1>
+          <div className="flex items-center gap-4">
+            <nav className="flex gap-2 rounded-lg border border-slate-700 bg-slate-950 p-2">
               {tabs.map((tab) => (
-                <NavLink key={tab.to} to={tab.to} end={tab.to === '/'} className={({ isActive }) => `rounded-lg px-4 py-2 text-lg font-semibold ${isActive ? 'bg-blue-700 text-blue-50' : 'text-slate-300 hover:bg-slate-800'}`}>
+                <NavLink key={tab.to} to={tab.to} end={tab.to === '/'} className={({ isActive }) => `rounded-md px-3 py-2 text-sm font-semibold ${isActive ? 'bg-blue-700 text-blue-50' : 'text-slate-300 hover:bg-slate-800'}`}>
                   {tab.label}
                 </NavLink>
               ))}
             </nav>
-            <span className="text-2xl text-emerald-400">● Live Connected</span>
+            <StatusBadge tone="ready">READY</StatusBadge>
             <button
-              className="rounded-xl bg-red-600 px-6 py-3 text-xl font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
               onClick={takeToProgram}
               disabled={!previewTemplate}
               title={previewTemplate ? `Take ${previewTemplate.name} to Output` : 'Load a template in Control Room first'}
             >
-              Push to Stream
+              TAKE
             </button>
           </div>
         </div>
