@@ -5,9 +5,12 @@ import type { SavedTemplate } from '../../store/useTemplateStore';
 import { useDataEngineStore } from '../../store/useDataEngineStore';
 import { getLiveTextContent } from './liveBindings';
 
+type SceneTemplate = Pick<SavedTemplate, 'id' | 'name' | 'canvasWidth' | 'canvasHeight' | 'layers'>;
+
 type Props = {
-  template: SavedTemplate;
+  template: SceneTemplate;
   className?: string;
+  assetResolver?: (path: string) => string | undefined;
 };
 
 const DEFAULT_TRANSFORM = {
@@ -18,7 +21,7 @@ const DEFAULT_TRANSFORM = {
   rotation: 0,
 };
 
-export function TemplateSceneSvg({ template, className }: Props) {
+export function TemplateSceneSvg({ template, className, assetResolver }: Props) {
   const assets = useAssetStore((s) => s.assets);
   const game = useDataEngineStore((s) => s.game);
   const assetById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets]);
@@ -74,11 +77,14 @@ export function TemplateSceneSvg({ template, className }: Props) {
     }
 
     const asset = assetById.get(layer.assetId);
+    const resolvedAssetPath = layer.assetId || (layer as { assetPath?: string }).assetPath || '';
+    const resolvedAssetUrl = assetResolver?.(resolvedAssetPath);
+    const imageUrl = asset?.src ?? resolvedAssetUrl;
     return (
       <g key={layer.id} transform={transform} opacity={opacity}>
-        {asset ? (
+        {imageUrl ? (
           <image
-            href={asset.src}
+            href={imageUrl}
             x={0}
             y={0}
             width={layer.width}
