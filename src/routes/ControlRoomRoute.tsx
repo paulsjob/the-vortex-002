@@ -4,12 +4,12 @@ import { usePlayoutStore } from '../store/usePlayoutStore';
 import { TemplatePreview } from '../features/playout/TemplatePreview';
 import { useDataEngineStore } from '../store/useDataEngineStore';
 import { buildOutputFeedUrl, buildTemplateFeedUrl } from '../features/playout/publicUrl';
+import { StatusBadge } from '../components/ui/StatusBadge';
 
 export function ControlRoomRoute() {
   const templateStore = useTemplateStore();
   const previewTemplate = usePlayoutStore((s) => s.previewTemplate);
   const programTemplate = usePlayoutStore((s) => s.programTemplate);
-  const lastTakeAt = usePlayoutStore((s) => s.lastTakeAt);
   const setPreviewTemplate = usePlayoutStore((s) => s.setPreviewTemplate);
   const takeToProgram = usePlayoutStore((s) => s.takeToProgram);
 
@@ -20,6 +20,10 @@ export function ControlRoomRoute() {
   const stepPitch = useDataEngineStore((s) => s.stepPitch);
   const setEngineSpeed = useDataEngineStore((s) => s.setSpeed);
 
+  const templates = useMemo(
+    () => [...templateStore.templates].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
+    [templateStore.templates],
+  );
 
   const copyTemplateUrl = async (templateId: string) => {
     const template = templateStore.getTemplateById(templateId);
@@ -42,96 +46,75 @@ export function ControlRoomRoute() {
     }
   };
 
-  const templates = useMemo(
-    () => [...templateStore.templates].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
-    [templateStore.templates],
-  );
-
   return (
-    <section className="space-y-4 rounded-xl border border-slate-800 bg-slate-900 p-6">
-      <div>
-        <h2 className="text-2xl font-bold text-slate-100">Control Room Template Queue</h2>
-        <p className="text-slate-400">Saved Design templates are available here for graphics operators to trigger on-air.</p>
-      </div>
-
-
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-700 bg-slate-950 p-3">
-        <div className="text-xs text-slate-400">
-          <span className="mr-2 uppercase tracking-wider">Data Engine</span>
-          <span className={`font-semibold ${engineRunning ? 'text-emerald-300' : 'text-amber-300'}`}>{engineRunning ? 'Live' : 'Paused'}</span>
+    <section className="grid gap-4 rounded-xl border border-slate-800 bg-slate-900 p-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+      <aside className="space-y-4 rounded-lg border border-slate-700 bg-slate-950 p-4">
+        <div>
+          <h2 className="text-base font-semibold text-slate-100">Control Room</h2>
+          <p className="mt-1 text-xs text-slate-400">Broadcast playout authority.</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <select className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs" value={engineSpeed} onChange={(e) => setEngineSpeed(e.target.value as 'slow' | 'normal' | 'fast')}>
-            <option value="slow">Slow</option>
-            <option value="normal">Normal</option>
-            <option value="fast">Fast</option>
-          </select>
-          <button className="rounded border border-slate-700 px-2 py-1 text-xs" onClick={stepPitch}>Step</button>
-          <button className="rounded bg-emerald-700 px-2 py-1 text-xs font-semibold disabled:opacity-50" onClick={startEngine} disabled={engineRunning}>Start</button>
-          <button className="rounded bg-amber-700 px-2 py-1 text-xs font-semibold disabled:opacity-50" onClick={stopEngine} disabled={!engineRunning}>Pause</button>
+        <div className="rounded-md border border-slate-700 bg-slate-900 p-3">
+          <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">Engine</p>
+          {engineRunning ? <StatusBadge tone="ready">READY</StatusBadge> : <StatusBadge tone="not-ready">NOT READY</StatusBadge>}
+          <div className="mt-3 flex items-center gap-2">
+            <select className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs" value={engineSpeed} onChange={(e) => setEngineSpeed(e.target.value as 'slow' | 'normal' | 'fast')}>
+              <option value="slow">Slow</option>
+              <option value="normal">Normal</option>
+              <option value="fast">Fast</option>
+            </select>
+            <button className="rounded border border-slate-700 px-2 py-1 text-xs" onClick={stepPitch}>Step</button>
+            <button className="rounded bg-emerald-700 px-2 py-1 text-xs font-semibold disabled:opacity-50" onClick={startEngine} disabled={engineRunning}>Start</button>
+            <button className="rounded bg-amber-700 px-2 py-1 text-xs font-semibold disabled:opacity-50" onClick={stopEngine} disabled={!engineRunning}>Pause</button>
+          </div>
         </div>
-      </div>
-
-      <div className="grid gap-4 rounded-lg border border-slate-700 bg-slate-950 p-3 xl:grid-cols-2">
-        <TemplatePreview template={previewTemplate} label="PST / Preview" tone="preview" />
-        <TemplatePreview template={programTemplate} label="PGM / Program" tone="program" />
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between rounded-lg border border-slate-700 bg-slate-950 p-3 text-xs text-slate-400">
-        <p>
-          <span className="mr-2 uppercase tracking-wider">Preview</span>
-          <span className="font-semibold text-slate-200">{previewTemplate?.name || 'No template loaded'}</span>
-        </p>
-        <p>
-          <span className="mr-2 uppercase tracking-wider">Program</span>
-          <span className="font-semibold text-slate-200">{programTemplate?.name || 'Nothing on-air'}</span>
-        </p>
-        {lastTakeAt && <p>Last take: {new Date(lastTakeAt).toLocaleString()}</p>}
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-700 bg-slate-950 p-3 text-xs">
-        <p className="text-slate-400">Control Room Output URL (aggregate feed for OBS/browser source).</p>
-        <button className="rounded border border-emerald-700 px-3 py-1 font-semibold text-emerald-300 disabled:opacity-50" onClick={copyAggregateOutputUrl} disabled={!programTemplate}>
-          Copy Output URL
-        </button>
-      </div>
-
-      <div className="overflow-hidden rounded-lg border border-slate-700">
-        <div className="grid grid-cols-[2fr_1fr_1fr_1fr_300px] bg-slate-950 px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-400">
-          <span>Name</span>
-          <span>Canvas</span>
-          <span>Layers</span>
-          <span>Saved</span>
-          <span>Actions</span>
+        <div className="rounded-md border border-slate-700 bg-slate-900 p-3 text-xs text-slate-300">
+          <p className="uppercase tracking-wider text-slate-400">Program</p>
+          <p className="mt-1 truncate font-semibold text-slate-100">{programTemplate?.name ?? 'No template on air'}</p>
+          <div className="mt-2">{programTemplate ? <StatusBadge tone="on-air">ON AIR</StatusBadge> : <StatusBadge tone="not-ready">NOT READY</StatusBadge>}</div>
         </div>
-        <div className="divide-y divide-slate-800">
-          {templates.map((template) => {
-            const isPreview = previewTemplate?.id === template.id;
-            return (
-              <div key={template.id} className={`grid grid-cols-[2fr_1fr_1fr_1fr_300px] items-center px-4 py-3 text-sm ${isPreview ? 'bg-blue-900/20 text-blue-100' : 'text-slate-200'}`}>
-                <span className="font-semibold">{template.name}</span>
-                <span>{template.canvasWidth} × {template.canvasHeight}</span>
-                <span>{template.layers.length}</span>
-                <span>{new Date(template.createdAt).toLocaleString()}</span>
-                <div className="flex gap-2">
-                  <button className="rounded bg-blue-700 px-2 py-1 text-xs font-semibold" onClick={() => setPreviewTemplate(template)}>
-                    {isPreview ? 'Loaded' : 'Load Preview'}
-                  </button>
-                  <button className="rounded border border-emerald-700 px-2 py-1 text-xs font-semibold text-emerald-300" onClick={() => copyTemplateUrl(template.id)}>Copy URL</button>
-                  <button className="rounded bg-red-700 px-2 py-1 text-xs font-semibold disabled:opacity-50" onClick={takeToProgram} disabled={!isPreview}>
-                    Take
-                  </button>
+      </aside>
+
+      <section className="space-y-4 rounded-lg border border-slate-700 bg-slate-950 p-4">
+        <div className="grid gap-4 md:grid-cols-2">
+          <TemplatePreview template={previewTemplate} label="PREVIEW" tone="preview" />
+          <TemplatePreview template={programTemplate} label="PROGRAM" tone="program" />
+        </div>
+
+        <div className="flex items-center justify-center rounded-md border border-slate-700 bg-slate-900 p-3">
+          <button className="rounded-md bg-red-600 px-8 py-3 text-base font-bold tracking-wider text-white disabled:opacity-50" onClick={takeToProgram} disabled={!previewTemplate}>
+            TAKE
+          </button>
+        </div>
+
+        <div className="overflow-hidden rounded-md border border-slate-700">
+          <div className="grid grid-cols-[1.8fr_1fr_1fr_1fr] bg-slate-900 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+            <span>Template</span><span>Status</span><span>Feed</span><span>Actions</span>
+          </div>
+          <div className="divide-y divide-slate-800">
+            {templates.map((template) => {
+              const isPreview = previewTemplate?.id === template.id;
+              const isProgram = programTemplate?.id === template.id;
+              return (
+                <div key={template.id} className="grid grid-cols-[1.8fr_1fr_1fr_1fr] items-center px-3 py-3 text-sm text-slate-200">
+                  <span className="font-semibold">{template.name}</span>
+                  <span>{template.layers.length > 0 ? <StatusBadge tone="valid">VALID</StatusBadge> : <StatusBadge tone="invalid">INVALID</StatusBadge>}</span>
+                  <span>{isProgram ? <StatusBadge tone="on-air">ON AIR</StatusBadge> : isPreview ? <StatusBadge tone="preview">PREVIEW</StatusBadge> : <StatusBadge tone="not-ready">NOT READY</StatusBadge>}</span>
+                  <div className="flex gap-2 text-xs">
+                    <button className="rounded bg-blue-700 px-2 py-1 font-semibold" onClick={() => setPreviewTemplate(template)}>Load</button>
+                    <button className="rounded border border-emerald-700 px-2 py-1 font-semibold text-emerald-300" onClick={() => copyTemplateUrl(template.id)}>URL</button>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-          {!templates.length && (
-            <div className="px-4 py-6 text-sm text-slate-500">
-              No saved templates yet. Save one from the Design dashboard to make it available here.
-            </div>
-          )}
+              );
+            })}
+          </div>
         </div>
-      </div>
+
+        <div className="flex justify-end">
+          <button className="rounded border border-emerald-700 px-3 py-1 text-xs font-semibold text-emerald-300 disabled:opacity-50" onClick={copyAggregateOutputUrl} disabled={!programTemplate}>
+            Copy Output URL
+          </button>
+        </div>
+      </section>
     </section>
   );
 }
