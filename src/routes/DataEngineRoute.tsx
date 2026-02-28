@@ -2,58 +2,72 @@ import { useDataEngineStore } from '../store/useDataEngineStore';
 import { StatusBadge } from '../components/ui/StatusBadge';
 
 export function DataEngineRoute() {
-  const { game, history, running, speed, start, stop, reset, setSpeed, stepPitch } = useDataEngineStore();
+  const { game, history, running } = useDataEngineStore();
+
+  const feeds = [
+    { id: 'live-game', name: 'Live Game Feed', status: running ? 'connected' : 'disconnected' },
+    { id: 'derived-stats', name: 'Derived Stats Feed', status: running ? 'connected' : 'disconnected' },
+    { id: 'sponsor-catalog', name: 'Sponsor Catalog Feed (demo)', status: 'connected' },
+  ] as const;
+
+  const samplePayload = {
+    gameId: 'demo-001',
+    homeTeam: game.homeTeam,
+    awayTeam: game.awayTeam,
+    score: { home: game.scoreHome, away: game.scoreAway },
+    pitcher: game.pitcher,
+    batter: game.batter,
+    lastPitch: game.lastPitch,
+    updatedAt: new Date().toISOString(),
+  };
 
   return (
-    <section className="space-y-6 rounded-xl border border-slate-800 bg-slate-900 p-5">
-      <section className="rounded-lg border border-slate-700 bg-slate-950 p-4">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-base font-semibold text-slate-100">Data Engine</h2>
-          {running ? <StatusBadge tone="ready">READY</StatusBadge> : <StatusBadge tone="not-ready">NOT READY</StatusBadge>}
-        </div>
-        <div className="mb-5 flex flex-wrap items-center gap-2">
-          <button className="rounded border border-blue-600 bg-blue-700 px-3 py-2 text-sm font-semibold hover:bg-blue-600" onClick={running ? stop : start}>{running ? 'Pause' : 'Start'}</button>
-          <button className="rounded border border-slate-600 bg-slate-700 px-3 py-2 text-sm hover:bg-slate-600" onClick={stepPitch}>Poll Feed</button>
-          <button className="rounded border border-slate-600 bg-slate-700 px-3 py-2 text-sm hover:bg-slate-600" onClick={reset}>Reset</button>
-          <select className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm" value={speed} onChange={(e) => setSpeed(e.target.value as 'slow' | 'normal' | 'fast')}>
-            <option value="slow">Slow</option>
-            <option value="normal">Normal</option>
-            <option value="fast">Fast</option>
-          </select>
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-3">
-          <div className="rounded border border-slate-700 bg-slate-900 p-3 text-sm">
-            <p className="text-slate-400">Feed Configuration</p>
-            <p className="font-semibold text-slate-100">{game.awayTeam} {game.scoreAway} - {game.homeTeam} {game.scoreHome}</p>
-            <p>Polling mode: {running ? 'Live' : 'Paused'}</p>
-            <p>Rate profile: {speed}</p>
-          </div>
-          <div className="rounded border border-slate-700 bg-slate-900 p-3 text-sm">
-            <p className="text-slate-400">Endpoint</p>
-            <p>GET /api/feed/live-game</p>
-            <p>POST /api/endpoint/template-bindings</p>
-            <p>Health: {running ? 'Healthy' : 'Standby'}</p>
-          </div>
-          <div className="rounded border border-slate-700 bg-slate-900 p-3 text-sm">
-            <p className="text-slate-400">Mapping + Validation</p>
-            <p>Pitcher: {game.pitcher}</p>
-            <p>Batter: {game.batter}</p>
-            <p>Last payload: {game.lastPitch.result}</p>
-            <p>{history.length ? 'Validation passing' : 'No data yet'}</p>
-          </div>
-        </div>
-      </section>
-
-      <section className="rounded-lg border border-slate-700 bg-slate-950 p-4">
-        <h3 className="mb-2 text-sm font-semibold uppercase tracking-wider text-slate-300">Mock Dataset Feed</h3>
-        <div className="space-y-2">
-          {history.slice(0, 12).map((pitch) => (
-            <div key={pitch.pitchNumber} className="rounded border border-slate-700 bg-slate-900 p-2 text-sm">
-              #{pitch.pitchNumber} · {pitch.result} · {pitch.pitchType} {pitch.velocityMph}mph @ {pitch.location}
+    <section className="grid h-[calc(100vh-11.5rem)] min-h-[560px] gap-4 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-4 lg:grid-cols-[300px_minmax(0,1fr)]">
+      <aside className="rounded-lg border border-slate-700 bg-slate-950 p-3">
+        <h2 className="text-base font-semibold text-slate-100">Feeds</h2>
+        <p className="mt-1 text-xs text-slate-400">Demo feed inventory</p>
+        <div className="mt-3 space-y-2">
+          {feeds.map((feed) => (
+            <div key={feed.id} className="rounded border border-slate-700 bg-slate-900 p-2 text-sm">
+              <p className="font-medium text-slate-100">{feed.name}</p>
+              <p className="mt-1 text-xs text-slate-400">{feed.id}</p>
+              <p className="mt-1 text-xs">Status: {feed.status}</p>
             </div>
           ))}
-          {!history.length && <p className="text-sm text-slate-500">No pitches yet.</p>}
+        </div>
+      </aside>
+
+      <section className="space-y-4 overflow-auto rounded-lg border border-slate-700 bg-slate-950 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-base font-semibold text-slate-100">Live Game Feed</h3>
+          {running ? <StatusBadge tone="ready">CONNECTED</StatusBadge> : <StatusBadge tone="not-ready">DISCONNECTED</StatusBadge>}
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="rounded border border-slate-700 bg-slate-900 p-3 text-sm">
+            <p className="text-slate-400">Last Update</p>
+            <p className="font-semibold text-slate-100">{history[0] ? `Pitch #${history[0].pitchNumber}` : 'No data yet'}</p>
+            <p className="mt-1 text-xs text-slate-500">{new Date().toLocaleTimeString()}</p>
+          </div>
+          <div className="rounded border border-slate-700 bg-slate-900 p-3 text-sm">
+            <p className="text-slate-400">Endpoints</p>
+            <p>GET /api/feed/live-game</p>
+            <p>GET /api/endpoints/derived-stats</p>
+            <p>GET /api/endpoints/normalized-scorebug</p>
+          </div>
+        </div>
+
+        <div className="rounded border border-slate-700 bg-slate-900 p-3">
+          <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">Sample Payload Preview</p>
+          <pre className="overflow-auto rounded bg-slate-950 p-3 text-xs text-slate-200">{JSON.stringify(samplePayload, null, 2)}</pre>
+        </div>
+
+        <div className="rounded border border-slate-700 bg-slate-900 p-3">
+          <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">Available Fields</p>
+          <div className="grid gap-1 text-sm text-slate-200 md:grid-cols-2">
+            {['score.home', 'score.away', 'pitch.velocity', 'pitch.location', 'matchup.pitcher', 'matchup.batter', 'inning.number', 'inning.state'].map((field) => (
+              <span key={field} className="rounded border border-slate-700 bg-slate-950 px-2 py-1">{field}</span>
+            ))}
+          </div>
         </div>
       </section>
     </section>

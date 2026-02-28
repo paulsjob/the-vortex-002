@@ -3,12 +3,9 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { usePlayoutStore } from '../store/usePlayoutStore';
 import { TemplatePreview } from '../features/playout/TemplatePreview';
 import { useDataEngineStore } from '../store/useDataEngineStore';
-import { useDemoSessionStore, type DemoStat } from '../store/useDemoSessionStore';
+import { useDemoSessionStore } from '../store/useDemoSessionStore';
 import { buildOutputFeedUrl, buildTemplateFeedUrl } from '../features/playout/publicUrl';
 import { StatusBadge } from '../components/ui/StatusBadge';
-
-const players = ['A. Jones', 'B. Cruz', 'C. Watts', 'J. Cole', 'K. Ford', 'L. Pope'];
-const stats: DemoStat[] = ['pitch.velocity', 'pitch.type', 'bat.exitvelo', 'score.home'];
 
 type TreeNode = { id: string; type: 'folder'; name: string; children: TreeNode[] } | { id: string; type: 'template'; name: string };
 
@@ -22,8 +19,6 @@ export function ControlRoomRoute() {
 
   const engineRunning = useDataEngineStore((s) => s.running);
   const selectedSponsor = useDemoSessionStore((s) => s.selectedSponsor);
-  const selectedPlayer = useDemoSessionStore((s) => s.selectedPlayer);
-  const selectedStat = useDemoSessionStore((s) => s.selectedStat);
   const sponsorChoices = useDemoSessionStore((s) => s.sponsorChoices);
   const updateSelections = useDemoSessionStore((s) => s.updateSelections);
 
@@ -138,14 +133,9 @@ export function ControlRoomRoute() {
         {previewTemplate && (
           <div className="space-y-2 rounded-md border border-slate-700 bg-slate-900 p-3">
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Contextual Controls</p>
+            <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">Sponsor</label>
             <select className="w-full rounded border border-slate-600 bg-slate-950 px-2 py-2 text-sm text-slate-100" value={selectedSponsor} onChange={(e) => updateSelections({ sponsor: e.target.value })}>
               {sponsorChoices.map((sponsor) => <option key={sponsor} value={sponsor}>{sponsor}</option>)}
-            </select>
-            <select className="w-full rounded border border-slate-600 bg-slate-950 px-2 py-2 text-sm text-slate-100" value={selectedPlayer} onChange={(e) => updateSelections({ player: e.target.value })}>
-              {players.map((player) => <option key={player} value={player}>{player}</option>)}
-            </select>
-            <select className="w-full rounded border border-slate-600 bg-slate-950 px-2 py-2 text-sm text-slate-100" value={selectedStat} onChange={(e) => updateSelections({ stat: e.target.value as DemoStat })}>
-              {stats.map((stat) => <option key={stat} value={stat}>{stat}</option>)}
             </select>
             {previewReady && (
               <button className="w-full rounded-md border border-red-500 bg-red-600 px-6 py-2 text-sm font-bold tracking-[0.2em] text-white hover:bg-red-500" onClick={takeToProgram}>
