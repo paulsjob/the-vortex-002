@@ -41,7 +41,9 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
   setPreviewTemplate: (template) => set({ previewTemplate: template }),
   takeToProgram: () => {
     const preview = get().previewTemplate;
+    const program = get().programTemplate;
     if (!preview) return;
+    if (program?.id === preview.id) return;
     set({
       programTemplate: preview,
       lastTakeAt: new Date().toISOString(),
@@ -56,6 +58,10 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
     return { fontOverrides: rest };
   }),
   initializeBindings: (templateId, bindingsSchema) => {
+    const existingBindingState = get().vortexBindings[templateId];
+    const existingSchema = get().vortexBindingSchemas[templateId];
+    if (existingBindingState && existingSchema) return;
+
     const values = createInitialBindingValues(bindingsSchema);
     const baseState: VortexBindingState = {
       templateId,

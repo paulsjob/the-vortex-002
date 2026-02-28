@@ -1,12 +1,19 @@
-import { useState } from 'react';
 import { useDataEngineStore } from '../store/useDataEngineStore';
 import { StatusBadge } from '../components/ui/StatusBadge';
+import { useDemoSessionStore, type DemoStat } from '../store/useDemoSessionStore';
 
 const players = ['A. Jones', 'B. Cruz', 'C. Watts', 'J. Cole', 'K. Ford', 'L. Pope'];
+const statOptions: DemoStat[] = ['pitch.velocity', 'pitch.type', 'bat.exitvelo', 'score.home'];
 
 export function DataEngineRoute() {
   const { game, history, running, speed, start, stop, reset, setSpeed, stepPitch } = useDataEngineStore();
-  const [selectedPlayer, setSelectedPlayer] = useState(players[0]);
+  const selectedPlayer = useDemoSessionStore((s) => s.selectedPlayer);
+  const selectedStat = useDemoSessionStore((s) => s.selectedStat);
+  const selectedSponsor = useDemoSessionStore((s) => s.selectedSponsor);
+  const sponsorChoices = useDemoSessionStore((s) => s.sponsorChoices);
+  const setSelectedPlayer = useDemoSessionStore((s) => s.setSelectedPlayer);
+  const setSelectedStat = useDemoSessionStore((s) => s.setSelectedStat);
+  const setSelectedSponsor = useDemoSessionStore((s) => s.setSelectedSponsor);
 
   return (
     <section className="space-y-4 rounded-xl border border-slate-800 bg-slate-900 p-4">
@@ -27,6 +34,12 @@ export function DataEngineRoute() {
           <select className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm" value={selectedPlayer} onChange={(e) => setSelectedPlayer(e.target.value)}>
             {players.map((player) => <option key={player} value={player}>{player}</option>)}
           </select>
+          <select className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm" value={selectedStat} onChange={(e) => setSelectedStat(e.target.value as DemoStat)}>
+            {statOptions.map((stat) => <option key={stat} value={stat}>{stat}</option>)}
+          </select>
+          <select className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm" value={selectedSponsor} onChange={(e) => setSelectedSponsor(e.target.value)}>
+            {sponsorChoices.map((sponsor) => <option key={sponsor} value={sponsor}>{sponsor}</option>)}
+          </select>
         </div>
 
         <div className="grid gap-3 md:grid-cols-3">
@@ -43,9 +56,10 @@ export function DataEngineRoute() {
             <p>Selected Player: {selectedPlayer}</p>
           </div>
           <div className="rounded border border-slate-700 bg-slate-900 p-3 text-sm">
-            <p className="text-slate-400">Last Pitch</p>
+            <p className="text-slate-400">Demo State</p>
+            <p>Stat: {selectedStat}</p>
+            <p>Sponsor: {selectedSponsor}</p>
             <p>{game.lastPitch.result}</p>
-            <p>{game.lastPitch.pitchType} · {game.lastPitch.velocityMph} mph · {game.lastPitch.location}</p>
           </div>
         </div>
       </section>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLayerStore } from '../store/useLayerStore';
 import { useTemplateStore } from '../store/useTemplateStore';
@@ -9,7 +9,8 @@ export function DashboardRoute() {
   const templateStore = useTemplateStore();
   const loadTemplate = useLayerStore((s) => s.loadTemplate);
 
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const selectedTemplateRef = useTemplateStore((s) => s.selectedTemplate);
+  const selectTemplate = useTemplateStore((s) => s.selectTemplate);
 
   const templates = useMemo(
     () => [...templateStore.templates].sort((a, b) => Date.parse(b.updatedAt ?? b.createdAt) - Date.parse(a.updatedAt ?? a.createdAt)),
@@ -17,8 +18,8 @@ export function DashboardRoute() {
   );
 
   const selectedTemplate = useMemo(
-    () => templates.find((template) => template.id === selectedTemplateId) ?? templates[0],
-    [templates, selectedTemplateId],
+    () => templates.find((template) => template.id === selectedTemplateRef?.id) ?? templates[0],
+    [templates, selectedTemplateRef],
   );
 
   return (
@@ -74,7 +75,7 @@ export function DashboardRoute() {
                 <button
                   key={template.id}
                   className={`grid w-full grid-cols-[2.2fr_0.9fr_0.9fr_0.8fr_0.7fr] items-center px-3 py-3 text-left text-sm transition-colors ${isActive ? 'bg-blue-900/25 text-blue-50' : 'bg-transparent text-slate-200 hover:bg-slate-900/70'}`}
-                  onClick={() => setSelectedTemplateId(template.id)}
+                  onClick={() => selectTemplate({ source: 'native', id: template.id })}
                 >
                   <span className="font-medium">{template.name}</span>
                   <span>{isValid ? <StatusBadge tone="valid">VALID</StatusBadge> : <StatusBadge tone="invalid">INVALID</StatusBadge>}</span>
