@@ -34,6 +34,13 @@ interface PlayoutStore {
   getBindingSchema: (templateId: string) => BindingSchema | undefined;
 }
 
+const cloneTemplate = (template: SavedTemplate): SavedTemplate => structuredClone(template);
+
+const templatesMatch = (left: SavedTemplate | null, right: SavedTemplate | null): boolean => {
+  if (!left || !right) return left === right;
+  return JSON.stringify(left) === JSON.stringify(right);
+};
+
 export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
   previewTemplate: null,
   vortexBindings: {},
@@ -41,23 +48,24 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
   lastTakeAt: null,
   fontOverrides: {},
   vortexBindingSchemas: {},
-  setPreviewTemplate: (template) => set({ previewTemplate: template }),
+  setPreviewTemplate: (template) => set({ previewTemplate: template ? cloneTemplate(template) : null }),
   takeToProgram: () => {
     const preview = get().previewTemplate;
     const program = get().programTemplate;
     if (!preview) return;
-    if (program?.id === preview.id) return;
+    if (templatesMatch(program, preview)) return;
     set({
-      programTemplate: preview,
+      programTemplate: cloneTemplate(preview),
       lastTakeAt: new Date().toISOString(),
     });
   },
   clearProgram: () => set({ programTemplate: null }),
   activateProgramTemplate: (template) => set((state) => {
     if (!template) return state;
-    if (state.programTemplate?.id === template.id) return state;
+    const nextProgram = cloneTemplate(template);
+    if (templatesMatch(state.programTemplate, nextProgram)) return state;
     return {
-      programTemplate: template,
+      programTemplate: nextProgram,
       lastTakeAt: new Date().toISOString(),
     };
   }),
