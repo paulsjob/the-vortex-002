@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Layer } from '../types/domain';
+import type { VortexPackage } from '../features/packages/loadVortexPackage';
 import { useAssetStore } from './useAssetStore';
 
 const STORAGE_KEY = 'renderless.savedDesignTemplates.v1';
@@ -21,6 +22,23 @@ export type SavedTemplate = {
   layers: Layer[];
   createdAt: string;
   updatedAt?: string;
+};
+
+export type TemplateListItem = {
+  id: string;
+  name: string;
+  source: 'native' | 'vortex';
+  formatId?: string;
+  width?: number;
+  height?: number;
+  variantGroupId?: string;
+  updatedAt?: string;
+  previewUrl?: string;
+};
+
+type SelectedTemplate = {
+  source: 'native' | 'vortex';
+  id: string;
 };
 
 type PersistedTemplateState = {
@@ -53,6 +71,9 @@ const persist = (state: PersistedTemplateState) => {
 
 interface TemplateStore extends PersistedTemplateState {
   expanded: Record<string, boolean>;
+  vortexPackages: Record<string, VortexPackage>;
+  vortexPreviewUrls: Record<string, string | undefined>;
+  selectedTemplate: SelectedTemplate | null;
   addFolder: (name: string, parentId: string) => void;
   deleteFolder: (folderId: string) => void;
   renameFolder: (folderId: string, name: string) => void;
@@ -64,6 +85,11 @@ interface TemplateStore extends PersistedTemplateState {
   getTemplateById: (templateId: string) => SavedTemplate | undefined;
   getFolderById: (folderId: string) => TemplateFolder | undefined;
   getRootFolder: () => TemplateFolder;
+  registerVortexPackage: (pkg: VortexPackage) => void;
+  removeVortexPackage: (templateId: string) => void;
+  getVortexPackage: (templateId: string) => VortexPackage | undefined;
+  listAllTemplates: () => TemplateListItem[];
+  selectTemplate: (selection: SelectedTemplate) => void;
 }
 
 const initial = load();
@@ -71,6 +97,9 @@ const initial = load();
 export const useTemplateStore = create<TemplateStore>((set, get) => ({
   ...initial,
   expanded: { [initial.rootId]: true },
+  vortexPackages: {},
+  vortexPreviewUrls: {},
+  selectedTemplate: null,
   addFolder: (name, parentId) => {
     const trimmed = name.trim();
     if (!trimmed) return;
@@ -162,4 +191,58 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
   getTemplateById: (templateId) => get().templates.find((t) => t.id === templateId),
   getFolderById: (folderId) => get().folders.find((f) => f.id === folderId),
   getRootFolder: () => get().folders.find((f) => f.id === get().rootId) || get().folders[0],
+  registerVortexPackage: (pkg) => {
+    const templateId = pkg.manifest.templateId;
+    const previewBlob = pkg.files.previews['previews/poster.png'];
+    const previewUrl = previewBlob ? URL.createObjectURL(previewBlob) : undefined;
+    const previousPreview = get().vortexPreviewUrls[templateId];
+    if (previousPreview) {
+      URL.revokeObjectURL(previousPreview);
+    }
+    set((state) => ({
+      vortexPackages: { ...state.vortexPackages, [templateId]: pkg },
+      vortexPreviewUrls: { ...state.vortexPreviewUrls, [templateId]: previewUrl },
+    }));
+  },
+  removeVortexPackage: (templateId) => {
+    const state = get();
+    const previewUrl = state.vortexPreviewUrls[templateId];
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    const { [templateId]: _removedPackage, ...vortexPackages } = state.vortexPackages;
+    const { [templateId]: _removedPreview, ...vortexPreviewUrls } = state.vortexPreviewUrls;
+    set({
+      vortexPackages,
+      vortexPreviewUrls,
+      selectedTemplate: state.selectedTemplate?.id === templateId && state.selectedTemplate.source === 'vortex'
+        ? null
+        : state.selectedTemplate,
+    });
+  },
+  getVortexPackage: (templateId) => get().vortexPackages[templateId],
+  listAllTemplates: () => {
+    const state = get();
+    const nativeTemplates: TemplateListItem[] = state.templates.map((template) => ({
+      id: template.id,
+      name: template.name,
+      source: 'native',
+      width: template.canvasWidth,
+      height: template.canvasHeight,
+      updatedAt: template.updatedAt ?? template.createdAt,
+    }));
+    const vortexTemplates: TemplateListItem[] = Object.values(state.vortexPackages).map((pkg) => ({
+      id: pkg.manifest.templateId,
+      name: pkg.manifest.templateName,
+      source: 'vortex',
+      formatId: pkg.manifest.format.formatId,
+      width: pkg.manifest.format.width,
+      height: pkg.manifest.format.height,
+      variantGroupId: typeof pkg.manifest.variantGroupId === 'string' ? pkg.manifest.variantGroupId : undefined,
+      updatedAt: typeof pkg.manifest.updatedAt === 'string' ? pkg.manifest.updatedAt : undefined,
+      previewUrl: state.vortexPreviewUrls[pkg.manifest.templateId],
+    }));
+    return [...nativeTemplates, ...vortexTemplates];
+  },
+  selectTemplate: (selection) => set({ selectedTemplate: selection }),
 }));
