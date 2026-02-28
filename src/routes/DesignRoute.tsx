@@ -19,6 +19,13 @@ const DATA_FIELDS = ['score.home', 'score.away', 'inning.number', 'inning.state'
 const transformDefaults = { anchorX: 0, anchorY: 0, scaleX: 100, scaleY: 100, rotation: 0 };
 const RULER_SIZE = 24;
 const RULER_TARGET_MAJOR_SPACING = 90;
+const GUIDE_SESSION_KEY = 'design-route-guides-v1';
+
+type Guide = {
+  id: string;
+  orientation: 'vertical' | 'horizontal';
+  position: number;
+};
 
 const pickRulerMajorStep = (scale: number) => {
   const targetUnits = RULER_TARGET_MAJOR_SPACING / Math.max(scale, 0.001);
@@ -96,10 +103,12 @@ export function DesignRoute() {
   const [showGrid, setShowGrid] = useState(true);
   const [snapToGrid, setSnapToGrid] = useState(true);
   const [showSafeZones, setShowSafeZones] = useState(false);
+  const [guides, setGuides] = useState<Guide[]>([]);
 
   const stageViewportRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ startX: number; startY: number; base: Map<string, { x: number; y: number }> } | null>(null);
+  const guideDragRef = useRef<{ id: string; orientation: 'vertical' | 'horizontal' } | null>(null);
   const measureCtxRef = useRef<CanvasRenderingContext2D | null>(null);
 
   const assetById = useMemo(() => new Map(assetStore.assets.map((a) => [a.id, a])), [assetStore.assets]);
@@ -117,6 +126,32 @@ export function DesignRoute() {
       measureCtxRef.current = canvas.getContext('2d');
     }
   }, []);
+
+  useEffect(() => {
+    try {
+      const raw = window.sessionStorage.getItem(GUIDE_SESSION_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Guide[];
+      if (!Array.isArray(parsed)) return;
+      setGuides(parsed
+        .filter((guide) => guide && (guide.orientation === 'vertical' || guide.orientation === 'horizontal') && Number.isFinite(guide.position))
+        .map((guide) => ({
+          id: guide.id || `guide-${Date.now()}-${Math.random()}`,
+          orientation: guide.orientation,
+          position: clampGuidePosition(guide.orientation, guide.position),
+        })));
+    } catch {
+      // ignore invalid session payload
+    }
+  }, []);
+
+  useEffect(() => {
+    setGuides((prev) => prev.map((guide) => ({ ...guide, position: clampGuidePosition(guide.orientation, guide.position) })));
+  }, [canvasWidth, canvasHeight]);
+
+  useEffect(() => {
+    window.sessionStorage.setItem(GUIDE_SESSION_KEY, JSON.stringify(guides));
+  }, [guides]);
 
 
   useEffect(() => {
@@ -190,6 +225,69 @@ export function DesignRoute() {
   const filtered = folderChildren.filter((n) => n.name.toLowerCase().includes(search.toLowerCase()));
 
   const getTextContent = (layer: Extract<Layer, { kind: 'text' }>) => getLiveTextContent(layer, engineGame);
+
+  const clampGuidePosition = (orientation: 'vertical' | 'horizontal', value: number) => {
+    const max = orientation === 'vertical' ? canvasWidth : canvasHeight;
+    return Math.max(0, Math.min(max, Math.round(value)));
+  };
+
+  const getGuidePositionFromPointer = (orientation: 'vertical' | 'horizontal', clientX: number, clientY: number) => {
+    const stage = stageRef.current;
+    if (!stage) return null;
+    const rect = stage.getBoundingClientRect();
+    const raw = orientation === 'vertical'
+      ? (clientX - rect.left) / stageScale
+      : (clientY - rect.top) / stageScale;
+    return clampGuidePosition(orientation, raw);
+  };
+
+  const updateGuidePosition = (id: string, position: number) => {
+    setGuides((prev) => prev.map((guide) => (guide.id === id ? { ...guide, position } : guide)));
+  };
+
+  const beginGuidePointerMove = (guideId: string, orientation: 'vertical' | 'horizontal') => {
+    guideDragRef.current = { id: guideId, orientation };
+    const onMove = (move: globalThis.MouseEvent) => {
+      if (!guideDragRef.current) return;
+      const nextPosition = getGuidePositionFromPointer(orientation, move.clientX, move.clientY);
+      if (nextPosition === null) return;
+      updateGuidePosition(guideId, nextPosition);
+    };
+    const onUp = () => {
+      guideDragRef.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  const startGuideFromRuler = (orientation: 'vertical' | 'horizontal', event: ReactMouseEvent) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const startPosition = getGuidePositionFromPointer(orientation, event.clientX, event.clientY);
+    if (startPosition === null) return;
+    const guideId = `guide-${Date.now()}`;
+    setGuides((prev) => [...prev, { id: guideId, orientation, position: startPosition }]);
+    beginGuidePointerMove(guideId, orientation);
+  };
+
+  const onGuideMouseDown = (guide: Guide, event: ReactMouseEvent) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    beginGuidePointerMove(guide.id, guide.orientation);
+  };
+
+  const onGuideDoubleClick = (guide: Guide, event: ReactMouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const next = window.prompt(`Set ${guide.orientation} guide position in pixels`, String(guide.position));
+    if (next === null) return;
+    const parsed = Number(next);
+    if (!Number.isFinite(parsed)) return;
+    updateGuidePosition(guide.id, clampGuidePosition(guide.orientation, parsed));
+  };
 
   const measureTextBounds = (layer: Extract<Layer, { kind: 'text' }>) => {
     if (layer.textMode === 'area') {
@@ -773,18 +871,26 @@ export function DesignRoute() {
           <div ref={stageViewportRef} className="grid flex-1 min-h-0 place-items-center overflow-hidden rounded-lg border border-slate-700 bg-slate-800 p-6">
             <div className="relative" style={{ width: `${canvasWidth * stageScale + rulerOffset}px`, height: `${canvasHeight * stageScale + rulerOffset}px` }}>
               {showRulers && (
-                <div className="pointer-events-none absolute inset-0 z-20 text-[10px] text-slate-300/90">
+                <div className="absolute inset-0 z-20 text-[10px] text-slate-300/90">
                   <div className="absolute left-0 top-0 border-b border-r border-slate-600/80 bg-slate-900/95" style={{ width: `${RULER_SIZE}px`, height: `${RULER_SIZE}px` }} />
-                  <div className="absolute top-0 overflow-hidden border-b border-slate-600/80 bg-slate-900/95" style={{ left: `${RULER_SIZE}px`, width: `${canvasWidth * stageScale}px`, height: `${RULER_SIZE}px` }}>
+                  <div
+                    className="absolute top-0 overflow-hidden border-b border-slate-600/80 bg-slate-900/95"
+                    style={{ left: `${RULER_SIZE}px`, width: `${canvasWidth * stageScale}px`, height: `${RULER_SIZE}px` }}
+                    onMouseDown={(event) => startGuideFromRuler('vertical', event)}
+                  >
                     {horizontalRulerTicks.map((tick) => (
-                      <div key={`hx-${tick.value}`} className="absolute bottom-0" style={{ left: `${tick.position}px`, height: `${tick.major ? 14 : 8}px`, borderLeft: tick.major ? '1px solid rgba(148,163,184,0.95)' : '1px solid rgba(148,163,184,0.55)' }}>
+                      <div key={`hx-${tick.value}`} className="pointer-events-none absolute bottom-0" style={{ left: `${tick.position}px`, height: `${tick.major ? 14 : 8}px`, borderLeft: tick.major ? '1px solid rgba(148,163,184,0.95)' : '1px solid rgba(148,163,184,0.55)' }}>
                         {tick.major && <span className="absolute left-1 top-[2px] text-[10px] text-slate-200">{Math.round(tick.value)}</span>}
                       </div>
                     ))}
                   </div>
-                  <div className="absolute left-0 overflow-hidden border-r border-slate-600/80 bg-slate-900/95" style={{ top: `${RULER_SIZE}px`, width: `${RULER_SIZE}px`, height: `${canvasHeight * stageScale}px` }}>
+                  <div
+                    className="absolute left-0 overflow-hidden border-r border-slate-600/80 bg-slate-900/95"
+                    style={{ top: `${RULER_SIZE}px`, width: `${RULER_SIZE}px`, height: `${canvasHeight * stageScale}px` }}
+                    onMouseDown={(event) => startGuideFromRuler('horizontal', event)}
+                  >
                     {verticalRulerTicks.map((tick) => (
-                      <div key={`vy-${tick.value}`} className="absolute right-0" style={{ top: `${tick.position}px`, width: `${tick.major ? 14 : 8}px`, borderTop: tick.major ? '1px solid rgba(148,163,184,0.95)' : '1px solid rgba(148,163,184,0.55)' }}>
+                      <div key={`vy-${tick.value}`} className="pointer-events-none absolute right-0" style={{ top: `${tick.position}px`, width: `${tick.major ? 14 : 8}px`, borderTop: tick.major ? '1px solid rgba(148,163,184,0.95)' : '1px solid rgba(148,163,184,0.55)' }}>
                         {tick.major && <span className="absolute right-[2px] top-1 -translate-y-1/2 text-[10px] text-slate-200">{Math.round(tick.value)}</span>}
                       </div>
                     ))}
@@ -794,7 +900,17 @@ export function DesignRoute() {
               <div className="absolute" style={{ left: `${rulerOffset}px`, top: `${rulerOffset}px`, width: `${canvasWidth * stageScale}px`, height: `${canvasHeight * stageScale}px` }}>
               <div ref={stageRef} className="relative overflow-hidden rounded border border-slate-500 bg-slate-900 shadow-[0_0_0_1px_rgba(148,163,184,0.25),0_20px_60px_rgba(0,0,0,0.45)]" style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px`, transform: `scale(${stageScale})`, transformOrigin: 'top left' }} onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedLayerIds([]); }}>
               {showGrid && <div className="pointer-events-none absolute inset-0 opacity-40" style={{ backgroundImage: 'linear-gradient(to right, rgba(148,163,184,0.3) 1px, transparent 1px), linear-gradient(to bottom, rgba(148,163,184,0.3) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />}
-              {showGuides && <><div className="pointer-events-none absolute left-1/2 top-0 h-full w-px bg-cyan-400/60" /><div className="pointer-events-none absolute left-0 top-1/2 h-px w-full bg-cyan-400/60" /></>}
+              {showGuides && guides.map((guide) => (
+                <div
+                  key={guide.id}
+                  className="absolute z-50"
+                  style={guide.orientation === 'vertical'
+                    ? { left: `${guide.position}px`, top: 0, width: '1px', height: '100%', background: 'rgba(34,211,238,0.9)', cursor: 'ew-resize' }
+                    : { left: 0, top: `${guide.position}px`, width: '100%', height: '1px', background: 'rgba(34,211,238,0.9)', cursor: 'ns-resize' }}
+                  onMouseDown={(event) => onGuideMouseDown(guide, event)}
+                  onDoubleClick={(event) => onGuideDoubleClick(guide, event)}
+                />
+              ))}
               {showSafeZones && <>
                 <div className="pointer-events-none absolute" style={{ left: `${canvasWidth * 0.05}px`, top: `${canvasHeight * 0.05}px`, width: `${canvasWidth * 0.9}px`, height: `${canvasHeight * 0.9}px`, border: '1px dashed rgba(251,191,36,0.8)' }} />
                 <div className="pointer-events-none absolute" style={{ left: `${canvasWidth * 0.1}px`, top: `${canvasHeight * 0.1}px`, width: `${canvasWidth * 0.8}px`, height: `${canvasHeight * 0.8}px`, border: '1px dashed rgba(52,211,153,0.8)' }} />
