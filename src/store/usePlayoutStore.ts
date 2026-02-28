@@ -19,11 +19,14 @@ interface PlayoutStore {
   setPreviewTemplate: (template: SavedTemplate | null) => void;
   takeToProgram: () => void;
   clearProgram: () => void;
+  activateProgramTemplate: (template: SavedTemplate | null) => void;
+  resetPlayoutState: () => void;
   setFontOverride: (templateId: string, override: FontOverride) => void;
   clearFontOverride: (templateId: string) => void;
 
-  initializeBindings: (templateId: string, bindingsSchema: BindingSchema) => void;
+  initializeBindings: (templateId: string, bindingsSchema: BindingSchema, options?: { force?: boolean }) => void;
   setBindingValue: (templateId: string, key: string, value: unknown) => void;
+  setBindingValues: (templateId: string, values: Record<string, unknown>) => void;
   validateBindings: (templateId: string) => void;
   clearBindings: (templateId: string) => void;
   setBindingFontGateSatisfied: (templateId: string, satisfied: boolean) => void;
@@ -50,6 +53,22 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
     });
   },
   clearProgram: () => set({ programTemplate: null }),
+  activateProgramTemplate: (template) => set((state) => {
+    if (!template) return state;
+    if (state.programTemplate?.id === template.id) return state;
+    return {
+      programTemplate: template,
+      lastTakeAt: new Date().toISOString(),
+    };
+  }),
+  resetPlayoutState: () => set({
+    previewTemplate: null,
+    programTemplate: null,
+    lastTakeAt: null,
+    vortexBindings: {},
+    vortexBindingSchemas: {},
+    fontOverrides: {},
+  }),
   setFontOverride: (templateId, override) => set((state) => ({
     fontOverrides: { ...state.fontOverrides, [templateId]: override },
   })),
@@ -57,10 +76,10 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
     const { [templateId]: _removed, ...rest } = state.fontOverrides;
     return { fontOverrides: rest };
   }),
-  initializeBindings: (templateId, bindingsSchema) => {
+  initializeBindings: (templateId, bindingsSchema, options) => {
     const existingBindingState = get().vortexBindings[templateId];
     const existingSchema = get().vortexBindingSchemas[templateId];
-    if (existingBindingState && existingSchema) return;
+    if (existingBindingState && existingSchema && !options?.force) return;
 
     const values = createInitialBindingValues(bindingsSchema);
     const baseState: VortexBindingState = {
@@ -94,6 +113,23 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
     const bindingState = get().vortexBindings[templateId];
     if (!schema || !bindingState) return;
     const values = { ...bindingState.values, [key]: value };
+    const validated = validateBindingValues(schema, values, bindingState.fontGateSatisfied);
+    set((state) => ({
+      vortexBindings: {
+        ...state.vortexBindings,
+        [templateId]: {
+          ...bindingState,
+          values,
+          ...validated,
+        },
+      },
+    }));
+  },
+  setBindingValues: (templateId, nextValues) => {
+    const schema = get().vortexBindingSchemas[templateId];
+    const bindingState = get().vortexBindings[templateId];
+    if (!schema || !bindingState) return;
+    const values = { ...bindingState.values, ...nextValues };
     const validated = validateBindingValues(schema, values, bindingState.fontGateSatisfied);
     set((state) => ({
       vortexBindings: {

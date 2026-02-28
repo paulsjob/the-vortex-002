@@ -11,6 +11,7 @@ import { usePlayoutStore } from '../store/usePlayoutStore';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useDemoSessionStore } from '../store/useDemoSessionStore';
+import { useDataEngineStore } from '../store/useDataEngineStore';
 
 const tabs = [
   { to: '/', label: 'Dashboard' },
@@ -33,6 +34,9 @@ export function AppRoutes() {
   const selectedTemplate = useTemplateStore((s) => s.selectedTemplate);
   const selectTemplate = useTemplateStore((s) => s.selectTemplate);
   const initializeSession = useDemoSessionStore((s) => s.initializeSession);
+  const resetDemoSession = useDemoSessionStore((s) => s.resetDemoSession);
+  const resetEngine = useDataEngineStore((s) => s.reset);
+  const resetPlayoutState = usePlayoutStore((s) => s.resetPlayoutState);
 
   useEffect(() => {
     initializeSession();
@@ -70,6 +74,18 @@ export function AppRoutes() {
     return `PROGRAM LOCKED · ${takeTime}`;
   }, [programTemplate, lastTakeAt]);
 
+  const handleResetDemo = () => {
+    resetEngine();
+    resetPlayoutState();
+    resetDemoSession();
+
+    const firstTemplate = templateStore.templates[0];
+    if (firstTemplate) {
+      setPreviewTemplate(firstTemplate);
+      selectTemplate({ source: 'native', id: firstTemplate.id });
+    }
+  };
+
   if (isPublicTemplateFeed || isPublicOutputFeed) {
     return (
       <Routes>
@@ -106,6 +122,13 @@ export function AppRoutes() {
             <div className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs uppercase tracking-wider text-slate-300">
               {navStatusLabel}
             </div>
+            <button
+              className="rounded-md border border-amber-500 bg-amber-600 px-4 py-2 text-sm font-semibold text-amber-50 hover:bg-amber-500"
+              onClick={handleResetDemo}
+              title="Reset all demo state"
+            >
+              Reset Demo
+            </button>
             <button
               className="rounded-md border border-red-500 bg-red-600 px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
               onClick={takeToProgram}

@@ -11,6 +11,8 @@ interface DemoSessionStore {
   sponsorChoices: string[];
   initialized: boolean;
   initializeSession: () => void;
+  resetDemoSession: () => void;
+  updateSelections: (next: { player?: string; stat?: DemoStat; sponsor?: string }) => void;
   setSelectedPlayer: (player: string) => void;
   setSelectedStat: (stat: DemoStat) => void;
   setSelectedSponsor: (sponsor: string) => void;
@@ -25,6 +27,20 @@ export const useDemoSessionStore = create<DemoSessionStore>((set, get) => ({
   initializeSession: () => {
     if (get().initialized) return;
     set({ initialized: true });
+  },
+  resetDemoSession: () => set({
+    selectedPlayer: 'A. Jones',
+    selectedStat: 'pitch.velocity',
+    selectedSponsor: DEFAULT_SPONSOR,
+    initialized: true,
+  }),
+  updateSelections: (next) => {
+    const state = get();
+    const selectedPlayer = typeof next.player === 'string' && next.player.trim() ? next.player.trim() : state.selectedPlayer;
+    const selectedStat = next.stat ?? state.selectedStat;
+    const candidateSponsor = typeof next.sponsor === 'string' && next.sponsor.trim() ? next.sponsor.trim() : state.selectedSponsor;
+    const selectedSponsor = state.sponsorChoices.includes(candidateSponsor) ? candidateSponsor : DEFAULT_SPONSOR;
+    set({ selectedPlayer, selectedStat, selectedSponsor });
   },
   setSelectedPlayer: (player) => {
     const trimmed = player.trim();
@@ -44,4 +60,3 @@ export const useDemoSessionStore = create<DemoSessionStore>((set, get) => ({
     set({ selectedSponsor: trimmed });
   },
 }));
-

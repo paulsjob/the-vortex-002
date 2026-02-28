@@ -11,9 +11,7 @@ export function DataEngineRoute() {
   const selectedStat = useDemoSessionStore((s) => s.selectedStat);
   const selectedSponsor = useDemoSessionStore((s) => s.selectedSponsor);
   const sponsorChoices = useDemoSessionStore((s) => s.sponsorChoices);
-  const setSelectedPlayer = useDemoSessionStore((s) => s.setSelectedPlayer);
-  const setSelectedStat = useDemoSessionStore((s) => s.setSelectedStat);
-  const setSelectedSponsor = useDemoSessionStore((s) => s.setSelectedSponsor);
+  const updateSelections = useDemoSessionStore((s) => s.updateSelections);
 
   return (
     <section className="space-y-6 rounded-xl border border-slate-800 bg-slate-900 p-5">
@@ -31,13 +29,13 @@ export function DataEngineRoute() {
             <option value="normal">Normal</option>
             <option value="fast">Fast</option>
           </select>
-          <select className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm" value={selectedPlayer} onChange={(e) => setSelectedPlayer(e.target.value)}>
+          <select className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm" value={selectedPlayer} onChange={(e) => updateSelections({ player: e.target.value })}>
             {players.map((player) => <option key={player} value={player}>{player}</option>)}
           </select>
-          <select className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm" value={selectedStat} onChange={(e) => setSelectedStat(e.target.value as DemoStat)}>
+          <select className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm" value={selectedStat} onChange={(e) => updateSelections({ stat: e.target.value as DemoStat })}>
             {statOptions.map((stat) => <option key={stat} value={stat}>{stat}</option>)}
           </select>
-          <select className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm" value={selectedSponsor} onChange={(e) => setSelectedSponsor(e.target.value)}>
+          <select className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm" value={selectedSponsor} onChange={(e) => updateSelections({ sponsor: e.target.value })}>
             {sponsorChoices.map((sponsor) => <option key={sponsor} value={sponsor}>{sponsor}</option>)}
           </select>
         </div>
