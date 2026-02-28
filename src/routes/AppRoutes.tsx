@@ -1,4 +1,5 @@
 import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 import { DashboardRoute } from './DashboardRoute';
 import { DesignRoute } from './DesignRoute';
 import { DataEngineRoute } from './DataEngineRoute';
@@ -8,6 +9,8 @@ import { PublicTemplateRoute } from './PublicTemplateRoute';
 import { PublicOutputRoute } from './PublicOutputRoute';
 import { usePlayoutStore } from '../store/usePlayoutStore';
 import { StatusBadge } from '../components/ui/StatusBadge';
+import { useTemplateStore } from '../store/useTemplateStore';
+import { useDemoSessionStore } from '../store/useDemoSessionStore';
 
 const tabs = [
   { to: '/', label: 'Dashboard' },
@@ -20,6 +23,30 @@ const tabs = [
 export function AppRoutes() {
   const previewTemplate = usePlayoutStore((s) => s.previewTemplate);
   const takeToProgram = usePlayoutStore((s) => s.takeToProgram);
+  const setPreviewTemplate = usePlayoutStore((s) => s.setPreviewTemplate);
+
+  const templateStore = useTemplateStore();
+  const selectedTemplate = useTemplateStore((s) => s.selectedTemplate);
+  const selectTemplate = useTemplateStore((s) => s.selectTemplate);
+  const initializeSession = useDemoSessionStore((s) => s.initializeSession);
+
+  useEffect(() => {
+    initializeSession();
+  }, [initializeSession]);
+
+  useEffect(() => {
+    if (selectedTemplate) return;
+    const firstTemplate = templateStore.listAllTemplates()[0];
+    if (!firstTemplate) return;
+    selectTemplate({ source: firstTemplate.source, id: firstTemplate.id });
+  }, [selectedTemplate, templateStore, selectTemplate]);
+
+  useEffect(() => {
+    if (previewTemplate) return;
+    const firstNative = templateStore.templates[0];
+    if (!firstNative) return;
+    setPreviewTemplate(firstNative);
+  }, [previewTemplate, templateStore.templates, setPreviewTemplate]);
 
   const location = useLocation();
   const isPublicTemplateFeed = location.pathname.startsWith('/template-feed/');
@@ -79,6 +106,7 @@ export function AppRoutes() {
           <Route path="/output" element={<OutputRoute />} />
           <Route path="/template-feed/:templateId" element={<PublicTemplateRoute />} />
           <Route path="/output-feed" element={<PublicOutputRoute />} />
+          <Route path="*" element={<div className="grid h-screen place-items-center text-sm text-slate-400">Route not found.</div>} />
         </Routes>
       </main>
     </div>
