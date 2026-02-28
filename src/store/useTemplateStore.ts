@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Layer } from '../types/domain';
+import { useAssetStore } from './useAssetStore';
 
 const STORAGE_KEY = 'renderless.savedDesignTemplates.v1';
 
@@ -117,7 +118,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     const trimmed = name.trim();
     if (!trimmed) return null;
     const id = `template-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const templates = [{
+    const template: SavedTemplate = {
       id,
       name: trimmed,
       folderId,
@@ -125,29 +126,37 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       canvasHeight,
       layers: structuredClone(layers),
       createdAt: new Date().toISOString(),
-    }, ...get().templates];
+    };
+    const templates = [template, ...get().templates];
     const next = { rootId: get().rootId, folders: get().folders, templates };
     persist(next);
     set({ templates });
+    useAssetStore.getState().upsertTemplateAsset(template);
     return id;
   },
   updateTemplate: (templateId, { name, folderId, canvasWidth, canvasHeight, layers }) => {
     const trimmed = name.trim();
     if (!trimmed) return;
+    let updatedTemplate: SavedTemplate | null = null;
     const templates = get().templates.map((template) => (
       template.id === templateId
-        ? { ...template, name: trimmed, folderId, canvasWidth, canvasHeight, layers: structuredClone(layers), updatedAt: new Date().toISOString() }
+        ? (() => {
+          updatedTemplate = { ...template, name: trimmed, folderId, canvasWidth, canvasHeight, layers: structuredClone(layers), updatedAt: new Date().toISOString() };
+          return updatedTemplate;
+        })()
         : template
     ));
     const next = { rootId: get().rootId, folders: get().folders, templates };
     persist(next);
     set({ templates });
+    if (updatedTemplate) useAssetStore.getState().upsertTemplateAsset(updatedTemplate);
   },
   deleteTemplate: (templateId) => {
     const templates = get().templates.filter((template) => template.id !== templateId);
     const next = { rootId: get().rootId, folders: get().folders, templates };
     persist(next);
     set({ templates });
+    useAssetStore.getState().removeTemplateAsset(templateId);
   },
   getTemplatesInFolder: (folderId) => get().templates.filter((t) => t.folderId === folderId),
   getTemplateById: (templateId) => get().templates.find((t) => t.id === templateId),
