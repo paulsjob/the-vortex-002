@@ -20,6 +20,7 @@ const transformDefaults = { anchorX: 0, anchorY: 0, scaleX: 100, scaleY: 100, ro
 const RULER_SIZE = 24;
 const RULER_TARGET_MAJOR_SPACING = 90;
 const GUIDE_SESSION_KEY = 'design-route-guides-v1';
+type AssetBin = 'graphics' | 'videos' | 'templates';
 
 type Guide = {
   id: string;
@@ -77,10 +78,12 @@ export function DesignRoute() {
     loadedTemplateId,
     setLoadedTemplateId,
     moveLayer,
+    loadTemplate,
   } = useLayerStore();
 
   const [folderId, setFolderId] = useState(assetStore.brandedExplorer.rootId);
   const [search, setSearch] = useState('');
+  const [assetBin, setAssetBin] = useState<AssetBin>('graphics');
   const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
   const [editingLayerValue, setEditingLayerValue] = useState('');
   const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
@@ -262,8 +265,28 @@ export function DesignRoute() {
     if (!folder || folder.type !== 'folder') return [];
     return folder.children.map(getNode).filter(Boolean) as ExplorerNode[];
   }, [folderId, assetStore.brandedExplorer]);
-  const files = folderChildren.filter((n) => n.type === 'file');
-  const filtered = folderChildren.filter((n) => n.name.toLowerCase().includes(search.toLowerCase()));
+
+  const fileMatchesBin = (node: ExplorerNode, bin: Exclude<AssetBin, 'templates'>) => {
+    if (node.type !== 'file') return false;
+    const normalized = `${node.name} ${node.src}`.toLowerCase();
+    const videoHints = ['.mp4', '.mov', '.webm', '.m4v', '.avi', 'video/'];
+    const isVideo = videoHints.some((hint) => normalized.includes(hint));
+    return bin === 'videos' ? isVideo : !isVideo;
+  };
+
+  const filtered = useMemo(() => (
+    folderChildren.filter((node) => {
+      const matchesSearch = node.name.toLowerCase().includes(search.toLowerCase());
+      if (!matchesSearch) return false;
+      if (assetBin === 'templates') return false;
+      if (node.type === 'folder') return true;
+      return fileMatchesBin(node, assetBin);
+    })
+  ), [folderChildren, search, assetBin]);
+
+  const filteredTemplates = useMemo(() => (
+    templateStore.templates.filter((template) => template.name.toLowerCase().includes(search.toLowerCase()))
+  ), [templateStore.templates, search]);
 
   const getTextContent = (layer: Extract<Layer, { kind: 'text' }>) => getLiveTextContent(layer, engineGame);
 
@@ -415,6 +438,24 @@ export function DesignRoute() {
   };
 
   const resetSelectedTransform = () => applyToSelected(() => transformDefaults as Partial<Layer>);
+
+  const duplicateTemplateToEditableCopy = (templateId: string) => {
+    const template = templateStore.getTemplateById(templateId);
+    if (!template) return;
+    const duplicatedId = templateStore.saveTemplate({
+      name: `${template.name} Copy`,
+      folderId: template.folderId,
+      canvasWidth: template.canvasWidth,
+      canvasHeight: template.canvasHeight,
+      layers: template.layers,
+    });
+    if (!duplicatedId) return;
+    const duplicatedTemplate = templateStore.getTemplateById(duplicatedId);
+    if (!duplicatedTemplate) return;
+    loadTemplate(duplicatedTemplate);
+    setTemplateName(duplicatedTemplate.name);
+    setSaveNotice(`Duplicated template “${duplicatedTemplate.name}” and loaded it for editing.`);
+  };
 
   const saveCurrentTemplate = (mode: 'new' | 'update' = 'new') => {
     const name = templateName.trim() || loadedTemplate?.name || `Template ${new Date().toLocaleTimeString()}`;
@@ -901,37 +942,60 @@ export function DesignRoute() {
                   <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search assets" className="flex-1 rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm" />
                   <label className="cursor-pointer rounded bg-blue-700 px-3 py-2 text-sm">Upload<input type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" multiple className="hidden" onChange={async (event) => { const upload = Array.from(event.target.files || []); if (upload.length) await assetStore.uploadFiles(upload, folderId, 'branded'); event.currentTarget.value = ''; }} /></label>
                 </div>
-                <div className="rounded border border-zinc-700 bg-zinc-900 p-3">
-                  <div className="mb-2 text-xs font-bold uppercase tracking-wider text-zinc-400">Folders</div>
-                  {renderFolderTree(assetStore.brandedExplorer.rootId)}
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <button className={`rounded border px-2 py-2 font-semibold ${assetBin === 'graphics' ? 'border-blue-500 bg-blue-900/30 text-blue-300' : 'border-zinc-700 bg-zinc-900 text-zinc-300'}`} onClick={() => setAssetBin('graphics')}>Graphics</button>
+                  <button className={`rounded border px-2 py-2 font-semibold ${assetBin === 'videos' ? 'border-blue-500 bg-blue-900/30 text-blue-300' : 'border-zinc-700 bg-zinc-900 text-zinc-300'}`} onClick={() => setAssetBin('videos')}>Videos</button>
+                  <button className={`rounded border px-2 py-2 font-semibold ${assetBin === 'templates' ? 'border-blue-500 bg-blue-900/30 text-blue-300' : 'border-zinc-700 bg-zinc-900 text-zinc-300'}`} onClick={() => setAssetBin('templates')}>Templates</button>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {filtered.map((item) => {
-                    const dims = item.type === 'file' ? parseAssetDimensions(item.dimension) : null;
-                    return (
-                      <button
-                        key={item.id}
-                        className="rounded border border-zinc-700 bg-zinc-900 p-1 text-left hover:border-blue-500/60"
-                        onClick={() => {
-                          if (item.type === 'folder') setFolderId(item.id);
-                          else addAssetLayer(item.id, dims ?? undefined);
-                        }}
-                        onDoubleClick={() => {
-                          const next = window.prompt('Rename item', item.name)?.trim();
-                          if (next && next !== item.name) assetStore.renameNode(item.id, next, 'branded');
-                        }}
-                      >
-                        {item.type === 'file' ? (
-                          <img src={item.src} alt={item.name} className="mb-1 h-20 w-full rounded object-cover" />
-                        ) : (
-                          <div className="mb-1 grid h-20 w-full place-items-center rounded border border-dashed border-zinc-600 bg-zinc-950 text-3xl">📁</div>
-                        )}
-                        <span className="block truncate text-xs text-zinc-300">{item.type === 'folder' ? `📁 ${item.name}` : item.name}</span>
-                      </button>
-                    );
-                  })}
-                  {!filtered.length && <p className="text-sm text-zinc-500">No files in this folder.</p>}
-                </div>
+                {assetBin !== 'templates' && (
+                  <div className="rounded border border-zinc-700 bg-zinc-900 p-3">
+                    <div className="mb-2 text-xs font-bold uppercase tracking-wider text-zinc-400">Folders</div>
+                    {renderFolderTree(assetStore.brandedExplorer.rootId)}
+                  </div>
+                )}
+                {assetBin !== 'templates' ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    {filtered.map((item) => {
+                      const dims = item.type === 'file' ? parseAssetDimensions(item.dimension) : null;
+                      return (
+                        <button
+                          key={item.id}
+                          className="rounded border border-zinc-700 bg-zinc-900 p-1 text-left hover:border-blue-500/60"
+                          onClick={() => {
+                            if (item.type === 'folder') setFolderId(item.id);
+                            else addAssetLayer(item.id, dims ?? undefined);
+                          }}
+                          onDoubleClick={() => {
+                            const next = window.prompt('Rename item', item.name)?.trim();
+                            if (next && next !== item.name) assetStore.renameNode(item.id, next, 'branded');
+                          }}
+                        >
+                          {item.type === 'file' ? (
+                            <img src={item.src} alt={item.name} className="mb-1 h-20 w-full rounded object-cover" />
+                          ) : (
+                            <div className="mb-1 grid h-20 w-full place-items-center rounded border border-dashed border-zinc-600 bg-zinc-950 text-3xl">📁</div>
+                          )}
+                          <span className="block truncate text-xs text-zinc-300">{item.type === 'folder' ? `📁 ${item.name}` : item.name}</span>
+                        </button>
+                      );
+                    })}
+                    {!filtered.length && <p className="text-sm text-zinc-500">No matching {assetBin} in this folder.</p>}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {filteredTemplates.map((template) => (
+                      <article key={template.id} className="rounded border border-zinc-700 bg-zinc-900 p-2">
+                        <p className="truncate text-sm font-semibold text-zinc-100">🧩 {template.name}</p>
+                        <p className="text-[11px] text-zinc-400">{template.canvasWidth} × {template.canvasHeight} · {template.layers.length} layers</p>
+                        <div className="mt-2 flex gap-2 text-xs">
+                          <button className="rounded bg-blue-700 px-2 py-1" onClick={() => { loadTemplate(template); setTemplateName(template.name); }}>Load</button>
+                          <button className="rounded border border-blue-700 px-2 py-1 text-blue-300" onClick={() => duplicateTemplateToEditableCopy(template.id)}>Duplicate</button>
+                        </div>
+                      </article>
+                    ))}
+                    {!filteredTemplates.length && <p className="text-sm text-zinc-500">No matching templates.</p>}
+                  </div>
+                )}
               </div>
             )}
           </div>
