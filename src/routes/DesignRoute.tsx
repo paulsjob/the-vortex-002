@@ -17,6 +17,38 @@ const TEMPLATE_SIZES = [
 const FONT_OPTIONS = ['Inter', 'Arial', 'Helvetica', 'Roboto', 'Montserrat', 'Oswald', 'Georgia', 'Times New Roman'];
 const DATA_FIELDS = ['score.home', 'score.away', 'inning.number', 'inning.state', 'count.balls', 'count.strikes', 'count.outs', 'runners.first', 'runners.second', 'runners.third', 'pitch.type', 'pitch.velocity', 'pitch.location', 'bat.batspeed', 'bat.exitvelo', 'bat.launchangle', 'bat.distance', 'matchup.pitcher', 'matchup.batter'];
 const transformDefaults = { anchorX: 0, anchorY: 0, scaleX: 100, scaleY: 100, rotation: 0 };
+const RULER_SIZE = 24;
+const RULER_TARGET_MAJOR_SPACING = 90;
+
+const pickRulerMajorStep = (scale: number) => {
+  const targetUnits = RULER_TARGET_MAJOR_SPACING / Math.max(scale, 0.001);
+  const exponent = Math.floor(Math.log10(targetUnits));
+  const magnitude = 10 ** exponent;
+  const candidates = [1, 2, 5, 10].map((factor) => factor * magnitude);
+  return candidates.reduce((closest, candidate) => (
+    Math.abs(candidate - targetUnits) < Math.abs(closest - targetUnits) ? candidate : closest
+  ), candidates[0]);
+};
+
+const pickRulerMinorStep = (majorStep: number, scale: number) => {
+  const divisors = [10, 5, 2];
+  for (const divisor of divisors) {
+    const step = majorStep / divisor;
+    if (step * scale >= 8) return step;
+  }
+  return majorStep;
+};
+
+const buildRulerTicks = (canvasSpan: number, scale: number) => {
+  const majorStep = pickRulerMajorStep(scale);
+  const minorStep = pickRulerMinorStep(majorStep, scale);
+  const tickCount = Math.ceil(canvasSpan / minorStep);
+  return Array.from({ length: tickCount + 1 }, (_, index) => {
+    const value = Math.min(canvasSpan, Math.round(index * minorStep * 1000) / 1000);
+    const major = Math.abs((value / majorStep) - Math.round(value / majorStep)) < 0.0005 || value === canvasSpan;
+    return { value, position: value * scale, major };
+  });
+};
 
 export function DesignRoute() {
   const assetStore = useAssetStore();
@@ -537,6 +569,9 @@ export function DesignRoute() {
   }, [stageViewport, canvasWidth, canvasHeight]);
 
   const stageScale = fitScale * stageZoom;
+  const rulerOffset = showRulers ? RULER_SIZE : 0;
+  const horizontalRulerTicks = useMemo(() => buildRulerTicks(canvasWidth, stageScale), [canvasWidth, stageScale]);
+  const verticalRulerTicks = useMemo(() => buildRulerTicks(canvasHeight, stageScale), [canvasHeight, stageScale]);
 
   const resetViewport = () => setStageZoom(1);
 
@@ -736,21 +771,36 @@ export function DesignRoute() {
             <span className="text-slate-500">Ctrl + wheel to zoom canvas.</span>
           </div>
           <div ref={stageViewportRef} className="grid flex-1 min-h-0 place-items-center overflow-hidden rounded-lg border border-slate-700 bg-slate-800 p-6">
-            <div className="relative" style={{ width: `${canvasWidth * stageScale}px`, height: `${canvasHeight * stageScale}px` }}>
+            <div className="relative" style={{ width: `${canvasWidth * stageScale + rulerOffset}px`, height: `${canvasHeight * stageScale + rulerOffset}px` }}>
+              {showRulers && (
+                <div className="pointer-events-none absolute inset-0 z-20 text-[10px] text-slate-300/90">
+                  <div className="absolute left-0 top-0 border-b border-r border-slate-600/80 bg-slate-900/95" style={{ width: `${RULER_SIZE}px`, height: `${RULER_SIZE}px` }} />
+                  <div className="absolute top-0 overflow-hidden border-b border-slate-600/80 bg-slate-900/95" style={{ left: `${RULER_SIZE}px`, width: `${canvasWidth * stageScale}px`, height: `${RULER_SIZE}px` }}>
+                    {horizontalRulerTicks.map((tick) => (
+                      <div key={`hx-${tick.value}`} className="absolute bottom-0" style={{ left: `${tick.position}px`, height: `${tick.major ? 14 : 8}px`, borderLeft: tick.major ? '1px solid rgba(148,163,184,0.95)' : '1px solid rgba(148,163,184,0.55)' }}>
+                        {tick.major && <span className="absolute left-1 top-[2px] text-[10px] text-slate-200">{Math.round(tick.value)}</span>}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="absolute left-0 overflow-hidden border-r border-slate-600/80 bg-slate-900/95" style={{ top: `${RULER_SIZE}px`, width: `${RULER_SIZE}px`, height: `${canvasHeight * stageScale}px` }}>
+                    {verticalRulerTicks.map((tick) => (
+                      <div key={`vy-${tick.value}`} className="absolute right-0" style={{ top: `${tick.position}px`, width: `${tick.major ? 14 : 8}px`, borderTop: tick.major ? '1px solid rgba(148,163,184,0.95)' : '1px solid rgba(148,163,184,0.55)' }}>
+                        {tick.major && <span className="absolute right-[2px] top-1 -translate-y-1/2 text-[10px] text-slate-200">{Math.round(tick.value)}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="absolute" style={{ left: `${rulerOffset}px`, top: `${rulerOffset}px`, width: `${canvasWidth * stageScale}px`, height: `${canvasHeight * stageScale}px` }}>
               <div ref={stageRef} className="relative overflow-hidden rounded border border-slate-500 bg-slate-900 shadow-[0_0_0_1px_rgba(148,163,184,0.25),0_20px_60px_rgba(0,0,0,0.45)]" style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px`, transform: `scale(${stageScale})`, transformOrigin: 'top left' }} onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedLayerIds([]); }}>
               {showGrid && <div className="pointer-events-none absolute inset-0 opacity-40" style={{ backgroundImage: 'linear-gradient(to right, rgba(148,163,184,0.3) 1px, transparent 1px), linear-gradient(to bottom, rgba(148,163,184,0.3) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />}
-              {showRulers && <>
-                <div className="pointer-events-none absolute left-0 right-0 top-0 h-5 border-b border-slate-600/70 bg-slate-900/70" />
-                <div className="pointer-events-none absolute bottom-0 left-0 top-0 w-5 border-r border-slate-600/70 bg-slate-900/70" />
-                <div className="pointer-events-none absolute left-5 right-0 top-0 h-5" style={{ backgroundImage: 'repeating-linear-gradient(to right, rgba(148,163,184,0.6), rgba(148,163,184,0.6) 1px, transparent 1px, transparent 40px)' }} />
-                <div className="pointer-events-none absolute bottom-0 left-0 top-5 w-5" style={{ backgroundImage: 'repeating-linear-gradient(to bottom, rgba(148,163,184,0.6), rgba(148,163,184,0.6) 1px, transparent 1px, transparent 40px)' }} />
-              </>}
               {showGuides && <><div className="pointer-events-none absolute left-1/2 top-0 h-full w-px bg-cyan-400/60" /><div className="pointer-events-none absolute left-0 top-1/2 h-px w-full bg-cyan-400/60" /></>}
               {showSafeZones && <>
                 <div className="pointer-events-none absolute" style={{ left: `${canvasWidth * 0.05}px`, top: `${canvasHeight * 0.05}px`, width: `${canvasWidth * 0.9}px`, height: `${canvasHeight * 0.9}px`, border: '1px dashed rgba(251,191,36,0.8)' }} />
                 <div className="pointer-events-none absolute" style={{ left: `${canvasWidth * 0.1}px`, top: `${canvasHeight * 0.1}px`, width: `${canvasWidth * 0.8}px`, height: `${canvasHeight * 0.8}px`, border: '1px dashed rgba(52,211,153,0.8)' }} />
               </>}
               {!canvasLayers.length ? <p className="absolute inset-0 grid place-items-center text-xl text-slate-400">Stage is blank.</p> : canvasLayers.map(renderLayerPreview)}
+              </div>
               </div>
             </div>
           </div>
