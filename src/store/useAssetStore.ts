@@ -137,13 +137,19 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
     }
   },
   addFolder: (name, parentId, kind) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
     const key = kind === 'branded' ? 'brandedExplorer' : 'templateExplorer';
     const next = structuredClone(get()[key]);
     const parent = next.nodes.find((n) => n.id === parentId && n.type === 'folder');
     if (!parent || parent.type !== 'folder') return;
+    const duplicate = parent.children
+      .map((childId) => next.nodes.find((node) => node.id === childId))
+      .some((node) => node?.type === 'folder' && node.name.toLowerCase() === trimmed.toLowerCase());
+    if (duplicate) return;
     const id = `${kind}-folder-${Date.now()}`;
     parent.children.push(id);
-    next.nodes.push(mkFolder(name, parentId, id));
+    next.nodes.push(mkFolder(trimmed, parentId, id));
     persist(kind, next);
     set({ [key]: next } as Partial<AssetStore>);
   },
