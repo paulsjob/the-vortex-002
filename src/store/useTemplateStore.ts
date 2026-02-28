@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Layer } from '../types/domain';
 import type { VortexPackage } from '../features/packages/loadVortexPackage';
+import { revokeVortexAssetUrls } from '../features/packages/vortexAssetResolver';
 import { useAssetStore } from './useAssetStore';
 
 const STORAGE_KEY = 'renderless.savedDesignTemplates.v1';
@@ -40,6 +41,8 @@ type SelectedTemplate = {
   source: 'native' | 'vortex';
   id: string;
 };
+
+export type SelectedTemplateRef = SelectedTemplate;
 
 type PersistedTemplateState = {
   rootId: string;
@@ -193,6 +196,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
   getRootFolder: () => get().folders.find((f) => f.id === get().rootId) || get().folders[0],
   registerVortexPackage: (pkg) => {
     const templateId = pkg.manifest.templateId;
+    revokeVortexAssetUrls(templateId);
     const previewBlob = pkg.files.previews['previews/poster.png'];
     const previewUrl = previewBlob ? URL.createObjectURL(previewBlob) : undefined;
     const previousPreview = get().vortexPreviewUrls[templateId];
@@ -206,6 +210,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
   },
   removeVortexPackage: (templateId) => {
     const state = get();
+    revokeVortexAssetUrls(templateId);
     const previewUrl = state.vortexPreviewUrls[templateId];
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
