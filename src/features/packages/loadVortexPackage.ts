@@ -1,6 +1,11 @@
 import type { BindingSchema } from '../playout/vortexBindings';
+import {
+  migrateTemplatePackage,
+  TemplateMigrationError,
+} from './templateSchemaMigration';
 
 export interface ManifestV1 {
+  schemaVersion?: string;
   packageVersion: string;
   templateId: string;
   templateName: string;
@@ -311,7 +316,7 @@ export const loadVortexPackage = async (file: File): Promise<VortexPackage> => {
     checksums = await parseEntryJson<any>(entriesByPath, fileBytes, 'checksums.json');
   }
 
-  return {
+  const loadedPackage: VortexPackage = {
     manifest,
     scene,
     bindings,
@@ -323,4 +328,17 @@ export const loadVortexPackage = async (file: File): Promise<VortexPackage> => {
       ...(checksums !== undefined ? { checksums } : {}),
     },
   };
+
+  try {
+    const migrationResult = migrateTemplatePackage(loadedPackage, {
+      developerMode: typeof window !== 'undefined' && /localhost|127\.0\.0\.1/.test(window.location.hostname),
+    });
+    return migrationResult.pkg;
+  } catch (error) {
+    if (error instanceof TemplateMigrationError) {
+      throw new VortexPackageError(error.message);
+    }
+
+    throw error;
+  }
 };
