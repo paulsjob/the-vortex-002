@@ -456,6 +456,7 @@ export const importIllustratorSvg = async (svgText: string, templateName = 'Illu
     { name: 'manifest.json', content: JSON.stringify(manifest, null, 2) },
     { name: 'scene.json', content: JSON.stringify(normalizedScene, null, 2) },
     { name: 'bindings.json', content: JSON.stringify(bindingsJson, null, 2) },
+    { name: 'source/original.svg', content: svgText },
   ]);
 
   return {
