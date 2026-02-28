@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLayerStore } from '../store/useLayerStore';
 import { useTemplateStore } from '../store/useTemplateStore';
@@ -17,8 +17,14 @@ export function DashboardRoute() {
   const selectedTemplateRef = useTemplateStore((s) => s.selectedTemplate);
   const selectTemplate = useTemplateStore((s) => s.selectTemplate);
 
-  const fontRootId = useMemo(() => assetStore.brandedExplorer.nodes.find((node) => node.type === 'folder' && /font/i.test(node.name))?.id ?? assetStore.brandedExplorer.rootId, [assetStore.brandedExplorer]);
+  const fontRootNode = useMemo(() => assetStore.brandedExplorer.nodes.find((node) => node.type === 'folder' && /font/i.test(node.name)), [assetStore.brandedExplorer]);
+  const fontRootId = fontRootNode?.id ?? assetStore.brandedExplorer.rootId;
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(() => new Set([assetStore.brandedExplorer.rootId, fontRootId, templateStore.rootId]));
+  useEffect(() => {
+    if (fontRootNode) return;
+    assetStore.addFolder('Fonts', assetStore.brandedExplorer.rootId, 'branded');
+  }, [fontRootNode, assetStore]);
+
   const [selectedSection, setSelectedSection] = useState<DashboardSection>('branded');
   const [activeFolderId, setActiveFolderId] = useState(assetStore.brandedExplorer.rootId);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -167,10 +173,11 @@ export function DashboardRoute() {
       if (!folder) return;
       const hasNestedFolders = folder.children.length > 0;
       const hasTemplates = templates.some((template) => template.folderId === folder.id);
-      const msg = hasNestedFolders || hasTemplates
-        ? `Delete non-empty folder "${folder.name}" and all nested content?`
-        : `Delete folder "${folder.name}"?`;
-      if (!window.confirm(msg)) return;
+      if (hasNestedFolders || hasTemplates) {
+        window.alert('Folder is not empty. Remove nested folders and templates first.');
+        return;
+      }
+      if (!window.confirm(`Delete folder "${folder.name}"?`)) return;
       templateStore.deleteFolder(folder.id);
       setActiveFolderId(templateStore.rootId);
       return;
@@ -180,10 +187,11 @@ export function DashboardRoute() {
     const folder = getNode(currentFolderId);
     if (!folder || folder.type !== 'folder') return;
     const hasChildren = folder.children.length > 0;
-    const msg = hasChildren
-      ? `Delete non-empty folder "${folder.name}" and all nested content?`
-      : `Delete folder "${folder.name}"?`;
-    if (!window.confirm(msg)) return;
+    if (hasChildren) {
+      window.alert('Folder is not empty. Remove files and nested folders first.');
+      return;
+    }
+    if (!window.confirm(`Delete folder "${folder.name}"?`)) return;
     assetStore.deleteFolder(folder.id, 'branded');
     setActiveFolderId(folder.parentId ?? activeExplorer.rootId);
   };

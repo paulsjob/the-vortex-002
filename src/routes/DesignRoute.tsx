@@ -137,6 +137,7 @@ export function DesignRoute() {
   const [showSafeZones, setShowSafeZones] = useState(false);
   const [guides, setGuides] = useState<Guide[]>([]);
   const [selectedGuideId, setSelectedGuideId] = useState<string | null>(null);
+  const [guideReadout, setGuideReadout] = useState<{ x: number; y: number; value: number } | null>(null);
   const [fontStatusByFamily, setFontStatusByFamily] = useState<Record<string, 'loading' | 'ready' | 'error'>>({});
   const [currentFormatId, setCurrentFormatId] = useState<TemplateFormatId>(() => getFormatBySize(1920, 1080)?.id ?? '16:9');
   const [layoutVariants, setLayoutVariants] = useState<Partial<Record<TemplateFormatId, FormatLayoutVariant>>>({});
@@ -392,6 +393,7 @@ export function DesignRoute() {
       const nextPosition = getGuidePositionFromPointer(orientation, move.clientX, move.clientY);
       if (nextPosition === null) return;
       updateGuidePosition(guideId, nextPosition);
+      setGuideReadout({ x: move.clientX + 10, y: move.clientY + 10, value: nextPosition });
     };
     const onUp = (upEvent: globalThis.MouseEvent) => {
       const stage = stageRef.current;
@@ -406,6 +408,7 @@ export function DesignRoute() {
         }
       }
       guideDragRef.current = null;
+      setGuideReadout(null);
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
@@ -971,7 +974,7 @@ export function DesignRoute() {
     };
 
     return (
-      <div key={layer.id} className={`absolute select-none ${selectedLayerIds.includes(layer.id) ? 'outline outline-2 outline-blue-400' : 'outline outline-1 outline-slate-500/40'} ${layer.locked ? 'cursor-not-allowed' : 'cursor-move'}`} style={style} onMouseDown={(event) => onLayerMouseDown(layer, event)}>
+      <div key={layer.id} data-layer-node="true" className={`absolute select-none ${selectedLayerIds.includes(layer.id) ? 'outline outline-2 outline-blue-400' : 'outline outline-1 outline-slate-500/40'} ${layer.locked ? 'cursor-not-allowed' : 'cursor-move'}`} style={style} onMouseDown={(event) => onLayerMouseDown(layer, event)}>
         {layer.kind === 'asset' && <img src={assetById.get(layer.assetId)?.src} alt={layer.name} className="h-full w-full object-contain" draggable={false} />}
         {layer.kind === 'shape' && (
           <div className="h-full w-full" style={{ background: layer.fill, borderRadius: layer.shapeType === 'ellipse' ? '9999px' : '0' }} />
@@ -1045,7 +1048,7 @@ export function DesignRoute() {
 
             {leftPanelTab === 'layers' ? (
               <>
-          {!stackLayers.length ? <p className="text-slate-400">No layers yet.</p> : <div className="space-y-2" onClick={(event) => { if (event.target === event.currentTarget) setSelectedLayerIds([]); }}>{stackLayers.map((layer) => (
+          {!stackLayers.length ? <p className="text-slate-400">No layers yet.</p> : <div className="flex min-h-[220px] flex-col space-y-2" onClick={(event) => { if (event.target === event.currentTarget) { setSelectedLayerIds([]); setSelectedGuideId(null); } }}>{stackLayers.map((layer) => (
             <div key={layer.id} draggable className={`select-none rounded border p-2 ${selectedLayerIds.includes(layer.id) ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'}`} onClick={(event) => selectLayer(layer.id, event)} onDragStart={() => setDragLayerId(layer.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (dragLayerId) moveLayer(dragLayerId, layer.id); setDragLayerId(null); }} onDragEnd={() => setDragLayerId(null)}>
               <div className="flex items-center gap-2">
                 <button className={actionBtn} onClick={(event) => { event.stopPropagation(); setZOrder(layer.id, 'up'); }} title="Move up">↑</button>
@@ -1211,12 +1214,18 @@ export function DesignRoute() {
                 </div>
               )}
               <div className="absolute" style={{ left: `${rulerOffset}px`, top: `${rulerOffset}px`, width: `${canvasWidth * stageScale}px`, height: `${canvasHeight * stageScale}px` }}>
-              <div ref={stageRef} className="relative overflow-hidden rounded border border-slate-500 bg-slate-900 shadow-[0_0_0_1px_rgba(148,163,184,0.25),0_20px_60px_rgba(0,0,0,0.45)]" style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px`, transform: `scale(${stageScale})`, transformOrigin: 'top left' }} onMouseDown={(event) => { if (event.target === event.currentTarget) { setSelectedLayerIds([]); setSelectedGuideId(null); } }}>
+              <div ref={stageRef} className="relative overflow-hidden rounded border border-slate-500 bg-slate-900 shadow-[0_0_0_1px_rgba(148,163,184,0.25),0_20px_60px_rgba(0,0,0,0.45)]" style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px`, transform: `scale(${stageScale})`, transformOrigin: 'top left' }} onMouseDown={(event) => {
+                const target = event.target as HTMLElement;
+                if (!target.closest('[data-layer-node="true"]') && !target.closest('[data-guide-node="true"]')) {
+                  setSelectedLayerIds([]);
+                  setSelectedGuideId(null);
+                }
+              }}>
               {showGrid && <div className="pointer-events-none absolute inset-0 opacity-40" style={{ backgroundImage: 'linear-gradient(to right, rgba(148,163,184,0.3) 1px, transparent 1px), linear-gradient(to bottom, rgba(148,163,184,0.3) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />}
               {showGuides && guides.map((guide) => (
                 <div
                   key={guide.id}
-                  className="absolute z-50"
+                  data-guide-node="true" className="absolute z-50"
                   style={guide.orientation === 'vertical'
                     ? { left: `${guide.position}px`, top: 0, width: '1px', height: '100%', background: selectedGuideId === guide.id ? 'rgba(251,191,36,1)' : 'rgba(34,211,238,0.9)', cursor: 'ew-resize' }
                     : { left: 0, top: `${guide.position}px`, width: '100%', height: '1px', background: selectedGuideId === guide.id ? 'rgba(251,191,36,1)' : 'rgba(34,211,238,0.9)', cursor: 'ns-resize' }}
@@ -1224,6 +1233,11 @@ export function DesignRoute() {
                   onDoubleClick={(event) => onGuideDoubleClick(guide, event)}
                 />
               ))}
+              {guideReadout && (
+                <div className="pointer-events-none fixed z-[60] rounded border border-cyan-500/60 bg-slate-950/95 px-2 py-1 text-[11px] text-cyan-200" style={{ left: `${guideReadout.x}px`, top: `${guideReadout.y}px` }}>
+                  {guideReadout.value}px
+                </div>
+              )}
               {showSafeZones && <>
                 <div className="pointer-events-none absolute" style={{ left: `${canvasWidth * 0.05}px`, top: `${canvasHeight * 0.05}px`, width: `${canvasWidth * 0.9}px`, height: `${canvasHeight * 0.9}px`, border: '1px dashed rgba(251,191,36,0.8)' }} />
                 <div className="pointer-events-none absolute" style={{ left: `${canvasWidth * 0.1}px`, top: `${canvasHeight * 0.1}px`, width: `${canvasWidth * 0.8}px`, height: `${canvasHeight * 0.8}px`, border: '1px dashed rgba(52,211,153,0.8)' }} />

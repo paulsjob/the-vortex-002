@@ -158,7 +158,7 @@ export function OutputRoute() {
         ) : !activeTemplate ? (
           <div className="grid h-full place-items-center text-sm text-slate-500">No template on air.</div>
         ) : (
-          <div className="relative grid h-full place-items-center p-4">
+          <div className="relative grid h-full place-items-center overflow-hidden p-4">
             {fontGateLoading && vortexRenderState?.template && (
               <div className="absolute inset-0 z-20 grid place-items-center text-sm text-slate-200">Loading template fonts…</div>
             )}
@@ -188,7 +188,7 @@ export function OutputRoute() {
             )}
 
             <div
-              className="relative w-full max-w-full"
+              className="relative h-full w-full max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)]"
               style={{
                 aspectRatio: `${activeTemplate.canvasWidth} / ${activeTemplate.canvasHeight}`,
                 fontFamily: override?.enabled ? override.fallbackFamily : undefined,
