@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useDataEngineStore } from '../store/useDataEngineStore';
@@ -6,12 +6,18 @@ import { decodeTemplatePayload } from '../features/playout/publicUrl';
 import { TemplateSceneSvg } from '../features/playout/TemplateSceneSvg';
 import { sceneFromVortexPackage } from '../features/packages/vortexSceneAdapter';
 import { getVortexAssetUrl } from '../features/packages/vortexAssetResolver';
+import { type FontLoadResult, loadVortexFonts } from '../features/packages/vortexFontGate';
+import { FontGateOverlay } from '../features/playout/FontGateOverlay';
+import { usePlayoutStore } from '../store/usePlayoutStore';
 
 export function PublicTemplateRoute() {
   const { templateId = '' } = useParams();
   const [searchParams] = useSearchParams();
   const templateStore = useTemplateStore();
   const startEngine = useDataEngineStore((s) => s.start);
+  const fontOverrides = usePlayoutStore((s) => s.fontOverrides);
+  const setFontOverride = usePlayoutStore((s) => s.setFontOverride);
+  const [fontGateResult, setFontGateResult] = useState<FontLoadResult | null>(null);
 
   useEffect(() => {
     startEngine();
@@ -33,6 +39,8 @@ export function PublicTemplateRoute() {
         const scene = sceneFromVortexPackage(vortexPackage);
         return {
           source: 'vortex' as const,
+          packageRef: vortexPackage,
+          formatLabel: `${vortexPackage.manifest.format.formatId} · ${scene.canvas.width} × ${scene.canvas.height}`,
           template: {
             id: vortexPackage.manifest.templateId,
             name: vortexPackage.manifest.templateName,
@@ -53,6 +61,24 @@ export function PublicTemplateRoute() {
 
     return { error: 'Template not found.' };
   }, [searchParams, templateStore.templates, templateStore.vortexPackages, templateId]);
+
+  useEffect(() => {
+    if (renderState.source !== 'vortex' || !renderState.packageRef) {
+      setFontGateResult(null);
+      return;
+    }
+
+    let active = true;
+    loadVortexFonts(renderState.packageRef, renderState.template.layers).then((result) => {
+      if (active) {
+        setFontGateResult(result);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [renderState]);
 
   if (renderState.error) {
     return (
@@ -77,14 +103,36 @@ export function PublicTemplateRoute() {
     );
   }
 
+  const override = renderState.source === 'vortex' ? fontOverrides[template.id] : undefined;
+  const shouldBlockForFonts = Boolean(renderState.source === 'vortex' && fontGateResult && !fontGateResult.ok && !override?.enabled);
+
   return (
     <main className="grid min-h-screen place-items-center bg-black p-4">
-      <div className="w-full" style={{ maxWidth: '100vw', maxHeight: '100vh', aspectRatio: `${template.canvasWidth} / ${template.canvasHeight}` }}>
-        <TemplateSceneSvg
-          template={template}
-          className="h-full w-full"
-          assetResolver={renderState.source === 'vortex' ? (path) => getVortexAssetUrl(template.id, path) : undefined}
-        />
+      <div className="relative w-full" style={{ maxWidth: '100vw', maxHeight: '100vh', aspectRatio: `${template.canvasWidth} / ${template.canvasHeight}`, fontFamily: override?.enabled ? override.fallbackFamily : undefined }}>
+        {shouldBlockForFonts && renderState.source === 'vortex' && fontGateResult && (
+          <FontGateOverlay
+            templateName={template.name}
+            formatLabel={renderState.formatLabel}
+            missingFamilies={fontGateResult.missingFamilies}
+            loadedFamilies={fontGateResult.loadedFamilies}
+            onKeepStopped={() => undefined}
+            onOverride={(fallbackFamily) => {
+              setFontOverride(template.id, {
+                enabled: true,
+                fallbackFamily,
+                timestamp: new Date().toISOString(),
+              });
+            }}
+          />
+        )}
+
+        {!shouldBlockForFonts && (
+          <TemplateSceneSvg
+            template={template}
+            className="h-full w-full"
+            assetResolver={renderState.source === 'vortex' ? (path) => getVortexAssetUrl(template.id, path) : undefined}
+          />
+        )}
       </div>
     </main>
   );
