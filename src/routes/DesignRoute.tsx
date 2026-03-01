@@ -1150,18 +1150,22 @@ export function DesignRoute() {
         <div className="flex min-h-0 flex-col gap-2 rounded-lg border border-slate-700 bg-slate-950 p-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">Canvas · {canvasWidth} × {canvasHeight}</h3>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
-              <button className="rounded border border-slate-700 px-2 py-1" onClick={() => setStageZoom((z) => Math.max(0.3, z - 0.1))}>-</button>
-              <span>{Math.round(stageZoom * 100)}%</span>
-              <button className="rounded border border-slate-700 px-2 py-1" onClick={() => setStageZoom((z) => Math.min(3, z + 0.1))}>+</button>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
               <input className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs" placeholder="Template name" value={templateName} onChange={(e) => setTemplateName(e.target.value)} />
               <select className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs" value={activeFormatId} onChange={(e) => handleFormatSwitch(e.target.value as TemplateFormatId)}>
                 {TEMPLATE_FORMATS.map((format) => <option key={format.id} value={format.id}>{format.label}</option>)}
               </select>
               <button className="rounded bg-blue-700 px-3 py-1 text-xs font-semibold" onClick={() => saveCurrentTemplate('new')}>Save Template</button>
               <button className="rounded border border-blue-700 px-3 py-1 text-xs font-semibold text-blue-300 disabled:opacity-50" disabled={!loadedTemplateId} onClick={() => saveCurrentTemplate('update')}>Update</button>
+              <details className="group relative">
+                <summary className="list-none rounded border border-slate-700 px-3 py-1 text-xs font-semibold text-slate-200 marker:content-none">Export</summary>
+                <div className="absolute right-0 z-20 mt-1 flex min-w-44 flex-col gap-1 rounded border border-slate-700 bg-slate-900 p-2 text-xs shadow-lg shadow-black/40">
+                  <button className="rounded border border-slate-700 px-2 py-1 text-left" onClick={() => exportTemplateImage('png')}>Export</button>
+                  <button className="rounded border border-slate-700 px-2 py-1 text-left" onClick={() => exportTemplateImage('jpg')}>Export JPG</button>
+                  <button className="rounded border border-slate-700 px-2 py-1 text-left" onClick={() => exportTemplateImage('png')}>Export PNG</button>
+                  <button className="rounded bg-emerald-700 px-2 py-1 text-left font-semibold" onClick={copyTemplatePublicUrl}>Copy Public URL</button>
+                </div>
+              </details>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 rounded border border-slate-700 bg-slate-900 p-2 text-xs">
@@ -1183,12 +1187,6 @@ export function DesignRoute() {
             <button className="rounded border border-slate-700 px-2 py-1" onClick={() => distributeSpacing('x')}>Space H</button>
             <button className="rounded border border-slate-700 px-2 py-1" onClick={() => distributeSpacing('y')}>Space V</button>
           </div>
-          <div className="flex flex-wrap items-center gap-2 rounded border border-slate-700 bg-slate-900 p-2 text-xs">
-            <span className="font-semibold uppercase tracking-wider text-slate-400">Export</span>
-            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => exportTemplateImage('jpg')}>Export JPG</button>
-            <button className="rounded border border-slate-700 px-2 py-1" onClick={() => exportTemplateImage('png')}>Export PNG</button>
-            <button className="rounded bg-emerald-700 px-3 py-1 font-semibold" onClick={copyTemplatePublicUrl}>Copy Public URL</button>
-          </div>
           {saveNotice && <p className="rounded border border-emerald-700 bg-emerald-900/20 px-3 py-2 text-xs text-emerald-200">{saveNotice}</p>}
           <div className="flex flex-wrap items-center gap-2 rounded border border-slate-700 bg-slate-900 p-2 text-xs text-slate-300">
             <button className={`rounded border px-2 py-1 ${showRulers ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => setShowRulers((v) => !v)}>Rulers</button>
@@ -1198,6 +1196,11 @@ export function DesignRoute() {
             <button className={`rounded border px-2 py-1 ${snapToGrid ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => setSnapToGrid((v) => !v)}>Snap</button>
             <button className={`rounded border px-2 py-1 ${showSafeZones ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => setShowSafeZones((v) => !v)}>Safe Zones</button>
             <button className="rounded border border-slate-700 px-2 py-1" onClick={resetViewport}>Fit to View</button>
+            <div className="ml-1 flex items-center gap-2 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-200">
+              <button className="rounded border border-slate-700 px-2 py-1" onClick={() => setStageZoom((z) => Math.max(0.3, z - 0.1))} aria-label="Zoom out">-</button>
+              <span aria-live="polite">{Math.round(stageZoom * 100)}%</span>
+              <button className="rounded border border-slate-700 px-2 py-1" onClick={() => setStageZoom((z) => Math.min(3, z + 0.1))} aria-label="Zoom in">+</button>
+            </div>
             <span className="text-slate-500">Ctrl + wheel to zoom canvas.</span>
           </div>
           <div ref={stageViewportRef} className="grid flex-1 min-h-0 place-items-center overflow-hidden rounded-lg border border-slate-700 bg-slate-800 p-6">
