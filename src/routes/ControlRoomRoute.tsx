@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { usePlayoutStore, type TransitionType } from '../store/usePlayoutStore';
 import { TemplatePreview } from '../features/playout/TemplatePreview';
@@ -18,16 +18,6 @@ const transitionOptions: Array<{ type: TransitionType; label: string }> = [
 
 const durationChoices = [150, 300, 500, 1000];
 const QUICK_LAUNCH_DEFAULT_COUNT = 4;
-
-function AspectFrame({ children }: { children: ReactNode }) {
-  return (
-    <div className="relative w-full max-w-full" style={{ aspectRatio: '16 / 9' }}>
-      <div className="absolute inset-0 grid place-items-center overflow-hidden rounded-md border border-slate-800 bg-slate-950">
-        {children}
-      </div>
-    </div>
-  );
-}
 
 export function ControlRoomRoute() {
   const templateStore = useTemplateStore();
@@ -277,11 +267,17 @@ export function ControlRoomRoute() {
           </div>
         </aside>
 
-        <section className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto_auto_auto] gap-4 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-4">
-          <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_280px_minmax(0,1fr)] gap-4">
-            <AspectFrame>
+        <section
+          className="grid h-full min-h-0 gap-4 overflow-auto rounded-lg border border-slate-700 bg-slate-950 p-4"
+          style={{ gridTemplateRows: 'minmax(360px, 45vh) auto auto minmax(0, 1fr)' }}
+        >
+          <div
+            className="grid min-h-0 gap-4"
+            style={{ gridTemplateColumns: 'minmax(420px, 1fr) 240px minmax(420px, 1fr)' }}
+          >
+            <div className="min-h-0">
               <TemplatePreview template={previewTemplate} label="PREVIEW" sponsor={previewSponsor} tone="preview" />
-            </AspectFrame>
+            </div>
 
             <div className="flex min-h-0 flex-col rounded-md border border-slate-700 bg-slate-900 p-3">
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Transitions</p>
@@ -333,15 +329,15 @@ export function ControlRoomRoute() {
               </button>
             </div>
 
-            <div className="relative">
+            <div className="relative min-h-0">
               {blackoutActive && (
                 <div className="pointer-events-none absolute inset-0 z-10 rounded-md border border-slate-800 bg-black/95 text-center text-sm font-semibold uppercase tracking-[0.25em] text-white">
                   <div className="flex h-full items-center justify-center">Blackout</div>
                 </div>
               )}
-              <AspectFrame>
+              <div className="h-full min-h-0">
                 <TemplatePreview template={programTemplate} label="PROGRAM" sponsor={programSponsor} tone="program" />
-              </AspectFrame>
+              </div>
             </div>
           </div>
 
