@@ -1,4 +1,4 @@
-import { type DragEvent, useMemo, useRef, useState } from 'react';
+import { type DragEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useAssetStore } from '../../store/useAssetStore';
 import type { ExplorerNode } from '../../types/domain';
 
@@ -19,9 +19,14 @@ export function AssetExplorer({ kind, title }: Props) {
   const [query, setQuery] = useState('');
   const uploadRef = useRef<HTMLInputElement | null>(null);
 
+  useEffect(() => {
+    setCurrentFolderId(explorer.rootId);
+  }, [kind, explorer.rootId]);
+
   const getNode = (id: string) => explorer.nodes.find((n) => n.id === id);
   const rootNode = getNode(explorer.rootId);
-  const currentFolder = getNode(currentFolderId)?.type === 'folder' ? getNode(currentFolderId) : rootNode;
+  const currentFolderNode = getNode(currentFolderId);
+  const currentFolder = currentFolderNode?.type === 'folder' ? currentFolderNode : rootNode;
 
   const getFolderPath = (folderId: string) => {
     const segments: string[] = [];
@@ -50,6 +55,18 @@ export function AssetExplorer({ kind, title }: Props) {
     store.renameNode(item.id, nextName, kind);
   };
 
+  const deleteItem = (item: ExplorerNode) => {
+    if (item.type === 'folder' && item.children.length > 0) {
+      const confirmed = window.confirm(`Folder "${item.name}" has ${item.children.length} child item(s). Delete it and everything inside?`);
+      if (!confirmed) return;
+    } else {
+      const confirmed = window.confirm(`Delete "${item.name}"?`);
+      if (!confirmed) return;
+    }
+    store.deleteNode(item.id, kind);
+    if (item.id === currentFolderId) setCurrentFolderId(explorer.rootId);
+  };
+
   const onDropOnFolder = (event: DragEvent, targetFolderId: string) => {
     event.preventDefault();
     event.stopPropagation();
@@ -62,6 +79,11 @@ export function AssetExplorer({ kind, title }: Props) {
       payload = null;
     }
     if (!payload || payload.kind !== kind || payload.nodeId === targetFolderId) return;
+    const check = store.canMoveNode(payload.nodeId, targetFolderId, kind);
+    if (!check.ok) {
+      if (check.reason) window.alert(check.reason);
+      return;
+    }
     const moved = store.moveNode(payload.nodeId, targetFolderId, kind);
     if (moved) setCurrentFolderId(targetFolderId);
   };
@@ -95,7 +117,7 @@ export function AssetExplorer({ kind, title }: Props) {
   };
 
   return (
-    <section className="grid grid-cols-1 gap-3 rounded-xl border border-slate-800 bg-slate-900 p-3 lg:grid-cols-[280px_1fr_260px]">
+    <section className="grid grid-cols-1 gap-3 rounded-xl border border-slate-800 bg-slate-900 p-3 lg:grid-cols-[280px_1fr]">
       <aside className="rounded-lg border border-slate-800 bg-slate-950 p-3">
         <h3 className="mb-2 font-semibold">{title} Folders</h3>
         {renderTree(explorer.rootId)}
@@ -115,7 +137,17 @@ export function AssetExplorer({ kind, title }: Props) {
           >
             ➕
           </button>
-          <button className={iconBtn} title="Delete selected folder" onClick={() => store.deleteNode(uploadFolderId, kind)} disabled={uploadFolderId === explorer.rootId}>🗑</button>
+          <button
+            className={iconBtn}
+            title="Delete selected folder"
+            onClick={() => {
+              if (uploadFolderId === explorer.rootId) return;
+              if (currentFolder && currentFolder.type === 'folder') deleteItem(currentFolder);
+            }}
+            disabled={uploadFolderId === explorer.rootId}
+          >
+            🗑
+          </button>
           <button className={iconBtn} title="Upload file" onClick={() => uploadRef.current?.click()}>⤴</button>
           <input
             ref={uploadRef}
@@ -148,9 +180,7 @@ export function AssetExplorer({ kind, title }: Props) {
               onClick={() => { if (item.type === 'folder') setCurrentFolderId(item.id); }}
               onDoubleClick={() => renameItem(item)}
               onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  if (item.type === 'folder') setCurrentFolderId(item.id);
-                }
+                if (event.key === 'Enter' && item.type === 'folder') setCurrentFolderId(item.id);
               }}
               onDragOver={(event) => {
                 if (item.type === 'folder') event.preventDefault();
@@ -160,20 +190,16 @@ export function AssetExplorer({ kind, title }: Props) {
               }}
             >
               <span>{item.type === 'folder' ? `📁 ${item.name}` : `🖼️ ${item.name}`}</span>
-              <span>{item.type === 'folder' ? 'Folder' : 'File'}</span>
+              <span>{item.type === 'folder' ? 'Folder' : item.kind}</span>
               <span>{item.type === 'folder' ? `${item.children.length} item(s)` : item.dimension}</span>
               <span>{new Date(item.createdAt).toLocaleDateString()}</span>
-              <button className={iconBtn} title="Delete" onClick={(event) => { event.stopPropagation(); store.deleteNode(item.id, kind); }}>🗑</button>
+              <button className={iconBtn} title="Delete" onClick={(event) => { event.stopPropagation(); deleteItem(item); }}>🗑</button>
             </div>
           ))}
           {!children.length && <p className="text-slate-500">This folder is empty.</p>}
+          {children.length > 0 && !filteredChildren.length && <p className="text-slate-500">No items match your search.</p>}
         </div>
       </div>
-      <aside className="rounded-lg border border-slate-800 bg-slate-950 p-3">
-        <h4 className="mb-2 font-semibold">Permissions</h4>
-        <p className="text-xs text-slate-400">Folder sharing protocol matches Branded Assets.</p>
-        <p className="mt-2 text-xs text-slate-500">Uploads are persisted in localStorage as data URLs for local testing.</p>
-      </aside>
     </section>
   );
 }

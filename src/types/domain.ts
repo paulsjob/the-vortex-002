@@ -11,6 +11,7 @@ export interface AssetItem {
 export interface FolderNode {
   id: string;
   type: 'folder';
+  kind: 'folder';
   name: string;
   parentId: string | null;
   children: string[];
@@ -21,6 +22,7 @@ export interface FolderNode {
 export interface FileNode {
   id: string;
   type: 'file';
+  kind: 'asset' | 'font' | 'template';
   name: string;
   parentId: string;
   src: string;
