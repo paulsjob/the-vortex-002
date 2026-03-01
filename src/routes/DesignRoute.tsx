@@ -599,8 +599,9 @@ export function DesignRoute() {
     try {
       await navigator.clipboard.writeText(url);
       setSaveNotice('Copied template public URL to clipboard.');
-    } catch {
-      setSaveNotice(`Template URL: ${url}`);
+    } catch (error) {
+      console.error('Failed to copy template public URL.', error);
+      setSaveNotice(`Could not copy automatically. Template URL: ${url}`);
     }
   };
 
@@ -1150,7 +1151,7 @@ export function DesignRoute() {
         <div className="flex min-h-0 flex-col gap-2 rounded-lg border border-slate-700 bg-slate-950 p-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">Canvas · {canvasWidth} × {canvasHeight}</h3>
-            <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            <div className="ml-auto flex min-w-0 items-center justify-end gap-2 overflow-x-auto">
               <input className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs" placeholder="Template name" value={templateName} onChange={(e) => setTemplateName(e.target.value)} />
               <select className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs" value={activeFormatId} onChange={(e) => handleFormatSwitch(e.target.value as TemplateFormatId)}>
                 {TEMPLATE_FORMATS.map((format) => <option key={format.id} value={format.id}>{format.label}</option>)}
@@ -1166,6 +1167,7 @@ export function DesignRoute() {
                   <button className="rounded bg-emerald-700 px-2 py-1 text-left font-semibold" onClick={copyTemplatePublicUrl}>Copy Public URL</button>
                 </div>
               </details>
+              <button className="shrink-0 rounded bg-emerald-700 px-3 py-1 text-xs font-semibold" onClick={copyTemplatePublicUrl}>Copy Public URL</button>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 rounded border border-slate-700 bg-slate-900 p-2 text-xs">
