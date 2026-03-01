@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 type HalfInning = 'top' | 'bottom';
-type Speed = 'slow' | 'normal' | 'fast';
+export type Speed = 'slow' | 'normal' | 'fast';
 
 type PitchType = 'FF' | 'SI' | 'SL' | 'CH' | 'CU';
 
@@ -56,13 +56,13 @@ const speedsMs: Record<Speed, number> = { slow: 1800, normal: 900, fast: 350 };
 
 const randomPitchType = (): PitchType => {
   const bag: PitchType[] = ['FF', 'SI', 'SL', 'CH', 'CU'];
-  return bag[Math.floor(Math.random() * bag.length)];
+  return bag[Math.floor(seededRandom() * bag.length)];
 };
 
 const randomLocation = () => {
   const rows = ['Up', 'Mid', 'Low'];
   const cols = ['In', 'Center', 'Away'];
-  return `${rows[Math.floor(Math.random() * rows.length)]}-${cols[Math.floor(Math.random() * cols.length)]}`;
+  return `${rows[Math.floor(seededRandom() * rows.length)]}-${cols[Math.floor(seededRandom() * cols.length)]}`;
 };
 
 const mkInitialGame = (): GameState => ({
@@ -97,6 +97,14 @@ let timer: ReturnType<typeof setInterval> | null = null;
 let awayIndex = 0;
 let homeIndex = 0;
 let pitchCounter = 0;
+let rngState = 123456789;
+
+const seededRandom = () => {
+  rngState = (1664525 * rngState + 1013904223) >>> 0;
+  return rngState / 4294967296;
+};
+
+const randomInt = (min: number, max: number) => Math.floor(min + seededRandom() * (max - min + 1));
 
 const nextBatter = (half: HalfInning) => {
   if (half === 'top') {
@@ -164,6 +172,7 @@ export const useDataEngineStore = create<DataEngineStore>((set, get) => ({
     awayIndex = 0;
     homeIndex = 0;
     pitchCounter = 0;
+    rngState = 123456789;
     set({ running: false, speed: 'normal', game: mkInitialGame(), history: [] });
   },
   stepPitch: () => {
@@ -172,10 +181,10 @@ export const useDataEngineStore = create<DataEngineStore>((set, get) => ({
 
     pitchCounter += 1;
     const pitchType = randomPitchType();
-    const velocityMph = Math.round(82 + Math.random() * 18);
+    const velocityMph = randomInt(82, 100);
     const location = randomLocation();
 
-    const r = Math.random();
+    const r = seededRandom();
     let result = '';
     let batSpeedMph: number | null = null;
     let exitVelocityMph: number | null = null;
@@ -211,12 +220,12 @@ export const useDataEngineStore = create<DataEngineStore>((set, get) => ({
       result = game.strikes < 2 ? 'Foul' : 'Two-strike foul';
       if (game.strikes < 2) game.strikes += 1;
     } else {
-      batSpeedMph = Math.round(62 + Math.random() * 23);
-      exitVelocityMph = Math.round(72 + Math.random() * 42);
-      launchAngleDeg = Math.round(-8 + Math.random() * 48);
-      projectedDistanceFt = Math.round(120 + Math.random() * 310);
+      batSpeedMph = randomInt(62, 85);
+      exitVelocityMph = randomInt(72, 114);
+      launchAngleDeg = randomInt(-8, 40);
+      projectedDistanceFt = randomInt(120, 430);
 
-      const inPlay = Math.random();
+      const inPlay = seededRandom();
       if (inPlay < 0.35) {
         game.outs += 1;
         result = 'Ball in play: Out';
