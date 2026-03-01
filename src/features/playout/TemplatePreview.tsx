@@ -21,7 +21,7 @@ export function TemplatePreview({ template, label, sponsor, tone = 'preview' }: 
   const game = useDataEngineStore((s) => s.game);
   const running = useDataEngineStore((s) => s.running);
   const isProgram = tone === 'program';
-  const aspectRatio = template ? `${template.canvasWidth} / ${template.canvasHeight}` : '16 / 9';
+  const aspectRatio = '16 / 9';
   const sponsorStyle = getSponsorStyle(sponsor);
 
   return (
@@ -55,7 +55,7 @@ export function TemplatePreview({ template, label, sponsor, tone = 'preview' }: 
           ) : null}
             <div className="absolute inset-0 bg-[linear-gradient(45deg,#0f172a_25%,#111827_25%,#111827_50%,#0f172a_50%,#0f172a_75%,#111827_75%,#111827_100%)] bg-[length:18px_18px] opacity-70" />
             {!isProgram && sponsorStyle && <div className={`absolute inset-0 bg-gradient-to-br ${sponsorStyle.accentFillClass} opacity-55`} />}
-            {template ? <div className="relative z-10 mx-auto w-full" style={{ aspectRatio }}><TemplateSceneSvg template={template} className="absolute inset-0 h-full w-full" /></div> : null}
+            {template ? <div className="relative z-10 mx-auto h-full w-full" style={{ aspectRatio }}><TemplateSceneSvg template={template} className="absolute inset-0 h-full w-full object-contain" /></div> : null}
             <div className={`absolute right-2 top-2 rounded border px-2 py-0.5 text-[10px] font-semibold tracking-wider ${isProgram ? 'border-red-500 bg-red-900/60 text-red-100' : 'border-blue-500 bg-blue-900/45 text-blue-100'}`}>
               {isProgram ? 'LOCKED' : 'EDITABLE'}
             </div>

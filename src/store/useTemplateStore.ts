@@ -7,6 +7,8 @@ import { useAssetStore } from './useAssetStore';
 import { usePlayoutStore } from './usePlayoutStore';
 
 const STORAGE_KEY = 'renderless.savedDesignTemplates.v1';
+const FAVORITES_STORAGE_KEY = 'renderless.templates.favorites.v1';
+const QUICK_LAUNCH_STORAGE_KEY = 'renderless.templates.quickLaunch.v1';
 
 type TemplateFolder = {
   id: string;
@@ -150,6 +152,8 @@ const persist = (state: PersistedTemplateState) => {
 const uniqueIds = (ids: string[]) => [...new Set(ids)];
 
 interface TemplateStore extends PersistedTemplateState {
+  favoriteTemplateIds: string[];
+  quickLaunchTemplateIds: string[];
   expanded: Record<string, boolean>;
   vortexPackages: Record<string, VortexPackage>;
   vortexPreviewUrls: Record<string, string | undefined>;
@@ -184,9 +188,42 @@ interface TemplateStore extends PersistedTemplateState {
   canMoveFolder: (folderId: string, targetParentId: string | null) => { ok: boolean; reason?: string };
   isDescendantFolder: (ancestorId: string, possibleDescendantId: string) => boolean;
   reorderWithinFolder: (params: { folderId: string; templateIds?: string[]; folderIds?: string[] }) => void;
+  toggleFavoriteTemplate: (templateId: string) => void;
+  isTemplateFavorited: (templateId: string) => boolean;
+  toggleQuickLaunchTemplate: (templateId: string) => void;
+  removeQuickLaunchTemplate: (templateId: string) => void;
+  seedQuickLaunchTemplates: (templateIds: string[]) => void;
+  isTemplateQuickLaunch: (templateId: string) => boolean;
 }
 
 const initial = load();
+
+const loadIdList = (key: string): string[] => {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry): entry is string => typeof entry === 'string');
+  } catch {
+    return [];
+  }
+};
+
+const persistIdList = (key: string, ids: string[]) => {
+  localStorage.setItem(key, JSON.stringify(uniqueIds(ids)));
+};
+
+const removeUnknownTemplateIds = (ids: string[], templates: SavedTemplate[]) => {
+  const templateIdSet = new Set(templates.map((template) => template.id));
+  return uniqueIds(ids).filter((id) => templateIdSet.has(id));
+};
+
+const initialFavoriteTemplateIds = removeUnknownTemplateIds(loadIdList(FAVORITES_STORAGE_KEY), initial.templates);
+const initialQuickLaunchTemplateIds = removeUnknownTemplateIds(loadIdList(QUICK_LAUNCH_STORAGE_KEY), initial.templates);
+
+persistIdList(FAVORITES_STORAGE_KEY, initialFavoriteTemplateIds);
+persistIdList(QUICK_LAUNCH_STORAGE_KEY, initialQuickLaunchTemplateIds);
 
 const resolveFolderId = (rootId: string, folderId: string | null) => folderId ?? rootId;
 
@@ -194,6 +231,8 @@ const syncLegacyChildren = (folders: TemplateFolder[]) => folders.map((folder) =
 
 export const useTemplateStore = create<TemplateStore>((set, get) => ({
   ...initial,
+  favoriteTemplateIds: initialFavoriteTemplateIds,
+  quickLaunchTemplateIds: initialQuickLaunchTemplateIds,
   expanded: { [initial.rootId]: true },
   vortexPackages: {},
   vortexPreviewUrls: {},
@@ -245,9 +284,18 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         childrenTemplateIds: f.childrenTemplateIds.filter((templateId) => templates.some((template) => template.id === templateId && !doomed.has(template.folderId))),
       })));
     const nextTemplates = templates.filter((t) => !doomed.has(t.folderId));
+    const nextFavoriteTemplateIds = removeUnknownTemplateIds(get().favoriteTemplateIds, nextTemplates);
+    const nextQuickLaunchTemplateIds = removeUnknownTemplateIds(get().quickLaunchTemplateIds, nextTemplates);
     const next = { rootId: get().rootId, folders: nextFolders, templates: nextTemplates };
     persist(next);
-    set({ folders: nextFolders, templates: nextTemplates });
+    persistIdList(FAVORITES_STORAGE_KEY, nextFavoriteTemplateIds);
+    persistIdList(QUICK_LAUNCH_STORAGE_KEY, nextQuickLaunchTemplateIds);
+    set({
+      folders: nextFolders,
+      templates: nextTemplates,
+      favoriteTemplateIds: nextFavoriteTemplateIds,
+      quickLaunchTemplateIds: nextQuickLaunchTemplateIds,
+    });
   },
   toggleExpanded: (folderId) => set((s) => ({ expanded: { ...s.expanded, [folderId]: !s.expanded[folderId] } })),
   saveTemplate: ({ name, folderId, canvasWidth, canvasHeight, layers }) => {
@@ -310,8 +358,17 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       childrenTemplateIds: folder.childrenTemplateIds.filter((id) => id !== templateId),
     }));
     const next = { rootId: get().rootId, folders: syncLegacyChildren(folders), templates };
+    const nextFavoriteTemplateIds = get().favoriteTemplateIds.filter((id) => id !== templateId);
+    const nextQuickLaunchTemplateIds = get().quickLaunchTemplateIds.filter((id) => id !== templateId);
     persist(next);
-    set({ templates, folders: syncLegacyChildren(folders) });
+    persistIdList(FAVORITES_STORAGE_KEY, nextFavoriteTemplateIds);
+    persistIdList(QUICK_LAUNCH_STORAGE_KEY, nextQuickLaunchTemplateIds);
+    set({
+      templates,
+      folders: syncLegacyChildren(folders),
+      favoriteTemplateIds: nextFavoriteTemplateIds,
+      quickLaunchTemplateIds: nextQuickLaunchTemplateIds,
+    });
     useAssetStore.getState().removeTemplateAsset(templateId);
   },
   getTemplatesInFolder: (folderId) => {
@@ -507,5 +564,33 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     persist(next);
     set({ folders: syncedFolders });
   },
+  toggleFavoriteTemplate: (templateId) => set((state) => {
+    const favoriteTemplateIds = state.favoriteTemplateIds.includes(templateId)
+      ? state.favoriteTemplateIds.filter((id) => id !== templateId)
+      : [...state.favoriteTemplateIds, templateId];
+    persistIdList(FAVORITES_STORAGE_KEY, favoriteTemplateIds);
+    return { favoriteTemplateIds };
+  }),
+  isTemplateFavorited: (templateId) => get().favoriteTemplateIds.includes(templateId),
+  toggleQuickLaunchTemplate: (templateId) => set((state) => {
+    const quickLaunchTemplateIds = state.quickLaunchTemplateIds.includes(templateId)
+      ? state.quickLaunchTemplateIds.filter((id) => id !== templateId)
+      : [...state.quickLaunchTemplateIds, templateId];
+    persistIdList(QUICK_LAUNCH_STORAGE_KEY, quickLaunchTemplateIds);
+    return { quickLaunchTemplateIds };
+  }),
+  removeQuickLaunchTemplate: (templateId) => set((state) => {
+    const quickLaunchTemplateIds = state.quickLaunchTemplateIds.filter((id) => id !== templateId);
+    persistIdList(QUICK_LAUNCH_STORAGE_KEY, quickLaunchTemplateIds);
+    return { quickLaunchTemplateIds };
+  }),
+  seedQuickLaunchTemplates: (templateIds) => set((state) => {
+    if (state.quickLaunchTemplateIds.length > 0) return {};
+    const availableTemplateIds = new Set(state.templates.map((template) => template.id));
+    const quickLaunchTemplateIds = uniqueIds(templateIds).filter((id) => availableTemplateIds.has(id));
+    persistIdList(QUICK_LAUNCH_STORAGE_KEY, quickLaunchTemplateIds);
+    return { quickLaunchTemplateIds };
+  }),
+  isTemplateQuickLaunch: (templateId) => get().quickLaunchTemplateIds.includes(templateId),
   selectTemplate: (selection) => set({ selectedTemplate: selection }),
 }));

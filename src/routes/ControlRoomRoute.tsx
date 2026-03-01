@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { usePlayoutStore, type TransitionType } from '../store/usePlayoutStore';
 import { TemplatePreview } from '../features/playout/TemplatePreview';
@@ -17,6 +17,17 @@ const transitionOptions: Array<{ type: TransitionType; label: string }> = [
 ];
 
 const durationChoices = [150, 300, 500, 1000];
+const QUICK_LAUNCH_DEFAULT_COUNT = 4;
+
+function AspectFrame({ children }: { children: ReactNode }) {
+  return (
+    <div className="relative w-full max-w-full" style={{ aspectRatio: '16 / 9' }}>
+      <div className="absolute inset-0 grid place-items-center overflow-hidden rounded-md border border-slate-800 bg-slate-950">
+        {children}
+      </div>
+    </div>
+  );
+}
 
 export function ControlRoomRoute() {
   const templateStore = useTemplateStore();
@@ -42,6 +53,11 @@ export function ControlRoomRoute() {
   const [blackoutActive, setBlackoutActive] = useState(false);
   const [transitionActive, setTransitionActive] = useState(false);
   const transitionTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (templateStore.quickLaunchTemplateIds.length > 0 || templateStore.templates.length === 0) return;
+    templateStore.seedQuickLaunchTemplates(templateStore.templates.slice(0, QUICK_LAUNCH_DEFAULT_COUNT).map((template) => template.id));
+  }, [templateStore]);
 
   useEffect(() => () => {
     if (transitionTimeoutRef.current !== null) {
@@ -81,6 +97,16 @@ export function ControlRoomRoute() {
     };
     return walk(templateStore.rootId);
   }, [folderById, templateMap, templateStore.rootId]);
+
+  const favoriteTemplates = useMemo(
+    () => templateStore.favoriteTemplateIds.map((id) => templateStore.getTemplateById(id)).filter((template): template is NonNullable<typeof template> => Boolean(template)),
+    [templateStore, templateStore.favoriteTemplateIds],
+  );
+
+  const quickLaunchTemplates = useMemo(
+    () => templateStore.quickLaunchTemplateIds.map((id) => templateStore.getTemplateById(id)).filter((template): template is NonNullable<typeof template> => Boolean(template)),
+    [templateStore, templateStore.quickLaunchTemplateIds],
+  );
 
   const copyTemplateUrl = async (templateId: string) => {
     const template = templateStore.getTemplateById(templateId);
@@ -149,18 +175,45 @@ export function ControlRoomRoute() {
 
   const renderTreeNode = (node: TreeNode, depth = 0) => {
     if (node.type === 'template') {
+      const isFavorited = templateStore.isTemplateFavorited(node.id);
+      const isQuickLaunch = templateStore.isTemplateQuickLaunch(node.id);
       return (
-        <button
-          key={node.id}
-          className={`block w-full rounded px-2 py-1 text-left text-sm ${previewTemplate?.id === node.id ? 'bg-blue-900/40 text-blue-100' : 'text-slate-300 hover:bg-slate-800'}`}
-          style={{ paddingLeft: `${depth * 14 + 8}px` }}
-          onClick={() => {
-            const template = templateStore.getTemplateById(node.id);
-            if (template) setPreviewTemplate(template);
-          }}
-        >
-          📄 {node.name}
-        </button>
+        <div key={node.id} className={`group flex items-center gap-1 rounded pr-1 ${previewTemplate?.id === node.id ? 'bg-blue-900/40' : 'hover:bg-slate-800/70'}`}>
+          <button
+            className={`min-w-0 flex-1 rounded px-2 py-1 text-left text-sm ${previewTemplate?.id === node.id ? 'text-blue-100' : 'text-slate-300'}`}
+            style={{ paddingLeft: `${depth * 14 + 8}px` }}
+            onClick={() => {
+              const template = templateStore.getTemplateById(node.id);
+              if (template) setPreviewTemplate(template);
+            }}
+          >
+            <span className="truncate">📄 {node.name}</span>
+          </button>
+          <button
+            type="button"
+            className={`rounded px-1.5 py-1 text-xs transition ${isFavorited ? 'text-amber-300' : 'text-slate-500 hover:text-amber-200'} opacity-90 group-hover:opacity-100`}
+            onClick={(event) => {
+              event.stopPropagation();
+              templateStore.toggleFavoriteTemplate(node.id);
+            }}
+            title={isFavorited ? 'Remove favorite' : 'Add favorite'}
+            aria-label={isFavorited ? 'Remove favorite' : 'Add favorite'}
+          >
+            {isFavorited ? '★' : '☆'}
+          </button>
+          <button
+            type="button"
+            className={`rounded px-1.5 py-1 text-xs transition ${isQuickLaunch ? 'text-cyan-300' : 'text-slate-500 hover:text-cyan-200'} opacity-90 group-hover:opacity-100`}
+            onClick={(event) => {
+              event.stopPropagation();
+              templateStore.toggleQuickLaunchTemplate(node.id);
+            }}
+            title={isQuickLaunch ? 'Remove from Quick Launch' : 'Add to Quick Launch'}
+            aria-label={isQuickLaunch ? 'Remove from Quick Launch' : 'Add to Quick Launch'}
+          >
+            🚀
+          </button>
+        </div>
       );
     }
 
@@ -189,7 +242,7 @@ export function ControlRoomRoute() {
         <aside className="grid h-full grid-rows-[minmax(0,1fr)_auto_auto] gap-3 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-3">
           <div className="min-h-0 rounded-md border border-slate-700 bg-slate-900 p-3">
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Template Library</p>
-            <div className="mt-2 h-full overflow-hidden pr-1">{renderTreeNode(tree)}</div>
+            <div className="mt-2 h-full overflow-auto pr-1">{renderTreeNode(tree)}</div>
           </div>
 
           <div className="space-y-2 rounded-md border border-slate-700 bg-slate-900 p-3">
@@ -224,13 +277,11 @@ export function ControlRoomRoute() {
           </div>
         </aside>
 
-        <section className="flex h-full min-h-0 flex-col gap-4 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-4">
-          <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_280px_minmax(0,1fr)] gap-4">
-            <div className="min-h-0" style={{ aspectRatio: '16 / 9' }}>
-              <div className="h-full w-full">
-                <TemplatePreview template={previewTemplate} label="PREVIEW" sponsor={previewSponsor} tone="preview" />
-              </div>
-            </div>
+        <section className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto_auto_auto] gap-4 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-4">
+          <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_280px_minmax(0,1fr)] gap-4">
+            <AspectFrame>
+              <TemplatePreview template={previewTemplate} label="PREVIEW" sponsor={previewSponsor} tone="preview" />
+            </AspectFrame>
 
             <div className="flex min-h-0 flex-col rounded-md border border-slate-700 bg-slate-900 p-3">
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Transitions</p>
@@ -282,15 +333,57 @@ export function ControlRoomRoute() {
               </button>
             </div>
 
-            <div className="relative min-h-0" style={{ aspectRatio: '16 / 9' }}>
+            <div className="relative">
               {blackoutActive && (
                 <div className="pointer-events-none absolute inset-0 z-10 rounded-md border border-slate-800 bg-black/95 text-center text-sm font-semibold uppercase tracking-[0.25em] text-white">
                   <div className="flex h-full items-center justify-center">Blackout</div>
                 </div>
               )}
-              <div className="h-full w-full">
+              <AspectFrame>
                 <TemplatePreview template={programTemplate} label="PROGRAM" sponsor={programSponsor} tone="program" />
-              </div>
+              </AspectFrame>
+            </div>
+          </div>
+
+          <div className="rounded-md border border-slate-700 bg-slate-900 p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">FAVORITES</p>
+            <div className="mt-2 flex gap-3 overflow-x-auto pb-1">
+              {favoriteTemplates.length === 0 ? (
+                <p className="text-sm text-slate-500">Star templates in the library to pin your favorites.</p>
+              ) : favoriteTemplates.map((template) => (
+                <button
+                  key={template.id}
+                  className="group min-w-[220px] rounded-md border border-slate-700 bg-slate-950 p-3 text-left transition hover:border-amber-400/60 hover:shadow-[0_0_24px_rgba(251,191,36,0.15)]"
+                  onClick={() => setPreviewTemplate(template)}
+                >
+                  <div className="mb-2 grid h-20 place-items-center rounded border border-slate-700 bg-slate-900 text-[10px] uppercase tracking-[0.2em] text-slate-500">16:9</div>
+                  <p className="truncate text-sm font-semibold text-slate-100">{template.name}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-md border border-slate-700 bg-slate-900 p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">QUICK LAUNCH</p>
+            <div className="mt-2 flex gap-3 overflow-x-auto pb-1">
+              {quickLaunchTemplates.length === 0 ? (
+                <p className="text-sm text-slate-500">Add templates with 🚀 in the library for one-tap preloading.</p>
+              ) : quickLaunchTemplates.map((template) => (
+                <div key={template.id} className="group relative min-w-[220px] rounded-md border border-slate-700 bg-slate-950 p-3 transition hover:border-cyan-400/60 hover:shadow-[0_0_24px_rgba(34,211,238,0.15)]">
+                  <button
+                    type="button"
+                    className="absolute right-2 top-2 rounded px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-800 hover:text-slate-200"
+                    onClick={() => templateStore.removeQuickLaunchTemplate(template.id)}
+                    aria-label={`Remove ${template.name} from quick launch`}
+                  >
+                    ✕
+                  </button>
+                  <button className="w-full text-left" onClick={() => setPreviewTemplate(template)}>
+                    <div className="mb-2 grid h-20 place-items-center rounded border border-slate-700 bg-slate-900 text-[10px] uppercase tracking-[0.2em] text-slate-500">Quick</div>
+                    <p className="truncate text-sm font-semibold text-slate-100">{template.name}</p>
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
 
