@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTemplateStore } from '../store/useTemplateStore';
-import { usePlayoutStore } from '../store/usePlayoutStore';
+import { usePlayoutStore, type TransitionType } from '../store/usePlayoutStore';
 import { TemplatePreview } from '../features/playout/TemplatePreview';
 import { useDataEngineStore } from '../store/useDataEngineStore';
 import { useDemoSessionStore } from '../store/useDemoSessionStore';
@@ -9,6 +9,15 @@ import { StatusBadge } from '../components/ui/StatusBadge';
 
 type TreeNode = { id: string; type: 'folder'; name: string; children: TreeNode[] } | { id: string; type: 'template'; name: string };
 
+const transitionOptions: Array<{ type: TransitionType; label: string }> = [
+  { type: 'cut', label: 'Cut' },
+  { type: 'fade', label: 'Fade' },
+  { type: 'ftb', label: 'Fade to Black' },
+  { type: 'luma', label: 'Luma Wipe' },
+];
+
+const durationChoices = [150, 300, 500, 1000];
+
 export function ControlRoomRoute() {
   const templateStore = useTemplateStore();
   const previewTemplate = usePlayoutStore((s) => s.previewTemplate);
@@ -16,8 +25,12 @@ export function ControlRoomRoute() {
   const lastTakeAt = usePlayoutStore((s) => s.lastTakeAt);
   const previewSponsor = usePlayoutStore((s) => s.previewSponsor);
   const programSponsor = usePlayoutStore((s) => s.programSponsor);
+  const transitionType = usePlayoutStore((s) => s.transitionType);
+  const transitionDurationMs = usePlayoutStore((s) => s.transitionDurationMs);
   const setPreviewTemplate = usePlayoutStore((s) => s.setPreviewTemplate);
   const setPreviewSponsor = usePlayoutStore((s) => s.setPreviewSponsor);
+  const setTransitionType = usePlayoutStore((s) => s.setTransitionType);
+  const setTransitionDurationMs = usePlayoutStore((s) => s.setTransitionDurationMs);
   const takeToProgram = usePlayoutStore((s) => s.takeToProgram);
 
   const engineRunning = useDataEngineStore((s) => s.running);
@@ -25,6 +38,15 @@ export function ControlRoomRoute() {
   const updateSelections = useDemoSessionStore((s) => s.updateSelections);
 
   const [treeOpen, setTreeOpen] = useState<Record<string, boolean>>({ [templateStore.rootId]: true });
+  const [blackoutActive, setBlackoutActive] = useState(false);
+  const [transitionActive, setTransitionActive] = useState(false);
+  const transitionTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (transitionTimeoutRef.current !== null) {
+      window.clearTimeout(transitionTimeoutRef.current);
+    }
+  }, []);
 
   const templateMap = useMemo(() => {
     const map = new Map<string, typeof templateStore.templates[number][]>();
@@ -91,6 +113,39 @@ export function ControlRoomRoute() {
         ? 'Program is clear. Press TAKE to move Preview to Program.'
         : null;
 
+  const runTransitionTake = () => {
+    if (!previewReady || transitionActive) return;
+
+    if (transitionTimeoutRef.current !== null) {
+      window.clearTimeout(transitionTimeoutRef.current);
+      transitionTimeoutRef.current = null;
+    }
+
+    if (transitionType === 'cut') {
+      takeToProgram();
+      return;
+    }
+
+    setTransitionActive(true);
+
+    if (transitionType === 'ftb') {
+      setBlackoutActive(true);
+      transitionTimeoutRef.current = window.setTimeout(() => {
+        takeToProgram();
+        setBlackoutActive(false);
+        setTransitionActive(false);
+        transitionTimeoutRef.current = null;
+      }, transitionDurationMs);
+      return;
+    }
+
+    transitionTimeoutRef.current = window.setTimeout(() => {
+      takeToProgram();
+      setTransitionActive(false);
+      transitionTimeoutRef.current = null;
+    }, transitionDurationMs);
+  };
+
   const renderTreeNode = (node: TreeNode, depth = 0) => {
     if (node.type === 'template') {
       return (
@@ -130,69 +185,114 @@ export function ControlRoomRoute() {
         <h2 className="text-lg font-semibold text-slate-100">Control Room</h2>
       </div>
       <div className="grid min-h-0 gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
-      <aside className="grid h-full grid-rows-[minmax(0,1fr)_auto_auto] gap-3 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-3">
-        <div className="min-h-0 rounded-md border border-slate-700 bg-slate-900 p-3">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Template Library</p>
-          <div className="mt-2 h-full overflow-hidden pr-1">{renderTreeNode(tree)}</div>
-        </div>
-
-        <div className="space-y-2 rounded-md border border-slate-700 bg-slate-900 p-3">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Contextual Controls</p>
-          {!previewTemplate && (
-            <p className="text-xs text-slate-400">Select a template from the folder tree to enable TAKE.</p>
-          )}
-          <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">Sponsor</label>
-          <select className="w-full rounded border border-slate-600 bg-slate-950 px-2 py-2 text-sm text-slate-100" value={previewSponsor} onChange={(e) => {
-            const sponsor = e.target.value;
-            updateSelections({ sponsor });
-            setPreviewSponsor(sponsor);
-          }}>
-            {sponsorChoices.map((sponsor) => <option key={sponsor} value={sponsor}>{sponsor}</option>)}
-          </select>
-          {previewReady && (
-            <button className="w-full rounded-md border border-red-500 bg-red-600 px-6 py-2 text-sm font-bold tracking-[0.2em] text-white hover:bg-red-500" onClick={takeToProgram}>
-              TAKE
-            </button>
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 gap-2 rounded-md border border-slate-700 bg-slate-900 p-3">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Ready Status</p>
-            <div className="mt-2">{previewReady ? <StatusBadge tone="ready">READY</StatusBadge> : <StatusBadge tone="not-ready">NOT READY</StatusBadge>}</div>
-            <p className="mt-2 text-xs text-slate-400">Engine {engineRunning ? 'Live' : 'Paused'} · Last TAKE {takeTime}</p>
+        <aside className="grid h-full grid-rows-[minmax(0,1fr)_auto_auto] gap-3 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-3">
+          <div className="min-h-0 rounded-md border border-slate-700 bg-slate-900 p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Template Library</p>
+            <div className="mt-2 h-full overflow-hidden pr-1">{renderTreeNode(tree)}</div>
           </div>
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">On-Air Status</p>
-            <div className="mt-2">{programTemplate ? <StatusBadge tone="on-air">ON AIR</StatusBadge> : <StatusBadge tone="not-ready">OFF AIR</StatusBadge>}</div>
-            <p className="mt-2 truncate text-xs text-slate-400">{programTemplate?.name ?? 'Program clear'}</p>
-          </div>
-        </div>
-      </aside>
 
-      <section className="flex h-full min-h-0 flex-col gap-4 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-4">
-        <div className="grid min-h-0 flex-1 grid-cols-2 gap-4">
-          <TemplatePreview template={previewTemplate} label="PREVIEW" sponsor={previewSponsor} tone="preview" />
-          <TemplatePreview template={programTemplate} label="PROGRAM" sponsor={programSponsor} tone="program" />
-        </div>
-
-        <div className="rounded-md border border-slate-700 bg-slate-900 p-3 text-sm text-slate-300">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Broadcast Notes</p>
-          {fallbackMessage ? (
-            <p className="mt-2 text-slate-300">{fallbackMessage}</p>
-          ) : (
-            <p className="mt-2 text-slate-300">Program and Preview states are isolated snapshots. Program only changes when TAKE is executed.</p>
-          )}
-          <div className="mt-3 flex justify-end">
-            <button className="rounded border border-emerald-700 px-3 py-1 text-xs font-semibold text-emerald-300 disabled:opacity-50 hover:bg-emerald-900/30" onClick={() => previewTemplate && copyTemplateUrl(previewTemplate.id)} disabled={!previewTemplate}>
-              Copy Preview URL
-            </button>
-            <button className="ml-2 rounded border border-emerald-700 px-3 py-1 text-xs font-semibold text-emerald-300 disabled:opacity-50 hover:bg-emerald-900/30" onClick={copyAggregateOutputUrl} disabled={!programTemplate}>
-              Copy Output URL
-            </button>
+          <div className="space-y-2 rounded-md border border-slate-700 bg-slate-900 p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Contextual Controls</p>
+            {!previewTemplate && (
+              <p className="text-xs text-slate-400">Select a template from the folder tree to enable TAKE.</p>
+            )}
+            <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">Sponsor</label>
+            <select className="w-full rounded border border-slate-600 bg-slate-950 px-2 py-2 text-sm text-slate-100" value={previewSponsor} onChange={(e) => {
+              const sponsor = e.target.value;
+              updateSelections({ sponsor });
+              setPreviewSponsor(sponsor);
+            }}>
+              {sponsorChoices.map((sponsor) => <option key={sponsor} value={sponsor}>{sponsor}</option>)}
+            </select>
           </div>
-        </div>
-      </section>
+
+          <div className="grid grid-cols-2 gap-2 rounded-md border border-slate-700 bg-slate-900 p-3">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Ready Status</p>
+              <div className="mt-2">{previewReady ? <StatusBadge tone="ready">READY</StatusBadge> : <StatusBadge tone="not-ready">NOT READY</StatusBadge>}</div>
+              <p className="mt-2 text-xs text-slate-400">Engine {engineRunning ? 'Live' : 'Paused'} · Last TAKE {takeTime}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">On-Air Status</p>
+              <div className="mt-2">{programTemplate ? <StatusBadge tone="on-air">ON AIR</StatusBadge> : <StatusBadge tone="not-ready">OFF AIR</StatusBadge>}</div>
+              <p className="mt-2 truncate text-xs text-slate-400">{programTemplate?.name ?? 'Program clear'}</p>
+            </div>
+          </div>
+        </aside>
+
+        <section className="flex h-full min-h-0 flex-col gap-4 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-4">
+          <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_280px_minmax(0,1fr)] gap-4">
+            <TemplatePreview template={previewTemplate} label="PREVIEW" sponsor={previewSponsor} tone="preview" />
+
+            <div className="flex min-h-0 flex-col rounded-md border border-slate-700 bg-slate-900 p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Transitions</p>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {transitionOptions.map((option) => (
+                  <button
+                    key={option.type}
+                    className={`rounded border px-2 py-2 text-xs font-semibold uppercase tracking-wide transition ${transitionType === option.type ? 'border-blue-400 bg-blue-900/40 text-blue-100' : 'border-slate-600 bg-slate-950 text-slate-200 hover:bg-slate-800'}`}
+                    onClick={() => setTransitionType(option.type)}
+                    disabled={transitionActive}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-4 rounded border border-slate-700 bg-slate-950 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <label htmlFor="transition-duration" className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Transition Duration</label>
+                  <span className="text-xs text-slate-300">{transitionDurationMs}ms</span>
+                </div>
+                <input
+                  id="transition-duration"
+                  type="range"
+                  min={0}
+                  max={durationChoices.length - 1}
+                  step={1}
+                  value={durationChoices.indexOf(transitionDurationMs)}
+                  onChange={(e) => setTransitionDurationMs(durationChoices[Number(e.target.value)] ?? 300)}
+                  className="w-full accent-blue-400"
+                  disabled={transitionType === 'cut' || transitionActive}
+                />
+              </div>
+
+              <button
+                className="mt-4 w-full rounded-md border border-red-500 bg-red-600 px-6 py-3 text-base font-black tracking-[0.24em] text-white shadow-lg shadow-red-950/60 transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={runTransitionTake}
+                disabled={!previewReady || transitionActive}
+              >
+                {transitionActive ? 'TRANSITIONING' : 'TAKE'}
+              </button>
+            </div>
+
+            <div className="relative min-h-0">
+              {blackoutActive && (
+                <div className="pointer-events-none absolute inset-0 z-10 rounded-md border border-slate-800 bg-black/95 text-center text-sm font-semibold uppercase tracking-[0.25em] text-white">
+                  <div className="flex h-full items-center justify-center">Blackout</div>
+                </div>
+              )}
+              <TemplatePreview template={programTemplate} label="PROGRAM" sponsor={programSponsor} tone="program" />
+            </div>
+          </div>
+
+          <div className="rounded-md border border-slate-700 bg-slate-900 p-3 text-sm text-slate-300">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Broadcast Notes</p>
+            {fallbackMessage ? (
+              <p className="mt-2 text-slate-300">{fallbackMessage}</p>
+            ) : (
+              <p className="mt-2 text-slate-300">Program and Preview states are isolated snapshots. Program only changes when TAKE is executed.</p>
+            )}
+            <div className="mt-3 flex justify-end">
+              <button className="rounded border border-emerald-700 px-3 py-1 text-xs font-semibold text-emerald-300 disabled:opacity-50 hover:bg-emerald-900/30" onClick={() => previewTemplate && copyTemplateUrl(previewTemplate.id)} disabled={!previewTemplate}>
+                Copy Preview URL
+              </button>
+              <button className="ml-2 rounded border border-emerald-700 px-3 py-1 text-xs font-semibold text-emerald-300 disabled:opacity-50 hover:bg-emerald-900/30" onClick={copyAggregateOutputUrl} disabled={!programTemplate}>
+                Copy Output URL
+              </button>
+            </div>
+          </div>
+        </section>
       </div>
     </section>
   );

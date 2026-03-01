@@ -9,17 +9,23 @@ export type FontOverride = {
   timestamp: string;
 };
 
+export type TransitionType = 'cut' | 'fade' | 'ftb' | 'luma';
+
 interface PlayoutStore {
   vortexBindings: Record<string, VortexBindingState | undefined>;
   previewTemplate: SavedTemplate | null;
   programTemplate: SavedTemplate | null;
   previewSponsor: string;
   programSponsor: string;
+  transitionType: TransitionType;
+  transitionDurationMs: number;
   lastTakeAt: string | null;
   fontOverrides: Record<string, FontOverride | undefined>;
   vortexBindingSchemas: Record<string, BindingSchema | undefined>;
   setPreviewTemplate: (template: SavedTemplate | null) => void;
   setPreviewSponsor: (sponsor: string) => void;
+  setTransitionType: (type: TransitionType) => void;
+  setTransitionDurationMs: (ms: number) => void;
   takeToProgram: () => void;
   clearProgram: () => void;
   activateProgramTemplate: (template: SavedTemplate | null) => void;
@@ -47,6 +53,8 @@ const templatesMatch = (left: SavedTemplate | null, right: SavedTemplate | null)
 export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
   previewSponsor: 'Renderless Sports',
   programSponsor: 'Renderless Sports',
+  transitionType: 'cut',
+  transitionDurationMs: 300,
   previewTemplate: null,
   vortexBindings: {},
   programTemplate: null,
@@ -55,6 +63,8 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
   vortexBindingSchemas: {},
   setPreviewTemplate: (template) => set({ previewTemplate: template ? cloneTemplate(template) : null }),
   setPreviewSponsor: (sponsor) => set({ previewSponsor: sponsor }),
+  setTransitionType: (type) => set({ transitionType: type }),
+  setTransitionDurationMs: (ms) => set({ transitionDurationMs: ms }),
   takeToProgram: () => {
     const preview = get().previewTemplate;
     const program = get().programTemplate;
@@ -82,6 +92,8 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
     programTemplate: null,
     previewSponsor: 'Renderless Sports',
     programSponsor: 'Renderless Sports',
+    transitionType: 'cut',
+    transitionDurationMs: 300,
     lastTakeAt: null,
     vortexBindings: {},
     vortexBindingSchemas: {},
