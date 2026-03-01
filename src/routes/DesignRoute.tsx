@@ -444,6 +444,16 @@ export function DesignRoute() {
     updateGuidePosition(guide.id, clampGuidePosition(guide.axis, parsed));
   };
 
+  const onGuideContextMenu = (guide: Guide, event: ReactMouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setSelectedGuideId(guide.id);
+    const shouldDelete = window.confirm('Delete this guide?');
+    if (!shouldDelete) return;
+    setGuides((prev) => prev.filter((item) => item.id !== guide.id));
+    setSelectedGuideId((prev) => (prev === guide.id ? null : prev));
+  };
+
   const isAreaTextLayer = (layer: Layer): layer is Extract<Layer, { kind: 'text' }> => (
     layer.kind === 'text' && layer.textMode === 'area'
   );
@@ -1227,17 +1237,23 @@ export function DesignRoute() {
                 }
               }}>
               {showGrid && <div className="pointer-events-none absolute inset-0 opacity-40" style={{ backgroundImage: 'linear-gradient(to right, rgba(148,163,184,0.3) 1px, transparent 1px), linear-gradient(to bottom, rgba(148,163,184,0.3) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />}
-              {showGuides && guides.map((guide) => (
-                <div
-                  key={guide.id}
-                  data-guide-node="true" className="pointer-events-auto absolute z-50"
-                  style={guide.axis === 'x'
-                    ? { left: `${guide.position}px`, top: 0, width: '1px', height: '100%', background: selectedGuideId === guide.id ? 'rgba(251,191,36,1)' : 'rgba(34,211,238,0.9)', cursor: 'ew-resize' }
-                    : { left: 0, top: `${guide.position}px`, width: '100%', height: '1px', background: selectedGuideId === guide.id ? 'rgba(251,191,36,1)' : 'rgba(34,211,238,0.9)', cursor: 'ns-resize' }}
-                  onMouseDown={(event) => onGuideMouseDown(guide, event)}
-                  onDoubleClick={(event) => onGuideDoubleClick(guide, event)}
-                />
-              ))}
+              {showGuides && (
+                <div className="pointer-events-none absolute inset-0 z-50">
+                  {guides.map((guide) => (
+                    <div
+                      key={guide.id}
+                      data-guide-node="true"
+                      className="pointer-events-auto absolute"
+                      style={guide.axis === 'x'
+                        ? { left: `${guide.position}px`, top: 0, width: '1px', height: '100%', background: selectedGuideId === guide.id ? 'rgba(251,191,36,1)' : 'rgba(34,211,238,0.9)', cursor: 'ew-resize' }
+                        : { left: 0, top: `${guide.position}px`, width: '100%', height: '1px', background: selectedGuideId === guide.id ? 'rgba(251,191,36,1)' : 'rgba(34,211,238,0.9)', cursor: 'ns-resize' }}
+                      onMouseDown={(event) => onGuideMouseDown(guide, event)}
+                      onDoubleClick={(event) => onGuideDoubleClick(guide, event)}
+                      onContextMenu={(event) => onGuideContextMenu(guide, event)}
+                    />
+                  ))}
+                </div>
+              )}
               {guideReadout && (
                 <div className="pointer-events-none fixed z-[60] rounded border border-cyan-500/60 bg-slate-950/95 px-2 py-1 text-[11px] text-cyan-200" style={{ left: `${guideReadout.x}px`, top: `${guideReadout.y}px` }}>
                   {guideReadout.value}px
