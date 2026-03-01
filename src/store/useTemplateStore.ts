@@ -74,11 +74,15 @@ const persist = (state: PersistedTemplateState) => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 };
 
+const uniqueIds = (ids: string[]) => [...new Set(ids)];
+
 interface TemplateStore extends PersistedTemplateState {
   expanded: Record<string, boolean>;
   vortexPackages: Record<string, VortexPackage>;
   vortexPreviewUrls: Record<string, string | undefined>;
   selectedTemplate: SelectedTemplate | null;
+  selectedIds: string[];
+  selectionAnchorId: string | null;
   addFolder: (name: string, parentId: string) => void;
   deleteFolder: (folderId: string) => void;
   renameFolder: (folderId: string, name: string) => void;
@@ -95,6 +99,11 @@ interface TemplateStore extends PersistedTemplateState {
   getVortexPackage: (templateId: string) => VortexPackage | undefined;
   listAllTemplates: () => TemplateListItem[];
   selectTemplate: (selection: SelectedTemplate) => void;
+  clearSelection: () => void;
+  setSelection: (ids: string[], anchorId?: string | null) => void;
+  toggleSelection: (id: string) => void;
+  rangeSelect: (orderedVisibleIds: string[], clickedId: string) => void;
+  moveSelectionToFolder: (targetFolderId: string | null) => boolean;
 }
 
 const initial = load();
@@ -105,6 +114,8 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
   vortexPackages: {},
   vortexPreviewUrls: {},
   selectedTemplate: null,
+  selectedIds: [],
+  selectionAnchorId: null,
   addFolder: (name, parentId) => {
     const trimmed = name.trim();
     if (!trimmed) return;
@@ -258,6 +269,46 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       previewUrl: state.vortexPreviewUrls[pkg.manifest.templateId],
     }));
     return [...nativeTemplates, ...vortexTemplates];
+  },
+  clearSelection: () => set({ selectedIds: [], selectionAnchorId: null }),
+  setSelection: (ids, anchorId) => set({ selectedIds: uniqueIds(ids), selectionAnchorId: anchorId ?? ids[0] ?? null }),
+  toggleSelection: (id) => set((state) => ({
+    selectedIds: state.selectedIds.includes(id)
+      ? state.selectedIds.filter((entry) => entry !== id)
+      : [...state.selectedIds, id],
+    selectionAnchorId: id,
+  })),
+  rangeSelect: (orderedVisibleIds, clickedId) => set((state) => {
+    const anchorId = state.selectionAnchorId ?? clickedId;
+    const start = orderedVisibleIds.indexOf(anchorId);
+    const end = orderedVisibleIds.indexOf(clickedId);
+    if (start === -1 || end === -1) {
+      return { selectedIds: [clickedId], selectionAnchorId: clickedId };
+    }
+    const [from, to] = start < end ? [start, end] : [end, start];
+    return {
+      selectedIds: orderedVisibleIds.slice(from, to + 1),
+      selectionAnchorId: anchorId,
+    };
+  }),
+  moveSelectionToFolder: (targetFolderId) => {
+    const resolvedTargetId = targetFolderId ?? get().rootId;
+    const target = get().folders.find((folder) => folder.id === resolvedTargetId);
+    if (!target) return false;
+    const selectedIds = uniqueIds(get().selectedIds).filter((id) => get().templates.some((template) => template.id === id));
+    if (!selectedIds.length) return false;
+    const templates = get().templates.map((template) => (
+      selectedIds.includes(template.id)
+        ? { ...template, folderId: resolvedTargetId, updatedAt: new Date().toISOString() }
+        : template
+    ));
+    const next = { rootId: get().rootId, folders: get().folders, templates };
+    persist(next);
+    set({ templates, selectedIds, selectionAnchorId: selectedIds[0] ?? null });
+    templates.filter((template) => selectedIds.includes(template.id)).forEach((template) => {
+      useAssetStore.getState().upsertTemplateAsset(template);
+    });
+    return true;
   },
   selectTemplate: (selection) => set({ selectedTemplate: selection }),
 }));

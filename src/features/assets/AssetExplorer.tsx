@@ -7,16 +7,19 @@ interface Props { kind: 'branded' | 'fonts' | 'templates'; title: string }
 const iconBtn = 'h-8 w-8 rounded border border-slate-700 bg-slate-900 text-sm text-slate-200 hover:bg-slate-800 disabled:opacity-50';
 
 type DragPayload = {
-  nodeId: string;
-  kind: 'branded' | 'fonts' | 'templates';
+  kind: 'assets' | 'templates';
+  ids: string[];
 };
 
 export function AssetExplorer({ kind, title }: Props) {
   const store = useAssetStore();
   const explorer = kind === 'branded' ? store.brandedExplorer : kind === 'fonts' ? store.fontsExplorer : store.templateExplorer;
   const expanded = kind === 'branded' ? store.expandedBranded : kind === 'fonts' ? store.expandedFonts : store.expandedTemplates;
+  const selectedIds = store.selectedIds[kind];
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const [currentFolderId, setCurrentFolderId] = useState(explorer.rootId);
   const [query, setQuery] = useState('');
+  const [hoverFolderId, setHoverFolderId] = useState<string | null>(null);
   const uploadRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -48,6 +51,7 @@ export function AssetExplorer({ kind, title }: Props) {
   }, [uploadFolderId, explorer]);
 
   const filteredChildren = children.filter((item) => item.name.toLowerCase().includes(query.toLowerCase()));
+  const orderedVisibleIds = useMemo(() => filteredChildren.map((item) => item.id), [filteredChildren]);
 
   const renameItem = (item: ExplorerNode) => {
     const nextName = window.prompt('Rename item', item.name)?.trim();
@@ -67,24 +71,23 @@ export function AssetExplorer({ kind, title }: Props) {
     if (item.id === currentFolderId) setCurrentFolderId(explorer.rootId);
   };
 
+  const parsePayload = (event: DragEvent): DragPayload | null => {
+    const raw = event.dataTransfer.getData('application/json');
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as DragPayload;
+    } catch {
+      return null;
+    }
+  };
+
   const onDropOnFolder = (event: DragEvent, targetFolderId: string) => {
     event.preventDefault();
     event.stopPropagation();
-    const raw = event.dataTransfer.getData('application/json');
-    if (!raw) return;
-    let payload: DragPayload | null = null;
-    try {
-      payload = JSON.parse(raw) as DragPayload;
-    } catch {
-      payload = null;
-    }
-    if (!payload || payload.kind !== kind || payload.nodeId === targetFolderId) return;
-    const check = store.canMoveNode(payload.nodeId, targetFolderId, kind);
-    if (!check.ok) {
-      if (check.reason) window.alert(check.reason);
-      return;
-    }
-    const moved = store.moveNode(payload.nodeId, targetFolderId, kind);
+    setHoverFolderId(null);
+    const payload = parsePayload(event);
+    if (!payload || payload.kind !== 'assets') return;
+    const moved = store.moveSelectionToFolder(kind, targetFolderId);
     if (moved) setCurrentFolderId(targetFolderId);
   };
 
@@ -102,10 +105,17 @@ export function AssetExplorer({ kind, title }: Props) {
             <button className="h-5 w-5 rounded border border-slate-700 bg-slate-800 text-xs" onClick={() => store.toggleExpanded(folderId, kind)}>{isOpen ? '▾' : '▸'}</button>
           ) : <span className="inline-block h-5 w-5" />}
           <button
-            className={`w-full rounded border px-2 py-1 text-left ${uploadFolderId === folder.id ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'}`}
+            className={`w-full rounded border px-2 py-1 text-left ${uploadFolderId === folder.id ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'} ${hoverFolderId === folder.id ? 'ring-2 ring-emerald-500/70' : ''}`}
             onClick={() => setCurrentFolderId(folder.id)}
             onDoubleClick={() => renameItem(folder)}
-            onDragOver={(event) => event.preventDefault()}
+            onDragOver={(event) => {
+              const payload = parsePayload(event);
+              if (payload?.kind === 'assets') {
+                event.preventDefault();
+                setHoverFolderId(folder.id);
+              }
+            }}
+            onDragLeave={() => setHoverFolderId((prev) => (prev === folder.id ? null : prev))}
             onDrop={(event) => onDropOnFolder(event, folder.id)}
           >
             {folder.name}
@@ -122,9 +132,27 @@ export function AssetExplorer({ kind, title }: Props) {
         <h3 className="mb-2 font-semibold">{title} Folders</h3>
         {renderTree(explorer.rootId)}
       </aside>
-      <div className="rounded-lg border border-slate-800 bg-slate-950 p-3">
+      <div
+        className="rounded-lg border border-slate-800 bg-slate-950 p-3"
+        onClick={(event) => {
+          if (event.target === event.currentTarget) store.clearSelection(kind);
+        }}
+        onDragOver={(event) => {
+          const payload = parsePayload(event);
+          if (payload?.kind === 'assets') event.preventDefault();
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          setHoverFolderId(null);
+          const payload = parsePayload(event);
+          if (!payload || payload.kind !== 'assets') return;
+          const moved = store.moveSelectionToFolder(kind, null);
+          if (moved) setCurrentFolderId(explorer.rootId);
+        }}
+      >
         <p className="mb-1 text-xs text-slate-400">Breadcrumb: <span className="font-semibold text-slate-200">{uploadPath || title}</span></p>
-        <p className="mb-2 text-xs text-slate-400">Uploading to: <span className="font-semibold text-slate-200">{uploadPath || title}</span></p>
+        <p className="mb-1 text-xs text-slate-400">Uploading to: <span className="font-semibold text-slate-200">{uploadPath || title}</span></p>
+        <p className="mb-2 text-xs text-slate-400">Selected: <span className="font-semibold text-slate-200">{selectedIds.length}</span></p>
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <input value={query} onChange={(e) => setQuery(e.target.value)} className="flex-1 rounded border border-slate-700 bg-slate-900 px-2 py-1" placeholder={`Search ${title.toLowerCase()}`} />
           <button
@@ -164,47 +192,70 @@ export function AssetExplorer({ kind, title }: Props) {
             }}
           />
         </div>
-        <div className="grid gap-2 text-sm">
+        <div className="grid gap-2 text-sm" onClick={(event) => event.stopPropagation()}>
           <div className="grid grid-cols-[1.8fr_1fr_1fr_1fr_auto] text-slate-400"><span>Name</span><span>Type</span><span>Dimension</span><span>Modified</span><span /></div>
-          {filteredChildren.map((item) => (
-            <div
-              key={item.id}
-              className="grid grid-cols-[1.8fr_1fr_1fr_1fr_auto] items-center gap-2 rounded border border-slate-800 bg-slate-900 p-2 text-left hover:border-blue-500/60 hover:bg-slate-800"
-              role="button"
-              tabIndex={0}
-              draggable
-              onDragStart={(event) => {
-                event.dataTransfer.effectAllowed = 'move';
-                event.dataTransfer.setData('application/json', JSON.stringify({ nodeId: item.id, kind } satisfies DragPayload));
-              }}
-              onClick={() => { if (item.type === 'folder') setCurrentFolderId(item.id); }}
-              onDoubleClick={() => renameItem(item)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && item.type === 'folder') setCurrentFolderId(item.id);
-              }}
-              onDragOver={(event) => {
-                if (item.type === 'folder') event.preventDefault();
-              }}
-              onDrop={(event) => {
-                if (item.type === 'folder') onDropOnFolder(event, item.id);
-              }}
-            >
-              <span className="flex items-center gap-2">
-                {item.type === 'folder' ? (
-                  <span>📁</span>
-                ) : item.kind === 'asset' && item.src ? (
-                  <img src={item.src} alt={item.name} className="h-8 w-8 rounded border border-slate-700 object-cover" />
-                ) : (
-                  <span>🖼️</span>
-                )}
-                <span>{item.name}</span>
-              </span>
-              <span>{item.type === 'folder' ? 'Folder' : item.kind}</span>
-              <span>{item.type === 'folder' ? `${item.children.length} item(s)` : item.dimension}</span>
-              <span>{new Date(item.createdAt).toLocaleDateString()}</span>
-              <button className={iconBtn} title="Delete" onClick={(event) => { event.stopPropagation(); deleteItem(item); }}>🗑</button>
-            </div>
-          ))}
+          {filteredChildren.map((item) => {
+            const isSelected = selectedSet.has(item.id);
+            return (
+              <div
+                key={item.id}
+                className={`grid grid-cols-[1.8fr_1fr_1fr_1fr_auto] items-center gap-2 rounded border p-2 text-left ${isSelected ? 'border-blue-500 bg-blue-500/10' : 'border-slate-800 bg-slate-900 hover:border-blue-500/60 hover:bg-slate-800'}`}
+                role="button"
+                tabIndex={0}
+                draggable
+                onDragStart={(event) => {
+                  const ids = selectedSet.has(item.id) ? selectedIds : [item.id];
+                  if (!selectedSet.has(item.id)) {
+                    store.setSelection(kind, [item.id], item.id);
+                  }
+                  event.dataTransfer.effectAllowed = 'move';
+                  event.dataTransfer.setData('application/json', JSON.stringify({ kind: 'assets', ids } satisfies DragPayload));
+                }}
+                onClick={(event) => {
+                  if (event.shiftKey) {
+                    store.rangeSelect(kind, orderedVisibleIds, item.id);
+                  } else if (event.metaKey || event.ctrlKey) {
+                    store.toggleSelection(kind, item.id);
+                  } else {
+                    store.setSelection(kind, [item.id], item.id);
+                  }
+                  if (item.type === 'folder') setCurrentFolderId(item.id);
+                }}
+                onDoubleClick={() => renameItem(item)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && item.type === 'folder') setCurrentFolderId(item.id);
+                }}
+                onDragOver={(event) => {
+                  if (item.type === 'folder') {
+                    const payload = parsePayload(event);
+                    if (payload?.kind === 'assets') {
+                      event.preventDefault();
+                      setHoverFolderId(item.id);
+                    }
+                  }
+                }}
+                onDragLeave={() => setHoverFolderId((prev) => (prev === item.id ? null : prev))}
+                onDrop={(event) => {
+                  if (item.type === 'folder') onDropOnFolder(event, item.id);
+                }}
+              >
+                <span className="flex items-center gap-2">
+                  {item.type === 'folder' ? (
+                    <span>📁</span>
+                  ) : item.kind === 'asset' && item.src ? (
+                    <img src={item.src} alt={item.name} className="h-8 w-8 rounded border border-slate-700 object-cover" />
+                  ) : (
+                    <span>🖼️</span>
+                  )}
+                  <span>{item.name}</span>
+                </span>
+                <span>{item.type === 'folder' ? 'Folder' : item.kind}</span>
+                <span>{item.type === 'folder' ? `${item.children.length} item(s)` : item.dimension}</span>
+                <span>{new Date(item.createdAt).toLocaleDateString()}</span>
+                <button className={iconBtn} title="Delete" onClick={(event) => { event.stopPropagation(); deleteItem(item); }}>🗑</button>
+              </div>
+            );
+          })}
           {!children.length && <p className="text-slate-500">This folder is empty.</p>}
           {children.length > 0 && !filteredChildren.length && <p className="text-slate-500">No items match your search.</p>}
         </div>
