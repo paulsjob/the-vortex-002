@@ -43,13 +43,16 @@ export function TemplatePreview({ template, label, sponsor, tone = 'preview' }: 
             <span>16 × 9</span>
           </div>
         )}
-        <div className={`relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg border bg-slate-950 ${isProgram ? 'border-red-600/70' : (sponsorStyle?.accentBorderClass ?? 'border-slate-700')}`}>
+        <div
+          className={`relative mx-auto flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg border bg-slate-950 ${isProgram ? 'border-red-600/70' : (sponsorStyle?.accentBorderClass ?? 'border-slate-700')}`}
+          style={{ aspectRatio: '16 / 9', width: '100%', maxWidth: '100%', maxHeight: '100%' }}
+        >
           <div className="absolute inset-0 bg-[linear-gradient(45deg,#0f172a_25%,#111827_25%,#111827_50%,#0f172a_50%,#0f172a_75%,#111827_75%,#111827_100%)] bg-[length:18px_18px] opacity-70" />
           {!isProgram && sponsorStyle && <div className={`absolute inset-0 bg-gradient-to-br ${sponsorStyle.accentFillClass} opacity-55`} />}
           <div className="relative z-10 flex h-full w-full items-center justify-center p-2">
-            <div className="relative max-h-full w-full max-w-full" style={{ aspectRatio: '16 / 9' }}>
+            <div className="relative h-full w-full max-h-full max-w-full">
               {template ? (
-                <TemplateSceneSvg template={template} className="h-full w-full" />
+                <TemplateSceneSvg template={template} className="h-full w-full object-contain" />
               ) : (
                 <div className={`grid h-full w-full place-items-center rounded border border-dashed border-slate-600/80 bg-slate-950/70 text-sm ${isProgram ? 'text-red-200' : 'text-slate-400'}`}>
                   No template loaded.
