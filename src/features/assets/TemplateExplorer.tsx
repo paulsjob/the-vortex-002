@@ -6,6 +6,7 @@ import { importIllustratorSvg, IllustratorImportValidationError } from '../packa
 import { loadVortexPackage } from '../packages/loadVortexPackage';
 
 const iconBtn = 'h-8 w-8 rounded border border-slate-700 bg-slate-900 text-sm text-slate-200 hover:bg-slate-800 disabled:opacity-50';
+const DEBUG_DND = true;
 
 type DragPayload = {
   kind: 'templates' | 'templateFolders';
@@ -60,8 +61,8 @@ export function TemplateExplorer() {
     templateStore.renameFolder(folderId, next);
   };
 
-  const parsePayload = (event: DragEvent): DragPayload | null => {
-    const raw = event.dataTransfer.getData('application/json');
+  const readDragPayload = (event: DragEvent): DragPayload | null => {
+    const raw = event.dataTransfer.getData('application/json') || event.dataTransfer.getData('text/plain');
     if (!raw) return null;
     try {
       return JSON.parse(raw) as DragPayload;
@@ -78,11 +79,43 @@ export function TemplateExplorer() {
     return templateStore.canMoveFolder(draggedFolderId, folderId).ok;
   };
 
-  const onDropOnFolder = (event: DragEvent, folderId: string) => {
-    event.preventDefault();
-    setHoverFolderId(null);
-    const payload = parsePayload(event);
+
+  const canDropOnRoot = (payload: DragPayload | null): boolean => {
+    if (!payload) return false;
+    if (payload.kind === 'templates') return true;
+    const draggedFolderId = payload.ids[0];
+    if (!draggedFolderId) return false;
+    return templateStore.canMoveFolder(draggedFolderId, null).ok;
+  };
+
+  const onDropOnRoot = (event: DragEvent) => {
+    const payload = readDragPayload(event);
     if (!payload) return;
+    if (!canDropOnRoot(payload)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setHoverFolderId(null);
+    if (DEBUG_DND) console.log('[TemplateExplorer:dnd] drop', { folderId: 'root', ids: payload.ids, kind: payload.kind });
+    if (payload.kind === 'templates') {
+      templateStore.moveTemplates(payload.ids, null);
+      templateStore.setSelection(payload.ids, payload.ids[0] ?? null);
+      setCurrentFolderId(templateStore.rootId);
+      return;
+    }
+    const draggedFolderId = payload.ids[0];
+    if (!draggedFolderId || !templateStore.canMoveFolder(draggedFolderId, null).ok) return;
+    templateStore.moveFolder(draggedFolderId, null);
+    setCurrentFolderId(templateStore.rootId);
+  };
+
+  const onDropOnFolder = (event: DragEvent, folderId: string) => {
+    const payload = readDragPayload(event);
+    if (!payload) return;
+    if (!canDropOnFolder(payload, folderId)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setHoverFolderId(null);
+    if (DEBUG_DND) console.log('[TemplateExplorer:dnd] drop', { folderId, ids: payload.ids, kind: payload.kind });
     if (payload.kind === 'templates') {
       templateStore.moveTemplates(payload.ids, folderId);
       templateStore.setSelection(payload.ids, payload.ids[0] ?? null);
@@ -101,7 +134,29 @@ export function TemplateExplorer() {
     const isOpen = templateStore.expanded[folderId] ?? depth === 0;
     return (
       <div key={folderId} style={{ marginLeft: depth * 12 }} className="space-y-1">
-        <div className="flex items-center gap-1">
+        <div
+          className="relative flex items-center gap-1 pointer-events-auto"
+          onDragEnter={(event) => {
+            const payload = readDragPayload(event);
+            if (!canDropOnFolder(payload, folder.id)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            setHoverFolderId(folder.id);
+          }}
+          onDragOver={(event) => {
+            const payload = readDragPayload(event);
+            if (!canDropOnFolder(payload, folder.id)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            event.dataTransfer.dropEffect = 'move';
+            setHoverFolderId(folder.id);
+            if (DEBUG_DND) console.log('[TemplateExplorer:dnd] dragover', { folderId: folder.id, kind: payload?.kind });
+          }}
+          onDragLeave={() => {
+            setHoverFolderId((prev) => (prev === folder.id ? null : prev));
+          }}
+          onDrop={(event) => onDropOnFolder(event, folder.id)}
+        >
           {childFolders.length ? <button className="h-5 w-5 rounded border border-slate-700 bg-slate-800 text-xs" onClick={() => templateStore.toggleExpanded(folderId)}>{isOpen ? '▾' : '▸'}</button> : <span className="inline-block h-5 w-5" />}
           <button
             className={`w-full rounded border px-2 py-1 text-left ${currentFolderId === folder.id ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'} ${hoverFolderId === folder.id ? 'ring-2 ring-emerald-500/70' : ''}`}
@@ -110,22 +165,13 @@ export function TemplateExplorer() {
             onDoubleClick={() => renameFolder(folder.id, folder.name)}
             onDragStart={(event) => {
               if (folder.id === templateStore.rootId) return;
+              const payload = { kind: 'templateFolders', ids: [folder.id] } satisfies DragPayload;
               event.dataTransfer.effectAllowed = 'move';
-              event.dataTransfer.setData('application/json', JSON.stringify({ kind: 'templateFolders', ids: [folder.id] } satisfies DragPayload));
+              const serialized = JSON.stringify(payload);
+              event.dataTransfer.setData('application/json', serialized);
+              event.dataTransfer.setData('text/plain', serialized);
+              if (DEBUG_DND) console.log('[TemplateExplorer:dnd] dragstart', payload);
             }}
-            onDragOver={(event) => {
-              const payload = parsePayload(event);
-              if (!payload) return;
-              if (canDropOnFolder(payload, folder.id)) {
-                event.preventDefault();
-                event.dataTransfer.dropEffect = 'move';
-                setHoverFolderId(folder.id);
-              }
-            }}
-            onDragLeave={() => {
-              setHoverFolderId((prev) => (prev === folder.id ? null : prev));
-            }}
-            onDrop={(event) => onDropOnFolder(event, folder.id)}
           >
             {folder.name}
           </button>
@@ -139,45 +185,40 @@ export function TemplateExplorer() {
     <section className="grid grid-cols-1 gap-3 rounded-xl border border-slate-800 bg-slate-900 p-3 lg:grid-cols-[280px_1fr_260px]">
       <aside className="rounded-lg border border-slate-800 bg-slate-950 p-3">
         <h3 className="mb-2 font-semibold">Templates Folders</h3>
+        <div
+          className={`mb-2 rounded border px-2 py-1 text-xs ${hoverFolderId === templateStore.rootId ? 'border-emerald-500/70 bg-emerald-500/10 text-emerald-200' : 'border-slate-700 text-slate-400'}`}
+          onDragEnter={(event) => {
+            const payload = readDragPayload(event);
+            if (!canDropOnRoot(payload)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            setHoverFolderId(templateStore.rootId);
+          }}
+          onDragOver={(event) => {
+            const payload = readDragPayload(event);
+            if (!canDropOnRoot(payload)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            event.dataTransfer.dropEffect = 'move';
+            setHoverFolderId(templateStore.rootId);
+            if (DEBUG_DND) console.log('[TemplateExplorer:dnd] dragover', { folderId: 'root', kind: payload?.kind });
+          }}
+          onDragLeave={() => {
+            setHoverFolderId((prev) => (prev === templateStore.rootId ? null : prev));
+          }}
+          onDrop={onDropOnRoot}
+        >
+          Root
+        </div>
         {renderFolderTree(templateStore.rootId)}
       </aside>
 
       <div
-        className={`rounded-lg border bg-slate-950 p-3 ${hoverFolderId === templateStore.rootId ? 'border-emerald-500/80 ring-2 ring-emerald-500/30' : 'border-slate-800'}`}
+        className="rounded-lg border border-slate-800 bg-slate-950 p-3"
         onClick={(event) => {
           if (event.target === event.currentTarget) templateStore.clearSelection();
         }}
-        onDragOver={(event) => {
-          const payload = parsePayload(event);
-          if (payload && canDropOnFolder(payload, templateStore.rootId)) {
-            event.preventDefault();
-            event.dataTransfer.dropEffect = 'move';
-            setHoverFolderId(templateStore.rootId);
-          }
-        }}
-        onDragLeave={() => {
-          setHoverFolderId((prev) => (prev === templateStore.rootId ? null : prev));
-        }}
-        onDrop={(event) => {
-          event.preventDefault();
-          setHoverFolderId(null);
-          const payload = parsePayload(event);
-          if (!payload) return;
-          if (payload.kind === 'templates') {
-            templateStore.moveTemplates(payload.ids, null);
-            templateStore.setSelection(payload.ids, payload.ids[0] ?? null);
-            setCurrentFolderId(templateStore.rootId);
-            return;
-          }
-          const draggedFolderId = payload.ids[0];
-          if (!draggedFolderId || !templateStore.canMoveFolder(draggedFolderId, null).ok) return;
-          templateStore.moveFolder(draggedFolderId, null);
-        }}
       >
-        <div className={`mb-2 rounded border px-2 py-1 text-xs ${hoverFolderId === templateStore.rootId ? 'border-emerald-500/70 bg-emerald-500/10 text-emerald-200' : 'border-slate-700 text-slate-400'}`}>
-          Drop here to move to Root
-        </div>
-
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <input value={query} onChange={(e) => setQuery(e.target.value)} className="flex-1 rounded border border-slate-700 bg-slate-900 px-2 py-1" placeholder="Search templates" />
           <label className="cursor-pointer rounded border border-violet-500/60 bg-violet-500/10 px-2 py-1 text-xs text-violet-200 hover:bg-violet-500/20" title="Import Illustrator SVG">
@@ -244,8 +285,12 @@ export function TemplateExplorer() {
                   if (!selectedSet.has(template.id)) {
                     templateStore.setSelection([template.id], template.id);
                   }
+                  const payload = { kind: 'templates', ids: templateIds } satisfies DragPayload;
                   event.dataTransfer.effectAllowed = 'move';
-                  event.dataTransfer.setData('application/json', JSON.stringify({ kind: 'templates', ids: templateIds } satisfies DragPayload));
+                  const serialized = JSON.stringify(payload);
+                  event.dataTransfer.setData('application/json', serialized);
+                  event.dataTransfer.setData('text/plain', serialized);
+                  if (DEBUG_DND) console.log('[TemplateExplorer:dnd] dragstart', payload);
                 }}
                 onClick={(event) => {
                   if (isVortex) return;
