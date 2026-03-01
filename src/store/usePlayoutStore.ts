@@ -13,10 +13,13 @@ interface PlayoutStore {
   vortexBindings: Record<string, VortexBindingState | undefined>;
   previewTemplate: SavedTemplate | null;
   programTemplate: SavedTemplate | null;
+  previewSponsor: string;
+  programSponsor: string;
   lastTakeAt: string | null;
   fontOverrides: Record<string, FontOverride | undefined>;
   vortexBindingSchemas: Record<string, BindingSchema | undefined>;
   setPreviewTemplate: (template: SavedTemplate | null) => void;
+  setPreviewSponsor: (sponsor: string) => void;
   takeToProgram: () => void;
   clearProgram: () => void;
   activateProgramTemplate: (template: SavedTemplate | null) => void;
@@ -42,6 +45,8 @@ const templatesMatch = (left: SavedTemplate | null, right: SavedTemplate | null)
 };
 
 export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
+  previewSponsor: 'Renderless Sports',
+  programSponsor: 'Renderless Sports',
   previewTemplate: null,
   vortexBindings: {},
   programTemplate: null,
@@ -49,13 +54,16 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
   fontOverrides: {},
   vortexBindingSchemas: {},
   setPreviewTemplate: (template) => set({ previewTemplate: template ? cloneTemplate(template) : null }),
+  setPreviewSponsor: (sponsor) => set({ previewSponsor: sponsor }),
   takeToProgram: () => {
     const preview = get().previewTemplate;
     const program = get().programTemplate;
+    const previewSponsor = get().previewSponsor;
     if (!preview) return;
-    if (templatesMatch(program, preview)) return;
+    if (templatesMatch(program, preview) && get().programSponsor === previewSponsor) return;
     set({
       programTemplate: cloneTemplate(preview),
+      programSponsor: previewSponsor,
       lastTakeAt: new Date().toISOString(),
     });
   },
@@ -72,6 +80,8 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
   resetPlayoutState: () => set({
     previewTemplate: null,
     programTemplate: null,
+    previewSponsor: 'Renderless Sports',
+    programSponsor: 'Renderless Sports',
     lastTakeAt: null,
     vortexBindings: {},
     vortexBindingSchemas: {},
