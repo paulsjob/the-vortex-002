@@ -12,6 +12,8 @@ type DragPayload = {
   ids: string[];
 };
 
+const DEBUG_DND = true;
+
 export function AssetExplorer({ kind, title }: Props) {
   const store = useAssetStore();
   const explorer = kind === 'branded' ? store.brandedExplorer : kind === 'fonts' ? store.fontsExplorer : store.templateExplorer;
@@ -115,8 +117,8 @@ export function AssetExplorer({ kind, title }: Props) {
     if (item.id === currentFolderId) setCurrentFolderId(explorer.rootId);
   };
 
-  const parsePayload = (event: DragEvent): DragPayload | null => {
-    const raw = event.dataTransfer.getData('application/json');
+  const readDragPayload = (event: DragEvent): DragPayload | null => {
+    const raw = event.dataTransfer.getData('application/json') || event.dataTransfer.getData('text/plain');
     if (!raw) return null;
     try {
       return JSON.parse(raw) as DragPayload;
@@ -135,11 +137,34 @@ export function AssetExplorer({ kind, title }: Props) {
     return false;
   };
 
-  const onDropOnFolder = (event: DragEvent, targetFolderId: string) => {
-    event.preventDefault();
-    setHoverFolderId(null);
-    const payload = parsePayload(event);
+
+  const onDropOnRoot = (event: DragEvent) => {
+    const payload = readDragPayload(event);
     if (!payload) return;
+    if (!canDropOnFolder(payload, explorer.rootId)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setHoverFolderId(null);
+    if (DEBUG_DND) console.log('[AssetExplorer:dnd] drop', { folderId: 'root', ids: payload.ids, kind: payload.kind });
+    if (payload.kind === 'assets') {
+      store.setSelection(kind, payload.ids, payload.ids[0] ?? null);
+      const moved = store.moveSelectionToFolder(kind, null);
+      if (moved) setCurrentFolderId(explorer.rootId);
+      return;
+    }
+    const folderId = payload.ids[0];
+    if (!folderId || !store.canMoveNode(folderId, explorer.rootId, kind).ok) return;
+    if (store.moveNode(folderId, explorer.rootId, kind)) setCurrentFolderId(explorer.rootId);
+  };
+
+  const onDropOnFolder = (event: DragEvent, targetFolderId: string) => {
+    const payload = readDragPayload(event);
+    if (!payload) return;
+    if (!canDropOnFolder(payload, targetFolderId)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setHoverFolderId(null);
+    if (DEBUG_DND) console.log('[AssetExplorer:dnd] drop', { folderId: targetFolderId, ids: payload.ids, kind: payload.kind });
     if (payload.kind === 'assets') {
       store.setSelection(kind, payload.ids, payload.ids[0] ?? null);
       const moved = store.moveSelectionToFolder(kind, targetFolderId);
@@ -160,7 +185,27 @@ export function AssetExplorer({ kind, title }: Props) {
     const isOpen = expanded[folderId] ?? depth === 0;
     return (
       <div key={folderId} style={{ marginLeft: depth * 12 }} className="space-y-1">
-        <div className="flex items-center gap-1">
+        <div
+          className="relative flex items-center gap-1 pointer-events-auto"
+          onDragEnter={(event) => {
+            const payload = readDragPayload(event);
+            if (!canDropOnFolder(payload, folder.id)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            setHoverFolderId(folder.id);
+          }}
+          onDragOver={(event) => {
+            const payload = readDragPayload(event);
+            if (!canDropOnFolder(payload, folder.id)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            event.dataTransfer.dropEffect = 'move';
+            setHoverFolderId(folder.id);
+            if (DEBUG_DND) console.log('[AssetExplorer:dnd] dragover', { folderId: folder.id, kind: payload?.kind });
+          }}
+          onDragLeave={() => setHoverFolderId((prev) => (prev === folder.id ? null : prev))}
+          onDrop={(event) => onDropOnFolder(event, folder.id)}
+        >
           {childFolders.length > 0 ? (
             <button className="h-5 w-5 rounded border border-slate-700 bg-slate-800 text-xs" onClick={() => store.toggleExpanded(folderId, kind)}>{isOpen ? '▾' : '▸'}</button>
           ) : <span className="inline-block h-5 w-5" />}
@@ -171,19 +216,13 @@ export function AssetExplorer({ kind, title }: Props) {
             onDoubleClick={() => renameItem(folder)}
             onDragStart={(event) => {
               if (folder.id === explorer.rootId) return;
+              const payload = { kind: 'assetFolders', ids: [folder.id] } satisfies DragPayload;
               event.dataTransfer.effectAllowed = 'move';
-              event.dataTransfer.setData('application/json', JSON.stringify({ kind: 'assetFolders', ids: [folder.id] } satisfies DragPayload));
+              const serialized = JSON.stringify(payload);
+              event.dataTransfer.setData('application/json', serialized);
+              event.dataTransfer.setData('text/plain', serialized);
+              if (DEBUG_DND) console.log('[AssetExplorer:dnd] dragstart', payload);
             }}
-            onDragOver={(event) => {
-              const payload = parsePayload(event);
-              if (canDropOnFolder(payload, folder.id)) {
-                event.preventDefault();
-                event.dataTransfer.dropEffect = 'move';
-                setHoverFolderId(folder.id);
-              }
-            }}
-            onDragLeave={() => setHoverFolderId((prev) => (prev === folder.id ? null : prev))}
-            onDrop={(event) => onDropOnFolder(event, folder.id)}
           >
             {folder.name}
           </button>
@@ -197,43 +236,37 @@ export function AssetExplorer({ kind, title }: Props) {
     <section className="grid grid-cols-1 gap-3 rounded-xl border border-slate-800 bg-slate-900 p-3 lg:grid-cols-[280px_1fr]">
       <aside className="rounded-lg border border-slate-800 bg-slate-950 p-3">
         <h3 className="mb-2 font-semibold">{title} Folders</h3>
+        <div
+          className={`mb-2 rounded border px-2 py-1 text-xs ${hoverFolderId === explorer.rootId ? 'border-emerald-500/70 bg-emerald-500/10 text-emerald-200' : 'border-slate-700 text-slate-400'}`}
+          onDragEnter={(event) => {
+            const payload = readDragPayload(event);
+            if (!canDropOnFolder(payload, explorer.rootId)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            setHoverFolderId(explorer.rootId);
+          }}
+          onDragOver={(event) => {
+            const payload = readDragPayload(event);
+            if (!canDropOnFolder(payload, explorer.rootId)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            event.dataTransfer.dropEffect = 'move';
+            setHoverFolderId(explorer.rootId);
+            if (DEBUG_DND) console.log('[AssetExplorer:dnd] dragover', { folderId: 'root', kind: payload?.kind });
+          }}
+          onDragLeave={() => setHoverFolderId((prev) => (prev === explorer.rootId ? null : prev))}
+          onDrop={onDropOnRoot}
+        >
+          Root
+        </div>
         {renderTree(explorer.rootId)}
       </aside>
       <div
-        className={`rounded-lg border bg-slate-950 p-3 ${hoverFolderId === explorer.rootId ? 'border-emerald-500/80 ring-2 ring-emerald-500/30' : 'border-slate-800'}`}
+        className="rounded-lg border border-slate-800 bg-slate-950 p-3"
         onClick={(event) => {
           if (event.target === event.currentTarget) store.clearSelection(kind);
         }}
-        onDragOver={(event) => {
-          const payload = parsePayload(event);
-          if (canDropOnFolder(payload, explorer.rootId)) {
-            event.preventDefault();
-            event.dataTransfer.dropEffect = 'move';
-            setHoverFolderId(explorer.rootId);
-          }
-        }}
-        onDragLeave={() => {
-          setHoverFolderId((prev) => (prev === explorer.rootId ? null : prev));
-        }}
-        onDrop={(event) => {
-          event.preventDefault();
-          setHoverFolderId(null);
-          const payload = parsePayload(event);
-          if (!payload) return;
-          if (payload.kind === 'assets') {
-            store.setSelection(kind, payload.ids, payload.ids[0] ?? null);
-            const moved = store.moveSelectionToFolder(kind, null);
-            if (moved) setCurrentFolderId(explorer.rootId);
-            return;
-          }
-          const folderId = payload.ids[0];
-          if (!folderId || !store.canMoveNode(folderId, explorer.rootId, kind).ok) return;
-          if (store.moveNode(folderId, explorer.rootId, kind)) setCurrentFolderId(explorer.rootId);
-        }}
       >
-        <div className={`mb-2 rounded border px-2 py-1 text-xs ${hoverFolderId === explorer.rootId ? 'border-emerald-500/70 bg-emerald-500/10 text-emerald-200' : 'border-slate-700 text-slate-400'}`}>
-          Drop here to move to Root
-        </div>
         <p className="mb-1 text-xs text-slate-400">Breadcrumb: <span className="font-semibold text-slate-200">{uploadPath || title}</span></p>
         <p className="mb-1 text-xs text-slate-400">Uploading to: <span className="font-semibold text-slate-200">{uploadPath || title}</span></p>
         <p className="mb-2 text-xs text-slate-400">Selected: <span className="font-semibold text-slate-200">{selectedIds.length}</span></p>
@@ -292,11 +325,12 @@ export function AssetExplorer({ kind, title }: Props) {
                   if (!selectedSet.has(item.id)) {
                     store.setSelection(kind, [item.id], item.id);
                   }
+                  const payload = { kind: item.type === 'folder' ? 'assetFolders' : 'assets', ids: item.type === 'folder' ? [item.id] : ids } satisfies DragPayload;
                   event.dataTransfer.effectAllowed = 'move';
-                  event.dataTransfer.setData(
-                    'application/json',
-                    JSON.stringify({ kind: item.type === 'folder' ? 'assetFolders' : 'assets', ids: item.type === 'folder' ? [item.id] : ids } satisfies DragPayload),
-                  );
+                  const serialized = JSON.stringify(payload);
+                  event.dataTransfer.setData('application/json', serialized);
+                  event.dataTransfer.setData('text/plain', serialized);
+                  if (DEBUG_DND) console.log('[AssetExplorer:dnd] dragstart', payload);
                 }}
                 onClick={(event) => {
                   if (event.shiftKey) {
@@ -314,11 +348,13 @@ export function AssetExplorer({ kind, title }: Props) {
                 }}
                 onDragOver={(event) => {
                   if (item.type === 'folder') {
-                    const payload = parsePayload(event);
+                    const payload = readDragPayload(event);
                     if (canDropOnFolder(payload, item.id)) {
                       event.preventDefault();
+                      event.stopPropagation();
                       event.dataTransfer.dropEffect = 'move';
                       setHoverFolderId(item.id);
+                      if (DEBUG_DND) console.log('[AssetExplorer:dnd] dragover', { folderId: item.id, kind: payload?.kind });
                     }
                   }
                 }}
