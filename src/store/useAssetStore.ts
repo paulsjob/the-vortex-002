@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { AssetItem, ExplorerNode, ExplorerState, FileNode, FolderNode } from '../types/domain';
 import type { SavedTemplate } from './useTemplateStore';
+import { deleteBlob, getBlob, putBlob } from './blobDb';
 
 const STORAGE_KEYS = {
   branded: 'renderless.fileExplorer.v2',
@@ -16,6 +17,18 @@ type PersistedBlob = {
   brandedExplorer: ExplorerState;
   fontsExplorer: ExplorerState;
   templateExplorer: ExplorerState;
+};
+
+type AssetRecord = {
+  id: string;
+  name: string;
+  kind: 'image' | 'svg' | 'font' | 'other';
+  mime: string;
+  size: number;
+  folderId: string;
+  createdAt: number;
+  blobKey: string;
+  url?: string;
 };
 
 const mkFolder = (name: string, parentId: string | null, id: string): FolderNode => ({
@@ -56,11 +69,30 @@ const normalizeExplorer = (value: unknown, fallback: ExplorerState, fileKind: Fi
         };
       }
       if (base.type === 'file') {
+        const incomingKind = (base as FileNode).kind ?? fileKind;
+        const mime = typeof (base as FileNode).mime === 'string' ? (base as FileNode).mime : '';
+        const size = typeof (base as FileNode).size === 'number' ? (base as FileNode).size : 0;
+        const rawBlobKey = (base as FileNode).blobKey;
+        const blobKey = typeof rawBlobKey === 'string' && rawBlobKey.trim()
+          ? rawBlobKey
+          : base.id;
+        const rawSrc = (base as FileNode).src;
+        const maybeSrc = typeof rawSrc === 'string' && !rawSrc.startsWith('data:')
+          ? rawSrc
+          : undefined;
+
         return {
-          ...base,
-          kind: (base as FileNode).kind ?? fileKind,
+          id: base.id,
+          type: 'file',
+          kind: incomingKind,
+          name: base.name,
           createdAt: base.createdAt || new Date().toISOString(),
           parentId: base.parentId || fallback.rootId,
+          dimension: (base as FileNode).dimension ?? 'unknown',
+          src: fileKind === 'template' ? (base as FileNode).src : maybeSrc,
+          mime,
+          size,
+          blobKey,
         };
       }
       return null;
@@ -86,7 +118,25 @@ const loadExplorer = (key: string, fallback: ExplorerState, fileKind: FileNode['
 
 const persist = (kind: ExplorerKind, explorer: ExplorerState) => {
   const key = kind === 'branded' ? STORAGE_KEYS.branded : kind === 'fonts' ? STORAGE_KEYS.fonts : STORAGE_KEYS.templates;
-  localStorage.setItem(key, JSON.stringify(explorer));
+  const sanitized = {
+    ...explorer,
+    nodes: explorer.nodes.map((node) => {
+      if (node.type !== 'file' || kind === 'templates') return node;
+      return {
+        id: node.id,
+        type: node.type,
+        kind: node.kind,
+        name: node.name,
+        parentId: node.parentId,
+        dimension: node.dimension,
+        createdAt: node.createdAt,
+        mime: node.mime,
+        size: node.size,
+        blobKey: node.blobKey || node.id,
+      } satisfies Omit<FileNode, 'src'> & { src?: string };
+    }),
+  } satisfies ExplorerState;
+  localStorage.setItem(key, JSON.stringify(sanitized));
 };
 
 const getExplorerKey = (kind: ExplorerKind) => (
@@ -95,11 +145,13 @@ const getExplorerKey = (kind: ExplorerKind) => (
 
 const mapFileToAsset = (node: ExplorerNode): AssetItem | null => {
   if (node.type !== 'file') return null;
+  const src = node.src ?? node.url;
+  if (!src) return null;
   return {
     id: node.id,
     name: node.name,
-    src: node.src,
-    dimension: node.dimension,
+    src,
+    dimension: node.dimension ?? 'unknown',
     createdAt: node.createdAt,
   };
 };
@@ -110,19 +162,46 @@ const extractAssets = (brandedExplorer: ExplorerState, fontsExplorer: ExplorerSt
     .filter((asset): asset is AssetItem => !!asset)
 );
 
-const readFileAsDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onload = () => resolve(String(reader.result || ''));
-  reader.onerror = () => reject(reader.error);
-  reader.readAsDataURL(file);
-});
-
 const detectImageSize = (src: string): Promise<{ width: number; height: number }> => new Promise((resolve) => {
   const img = new Image();
   img.onload = () => resolve({ width: img.naturalWidth || 0, height: img.naturalHeight || 0 });
   img.onerror = () => resolve({ width: 0, height: 0 });
   img.src = src;
 });
+
+const detectImageSizeFromBlob = async (blob: Blob): Promise<{ width: number; height: number }> => {
+  const url = URL.createObjectURL(blob);
+  try {
+    return await detectImageSize(url);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+};
+
+const inferAssetKind = (file: File): AssetRecord['kind'] => {
+  const lowerName = file.name.toLowerCase();
+  if (file.type === 'image/svg+xml' || lowerName.endsWith('.svg')) return 'svg';
+  if (file.type.startsWith('image/')) return 'image';
+  if (file.type.startsWith('font/') || /\.(ttf|otf|woff2?)$/i.test(lowerName)) return 'font';
+  return 'other';
+};
+
+const revokeFileUrl = (node: ExplorerNode | undefined) => {
+  if (node?.type === 'file' && node.url) URL.revokeObjectURL(node.url);
+};
+
+const collectNodeAndDescendantIds = (explorer: ExplorerState, id: string): string[] => {
+  if (id === explorer.rootId) return [];
+  const next = structuredClone(explorer);
+  const doomed = new Set<string>();
+  const walk = (nodeId: string) => {
+    doomed.add(nodeId);
+    const node = next.nodes.find((n) => n.id === nodeId);
+    if (node?.type === 'folder') node.children.forEach(walk);
+  };
+  walk(id);
+  return [...doomed];
+};
 
 const removeNodeFromExplorer = (explorer: ExplorerState, id: string): ExplorerState => {
   if (id === explorer.rootId) return explorer;
@@ -159,7 +238,7 @@ interface AssetStore {
   expandedBranded: Record<string, boolean>;
   expandedFonts: Record<string, boolean>;
   expandedTemplates: Record<string, boolean>;
-  addAsset: (asset: AssetItem, targetFolderId: string, kind: ExplorerKind) => void;
+  addAsset: (asset: AssetItem, metadata: Pick<AssetRecord, 'kind' | 'mime' | 'size' | 'blobKey' | 'url'>, targetFolderId: string, kind: ExplorerKind) => void;
   uploadFiles: (files: File[], targetFolderId: string, kind: ExplorerKind) => Promise<void>;
   addFolder: (name: string, parentId: string, kind: ExplorerKind) => void;
   renameNode: (id: string, name: string, kind: ExplorerKind) => void;
@@ -171,6 +250,7 @@ interface AssetStore {
   resetState: () => void;
   upsertTemplateAsset: (template: SavedTemplate) => void;
   removeTemplateAsset: (templateId: string) => void;
+  hydrateBlobBackedAssets: (kind?: 'branded' | 'fonts') => Promise<void>;
 }
 
 const buildMoveCheck = (explorer: ExplorerState, nodeId: string, targetFolderId: string): MoveCheck => {
@@ -210,7 +290,7 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
   expandedBranded: { [brandedExplorer.rootId]: true },
   expandedFonts: { [fontsExplorer.rootId]: true },
   expandedTemplates: { [templateExplorer.rootId]: true },
-  addAsset: (asset, targetFolderId, kind) => {
+  addAsset: (asset, metadata, targetFolderId, kind) => {
     const key = getExplorerKey(kind);
     const next = structuredClone(get()[key]);
     const folder = next.nodes.find((n) => n.id === targetFolderId && n.type === 'folder');
@@ -221,11 +301,16 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
       id: asset.id,
       type: 'file',
       kind: kind === 'fonts' ? 'font' : kind === 'templates' ? 'template' : 'asset',
+      assetKind: metadata.kind,
       name: asset.name,
       parentId: targetFolderId,
       src: asset.src,
+      url: metadata.url,
       dimension: asset.dimension,
       createdAt: asset.createdAt,
+      mime: metadata.mime,
+      size: metadata.size,
+      blobKey: metadata.blobKey,
     });
 
     persist(kind, next);
@@ -241,16 +326,38 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
   },
   uploadFiles: async (files, targetFolderId, kind) => {
     for (const file of files) {
-      const src = await readFileAsDataUrl(file);
-      const { width, height } = await detectImageSize(src);
+      const assetId = `${kind}-file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      try {
+        await putBlob(assetId, file);
+      } catch (error) {
+        console.error('Failed to persist uploaded file in IndexedDB.', error);
+        window.alert(`Could not store "${file.name}" locally. Please try again.`);
+        continue;
+      }
+
+      const fileKind = inferAssetKind(file);
+      const canPreview = fileKind === 'image' || fileKind === 'svg';
+      const { width, height } = canPreview ? await detectImageSizeFromBlob(file) : { width: 0, height: 0 };
+      const objectUrl = canPreview ? URL.createObjectURL(file) : undefined;
       const asset: AssetItem = {
-        id: `${kind}-file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        id: assetId,
         name: file.name,
-        src,
+        src: objectUrl ?? '',
         dimension: width && height ? `${width}x${height}` : 'unknown',
         createdAt: new Date().toISOString(),
       };
-      get().addAsset(asset, targetFolderId, kind);
+      const metadata: AssetRecord = {
+        id: assetId,
+        name: file.name,
+        kind: fileKind,
+        mime: file.type || 'application/octet-stream',
+        size: file.size,
+        folderId: targetFolderId,
+        createdAt: Date.now(),
+        blobKey: assetId,
+        url: objectUrl,
+      };
+      get().addAsset({ ...asset, src: metadata.url ?? '' }, metadata, targetFolderId, kind);
     }
   },
   addFolder: (name, parentId, kind) => {
@@ -290,6 +397,12 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
     });
   },
   deleteNode: (id, kind) => {
+    const explorer = get()[getExplorerKey(kind)];
+    const doomedIds = collectNodeAndDescendantIds(explorer, id);
+    doomedIds
+      .map((nodeId) => explorer.nodes.find((node) => node.id === nodeId))
+      .forEach((node) => revokeFileUrl(node));
+
     const key = getExplorerKey(kind);
     const next = removeNodeFromExplorer(get()[key], id);
     persist(kind, next);
@@ -302,6 +415,16 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
         kind === 'templates' ? next : get().templateExplorer,
       ),
     });
+
+    if (kind !== 'templates') {
+      doomedIds
+        .map((nodeId) => explorer.nodes.find((node) => node.type === 'file' && node.id === nodeId))
+        .filter((node): node is FileNode => Boolean(node))
+        .forEach((node) => {
+          const blobKey = node.blobKey || node.id;
+          void deleteBlob(blobKey).catch((error) => console.error('Failed to delete blob from IndexedDB.', error));
+        });
+    }
   },
   canMoveNode: (nodeId, targetFolderId, kind) => {
     const key = getExplorerKey(kind);
@@ -353,6 +476,8 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
     localStorage.removeItem(STORAGE_KEYS.branded);
     localStorage.removeItem(STORAGE_KEYS.fonts);
     localStorage.removeItem(STORAGE_KEYS.templates);
+    [...get().brandedExplorer.nodes, ...get().fontsExplorer.nodes]
+      .forEach((node) => revokeFileUrl(node));
     set({
       brandedExplorer: structuredClone(INITIAL_BRANDED),
       fontsExplorer: structuredClone(INITIAL_FONTS),
@@ -412,4 +537,42 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
       assets: extractAssets(get().brandedExplorer, get().fontsExplorer, next),
     });
   },
+  hydrateBlobBackedAssets: async (kind = 'branded') => {
+    const key = getExplorerKey(kind);
+    const explorer = get()[key];
+    const files = explorer.nodes.filter((node): node is FileNode => node.type === 'file');
+    if (!files.length) return;
+
+    const updates = await Promise.all(files.map(async (fileNode) => {
+      if (fileNode.url || fileNode.src) return null;
+      const blob = await getBlob(fileNode.blobKey || fileNode.id);
+      if (!blob) return null;
+      return {
+        id: fileNode.id,
+        url: URL.createObjectURL(blob),
+      };
+    }));
+
+    const concreteUpdates = updates.filter((entry): entry is { id: string; url: string } => Boolean(entry));
+    if (!concreteUpdates.length) return;
+
+    const next = structuredClone(get()[key]);
+    next.nodes = next.nodes.map((node) => {
+      if (node.type !== 'file') return node;
+      const match = concreteUpdates.find((entry) => entry.id === node.id);
+      return match ? { ...node, url: match.url, src: match.url } : node;
+    });
+
+    set({
+      [key]: next,
+      assets: extractAssets(
+        kind === 'branded' ? next : get().brandedExplorer,
+        kind === 'fonts' ? next : get().fontsExplorer,
+        get().templateExplorer,
+      ),
+    } as Partial<AssetStore>);
+  },
 }));
+
+void useAssetStore.getState().hydrateBlobBackedAssets('branded');
+void useAssetStore.getState().hydrateBlobBackedAssets('fonts');

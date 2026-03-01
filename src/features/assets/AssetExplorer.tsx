@@ -189,7 +189,16 @@ export function AssetExplorer({ kind, title }: Props) {
                 if (item.type === 'folder') onDropOnFolder(event, item.id);
               }}
             >
-              <span>{item.type === 'folder' ? `📁 ${item.name}` : `🖼️ ${item.name}`}</span>
+              <span className="flex items-center gap-2">
+                {item.type === 'folder' ? (
+                  <span>📁</span>
+                ) : item.kind === 'asset' && item.src ? (
+                  <img src={item.src} alt={item.name} className="h-8 w-8 rounded border border-slate-700 object-cover" />
+                ) : (
+                  <span>🖼️</span>
+                )}
+                <span>{item.name}</span>
+              </span>
               <span>{item.type === 'folder' ? 'Folder' : item.kind}</span>
               <span>{item.type === 'folder' ? `${item.children.length} item(s)` : item.dimension}</span>
               <span>{new Date(item.createdAt).toLocaleDateString()}</span>

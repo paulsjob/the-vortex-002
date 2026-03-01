@@ -23,11 +23,16 @@ export interface FileNode {
   id: string;
   type: 'file';
   kind: 'asset' | 'font' | 'template';
+  assetKind?: 'image' | 'svg' | 'font' | 'other';
   name: string;
   parentId: string;
-  src: string;
+  src?: string;
+  url?: string;
   dimension: string;
   createdAt: string;
+  mime?: string;
+  size?: number;
+  blobKey?: string;
 }
 
 export type ExplorerNode = FolderNode | FileNode;
