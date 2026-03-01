@@ -198,11 +198,14 @@ export function ControlRoomRoute() {
               <p className="text-xs text-slate-400">Select a template from the folder tree to enable TAKE.</p>
             )}
             <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">Sponsor</label>
-            <select className="w-full rounded border border-slate-600 bg-slate-950 px-2 py-2 text-sm text-slate-100" value={previewSponsor} onChange={(e) => {
-              const sponsor = e.target.value;
-              updateSelections({ sponsor });
+            <select className="w-full rounded border border-slate-600 bg-slate-950 px-2 py-2 text-sm text-slate-100" value={previewSponsor ?? ''} onChange={(e) => {
+              const sponsor = e.target.value || null;
+              if (sponsor) {
+                updateSelections({ sponsor });
+              }
               setPreviewSponsor(sponsor);
             }}>
+              <option value="">Off</option>
               {sponsorChoices.map((sponsor) => <option key={sponsor} value={sponsor}>{sponsor}</option>)}
             </select>
           </div>
@@ -223,7 +226,11 @@ export function ControlRoomRoute() {
 
         <section className="flex h-full min-h-0 flex-col gap-4 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-4">
           <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_280px_minmax(0,1fr)] gap-4">
-            <TemplatePreview template={previewTemplate} label="PREVIEW" sponsor={previewSponsor} tone="preview" />
+            <div className="min-h-0" style={{ aspectRatio: '16 / 9' }}>
+              <div className="h-full w-full">
+                <TemplatePreview template={previewTemplate} label="PREVIEW" sponsor={previewSponsor} tone="preview" />
+              </div>
+            </div>
 
             <div className="flex min-h-0 flex-col rounded-md border border-slate-700 bg-slate-900 p-3">
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Transitions</p>
@@ -275,13 +282,15 @@ export function ControlRoomRoute() {
               </button>
             </div>
 
-            <div className="relative min-h-0">
+            <div className="relative min-h-0" style={{ aspectRatio: '16 / 9' }}>
               {blackoutActive && (
                 <div className="pointer-events-none absolute inset-0 z-10 rounded-md border border-slate-800 bg-black/95 text-center text-sm font-semibold uppercase tracking-[0.25em] text-white">
                   <div className="flex h-full items-center justify-center">Blackout</div>
                 </div>
               )}
-              <TemplatePreview template={programTemplate} label="PROGRAM" sponsor={programSponsor ?? 'Renderless Sports'} tone="program" />
+              <div className="h-full w-full">
+                <TemplatePreview template={programTemplate} label="PROGRAM" sponsor={programSponsor} tone="program" />
+              </div>
             </div>
           </div>
 
