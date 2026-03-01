@@ -15,7 +15,7 @@ interface PlayoutStore {
   vortexBindings: Record<string, VortexBindingState | undefined>;
   previewTemplate: SavedTemplate | null;
   programTemplate: SavedTemplate | null;
-  previewSponsor: string;
+  previewSponsor: string | null;
   programSponsor: string | null;
   transitionType: TransitionType;
   transitionDurationMs: number;
@@ -23,7 +23,7 @@ interface PlayoutStore {
   fontOverrides: Record<string, FontOverride | undefined>;
   vortexBindingSchemas: Record<string, BindingSchema | undefined>;
   setPreviewTemplate: (template: SavedTemplate | null) => void;
-  setPreviewSponsor: (sponsor: string) => void;
+  setPreviewSponsor: (sponsor: string | null) => void;
   setTransitionType: (type: TransitionType) => void;
   setTransitionDurationMs: (ms: number) => void;
   takeToProgram: () => void;
