@@ -8,7 +8,7 @@ interface Props { kind: 'branded' | 'fonts' | 'templates'; title: string }
 const iconBtn = 'h-8 w-8 rounded border border-slate-700 bg-slate-900 text-sm text-slate-200 hover:bg-slate-800 disabled:opacity-50';
 
 type DragPayload = {
-  kind: 'assets' | 'templates';
+  kind: 'assets' | 'assetFolders';
   ids: string[];
 };
 
@@ -125,14 +125,30 @@ export function AssetExplorer({ kind, title }: Props) {
     }
   };
 
+  const canDropOnFolder = (payload: DragPayload | null, targetFolderId: string) => {
+    if (!payload) return false;
+    if (payload.kind === 'assets') return true;
+    if (payload.kind === 'assetFolders') {
+      const folderId = payload.ids[0];
+      return Boolean(folderId && store.canMoveNode(folderId, targetFolderId, kind).ok);
+    }
+    return false;
+  };
+
   const onDropOnFolder = (event: DragEvent, targetFolderId: string) => {
     event.preventDefault();
-    event.stopPropagation();
     setHoverFolderId(null);
     const payload = parsePayload(event);
-    if (!payload || payload.kind !== 'assets') return;
-    const moved = store.moveSelectionToFolder(kind, targetFolderId);
-    if (moved) setCurrentFolderId(targetFolderId);
+    if (!payload) return;
+    if (payload.kind === 'assets') {
+      store.setSelection(kind, payload.ids, payload.ids[0] ?? null);
+      const moved = store.moveSelectionToFolder(kind, targetFolderId);
+      if (moved) setCurrentFolderId(targetFolderId);
+      return;
+    }
+    const folderId = payload.ids[0];
+    if (!folderId || !store.canMoveNode(folderId, targetFolderId, kind).ok) return;
+    if (store.moveNode(folderId, targetFolderId, kind)) setCurrentFolderId(targetFolderId);
   };
 
   const renderTree = (folderId: string, depth = 0): JSX.Element | null => {
@@ -150,12 +166,19 @@ export function AssetExplorer({ kind, title }: Props) {
           ) : <span className="inline-block h-5 w-5" />}
           <button
             className={`w-full rounded border px-2 py-1 text-left ${uploadFolderId === folder.id ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'} ${hoverFolderId === folder.id ? 'ring-2 ring-emerald-500/70' : ''}`}
+            draggable={folder.id !== explorer.rootId}
             onClick={() => setCurrentFolderId(folder.id)}
             onDoubleClick={() => renameItem(folder)}
+            onDragStart={(event) => {
+              if (folder.id === explorer.rootId) return;
+              event.dataTransfer.effectAllowed = 'move';
+              event.dataTransfer.setData('application/json', JSON.stringify({ kind: 'assetFolders', ids: [folder.id] } satisfies DragPayload));
+            }}
             onDragOver={(event) => {
               const payload = parsePayload(event);
-              if (payload?.kind === 'assets') {
+              if (canDropOnFolder(payload, folder.id)) {
                 event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
                 setHoverFolderId(folder.id);
               }
             }}
@@ -177,23 +200,40 @@ export function AssetExplorer({ kind, title }: Props) {
         {renderTree(explorer.rootId)}
       </aside>
       <div
-        className="rounded-lg border border-slate-800 bg-slate-950 p-3"
+        className={`rounded-lg border bg-slate-950 p-3 ${hoverFolderId === explorer.rootId ? 'border-emerald-500/80 ring-2 ring-emerald-500/30' : 'border-slate-800'}`}
         onClick={(event) => {
           if (event.target === event.currentTarget) store.clearSelection(kind);
         }}
         onDragOver={(event) => {
           const payload = parsePayload(event);
-          if (payload?.kind === 'assets') event.preventDefault();
+          if (canDropOnFolder(payload, explorer.rootId)) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+            setHoverFolderId(explorer.rootId);
+          }
+        }}
+        onDragLeave={() => {
+          setHoverFolderId((prev) => (prev === explorer.rootId ? null : prev));
         }}
         onDrop={(event) => {
           event.preventDefault();
           setHoverFolderId(null);
           const payload = parsePayload(event);
-          if (!payload || payload.kind !== 'assets') return;
-          const moved = store.moveSelectionToFolder(kind, null);
-          if (moved) setCurrentFolderId(explorer.rootId);
+          if (!payload) return;
+          if (payload.kind === 'assets') {
+            store.setSelection(kind, payload.ids, payload.ids[0] ?? null);
+            const moved = store.moveSelectionToFolder(kind, null);
+            if (moved) setCurrentFolderId(explorer.rootId);
+            return;
+          }
+          const folderId = payload.ids[0];
+          if (!folderId || !store.canMoveNode(folderId, explorer.rootId, kind).ok) return;
+          if (store.moveNode(folderId, explorer.rootId, kind)) setCurrentFolderId(explorer.rootId);
         }}
       >
+        <div className={`mb-2 rounded border px-2 py-1 text-xs ${hoverFolderId === explorer.rootId ? 'border-emerald-500/70 bg-emerald-500/10 text-emerald-200' : 'border-slate-700 text-slate-400'}`}>
+          Drop here to move to Root
+        </div>
         <p className="mb-1 text-xs text-slate-400">Breadcrumb: <span className="font-semibold text-slate-200">{uploadPath || title}</span></p>
         <p className="mb-1 text-xs text-slate-400">Uploading to: <span className="font-semibold text-slate-200">{uploadPath || title}</span></p>
         <p className="mb-2 text-xs text-slate-400">Selected: <span className="font-semibold text-slate-200">{selectedIds.length}</span></p>
@@ -253,7 +293,10 @@ export function AssetExplorer({ kind, title }: Props) {
                     store.setSelection(kind, [item.id], item.id);
                   }
                   event.dataTransfer.effectAllowed = 'move';
-                  event.dataTransfer.setData('application/json', JSON.stringify({ kind: 'assets', ids } satisfies DragPayload));
+                  event.dataTransfer.setData(
+                    'application/json',
+                    JSON.stringify({ kind: item.type === 'folder' ? 'assetFolders' : 'assets', ids: item.type === 'folder' ? [item.id] : ids } satisfies DragPayload),
+                  );
                 }}
                 onClick={(event) => {
                   if (event.shiftKey) {
@@ -272,8 +315,9 @@ export function AssetExplorer({ kind, title }: Props) {
                 onDragOver={(event) => {
                   if (item.type === 'folder') {
                     const payload = parsePayload(event);
-                    if (payload?.kind === 'assets') {
+                    if (canDropOnFolder(payload, item.id)) {
                       event.preventDefault();
+                      event.dataTransfer.dropEffect = 'move';
                       setHoverFolderId(item.id);
                     }
                   }
