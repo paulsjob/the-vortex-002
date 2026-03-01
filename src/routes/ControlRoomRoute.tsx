@@ -123,12 +123,20 @@ export function ControlRoomRoute() {
   };
 
   return (
-    <section className="grid h-[calc(100vh-11.5rem)] min-h-[560px] gap-4 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-4 xl:grid-cols-[300px_minmax(0,1fr)]">
+    <section className="grid h-[calc(100vh-11.5rem)] min-h-[560px] grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-4">
+      <div>
+        <h2 className="text-lg font-semibold text-slate-100">Control Room</h2>
+      </div>
+      <div className="grid min-h-0 gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
       <aside className="grid h-full grid-rows-[minmax(0,1fr)_auto_auto] gap-3 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-3">
         <div className="min-h-0 rounded-md border border-slate-700 bg-slate-900 p-3">
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Template Library</p>
-          <div className="mt-2 h-full overflow-auto pr-1">{renderTreeNode(tree)}</div>
+          <div className="mt-2 h-full overflow-hidden pr-1">{renderTreeNode(tree)}</div>
         </div>
+
+        {!previewTemplate && (
+          <p className="rounded-md border border-slate-700 bg-slate-900 p-3 text-xs text-slate-400">Select a template from the folder tree to enable operator controls.</p>
+        )}
 
         {previewTemplate && (
           <div className="space-y-2 rounded-md border border-slate-700 bg-slate-900 p-3">
@@ -182,6 +190,7 @@ export function ControlRoomRoute() {
           </div>
         </div>
       </section>
+      </div>
     </section>
   );
 }

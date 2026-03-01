@@ -2,14 +2,14 @@ import { useMemo, useRef, useState } from 'react';
 import { useAssetStore } from '../../store/useAssetStore';
 import type { ExplorerNode } from '../../types/domain';
 
-interface Props { kind: 'branded' | 'templates'; title: string }
+interface Props { kind: 'branded' | 'fonts' | 'templates'; title: string }
 
 const iconBtn = 'h-8 w-8 rounded border border-slate-700 bg-slate-900 text-sm text-slate-200 hover:bg-slate-800 disabled:opacity-50';
 
 export function AssetExplorer({ kind, title }: Props) {
   const store = useAssetStore();
-  const explorer = kind === 'branded' ? store.brandedExplorer : store.templateExplorer;
-  const expanded = kind === 'branded' ? store.expandedBranded : store.expandedTemplates;
+  const explorer = kind === 'branded' ? store.brandedExplorer : kind === 'fonts' ? store.fontsExplorer : store.templateExplorer;
+  const expanded = kind === 'branded' ? store.expandedBranded : kind === 'fonts' ? store.expandedFonts : store.expandedTemplates;
   const [currentFolderId, setCurrentFolderId] = useState(explorer.rootId);
   const [query, setQuery] = useState('');
   const uploadRef = useRef<HTMLInputElement | null>(null);
@@ -76,7 +76,7 @@ export function AssetExplorer({ kind, title }: Props) {
           <input
             ref={uploadRef}
             type="file"
-            accept="image/png,image/jpeg,.png,.jpg,.jpeg"
+            accept={kind === 'fonts' ? '.ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2,*/*' : 'image/png,image/jpeg,.png,.jpg,.jpeg'}
             multiple
             className="hidden"
             onChange={async (event) => {

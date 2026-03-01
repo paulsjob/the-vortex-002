@@ -27,7 +27,7 @@ type AssetBin = 'graphics' | 'videos' | 'templates';
 
 type Guide = {
   id: string;
-  orientation: 'vertical' | 'horizontal';
+  axis: 'x' | 'y';
   position: number;
 };
 
@@ -157,7 +157,7 @@ export function DesignRoute() {
     anchorX: number;
     anchorY: number;
   } | null>(null);
-  const guideDragRef = useRef<{ id: string; orientation: 'vertical' | 'horizontal' } | null>(null);
+  const guideDragRef = useRef<{ id: string; axis: 'x' | 'y' } | null>(null);
   const measureCtxRef = useRef<CanvasRenderingContext2D | null>(null);
 
   const assetById = useMemo(() => new Map(assetStore.assets.map((a) => [a.id, a])), [assetStore.assets]);
@@ -236,11 +236,11 @@ export function DesignRoute() {
         return;
       }
       setGuides(list
-        .filter((guide) => guide && (guide.orientation === 'vertical' || guide.orientation === 'horizontal') && Number.isFinite(guide.position))
+        .filter((guide) => guide && (guide.axis === 'x' || guide.axis === 'y') && Number.isFinite(guide.position))
         .map((guide) => ({
           id: guide.id || `guide-${Date.now()}-${Math.random()}`,
-          orientation: guide.orientation,
-          position: clampGuidePosition(guide.orientation, guide.position),
+          axis: guide.axis,
+          position: clampGuidePosition(guide.axis, guide.position),
         })));
     } catch {
       setGuides([]);
@@ -248,7 +248,7 @@ export function DesignRoute() {
   }, [loadedTemplateId]);
 
   useEffect(() => {
-    setGuides((prev) => prev.map((guide) => ({ ...guide, position: clampGuidePosition(guide.orientation, guide.position) })));
+    setGuides((prev) => prev.map((guide) => ({ ...guide, position: clampGuidePosition(guide.axis, guide.position) })));
   }, [canvasWidth, canvasHeight]);
 
   useEffect(() => {
@@ -367,30 +367,30 @@ export function DesignRoute() {
 
   const getTextContent = (layer: Extract<Layer, { kind: 'text' }>) => getLiveTextContent(layer, engineGame);
 
-  const clampGuidePosition = (orientation: 'vertical' | 'horizontal', value: number) => {
-    const max = orientation === 'vertical' ? canvasWidth : canvasHeight;
+  const clampGuidePosition = (axis: 'x' | 'y', value: number) => {
+    const max = axis === 'x' ? canvasWidth : canvasHeight;
     return Math.max(0, Math.min(max, Math.round(value)));
   };
 
-  const getGuidePositionFromPointer = (orientation: 'vertical' | 'horizontal', clientX: number, clientY: number) => {
+  const getGuidePositionFromPointer = (axis: 'x' | 'y', clientX: number, clientY: number) => {
     const stage = stageRef.current;
     if (!stage) return null;
     const rect = stage.getBoundingClientRect();
-    const raw = orientation === 'vertical'
+    const raw = axis === 'x'
       ? (clientX - rect.left) / stageScale
       : (clientY - rect.top) / stageScale;
-    return clampGuidePosition(orientation, raw);
+    return clampGuidePosition(axis, raw);
   };
 
   const updateGuidePosition = (id: string, position: number) => {
     setGuides((prev) => prev.map((guide) => (guide.id === id ? { ...guide, position } : guide)));
   };
 
-  const beginGuidePointerMove = (guideId: string, orientation: 'vertical' | 'horizontal') => {
-    guideDragRef.current = { id: guideId, orientation };
+  const beginGuidePointerMove = (guideId: string, axis: 'x' | 'y') => {
+    guideDragRef.current = { id: guideId, axis };
     const onMove = (move: globalThis.MouseEvent) => {
       if (!guideDragRef.current) return;
-      const nextPosition = getGuidePositionFromPointer(orientation, move.clientX, move.clientY);
+      const nextPosition = getGuidePositionFromPointer(axis, move.clientX, move.clientY);
       if (nextPosition === null) return;
       updateGuidePosition(guideId, nextPosition);
       setGuideReadout({ x: move.clientX + 10, y: move.clientY + 10, value: nextPosition });
@@ -399,7 +399,7 @@ export function DesignRoute() {
       const stage = stageRef.current;
       if (stage) {
         const rect = stage.getBoundingClientRect();
-        const shouldDelete = orientation === 'vertical'
+        const shouldDelete = axis === 'x'
           ? upEvent.clientX <= rect.left
           : upEvent.clientY <= rect.top;
         if (shouldDelete) {
@@ -416,14 +416,14 @@ export function DesignRoute() {
     window.addEventListener('mouseup', onUp);
   };
 
-  const startGuideFromRuler = (orientation: 'vertical' | 'horizontal', event: ReactMouseEvent) => {
+  const startGuideFromRuler = (axis: 'x' | 'y', event: ReactMouseEvent) => {
     if (event.button !== 0) return;
     event.preventDefault();
-    const startPosition = getGuidePositionFromPointer(orientation, event.clientX, event.clientY);
+    const startPosition = getGuidePositionFromPointer(axis, event.clientX, event.clientY);
     if (startPosition === null) return;
     const guideId = `guide-${Date.now()}`;
-    setGuides((prev) => [...prev, { id: guideId, orientation, position: startPosition }]);
-    beginGuidePointerMove(guideId, orientation);
+    setGuides((prev) => [...prev, { id: guideId, axis, position: startPosition }]);
+    beginGuidePointerMove(guideId, axis);
   };
 
   const onGuideMouseDown = (guide: Guide, event: ReactMouseEvent) => {
@@ -431,17 +431,17 @@ export function DesignRoute() {
     event.preventDefault();
     event.stopPropagation();
     setSelectedGuideId(guide.id);
-    beginGuidePointerMove(guide.id, guide.orientation);
+    beginGuidePointerMove(guide.id, guide.axis);
   };
 
   const onGuideDoubleClick = (guide: Guide, event: ReactMouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
-    const next = window.prompt(`Set ${guide.orientation} guide position in pixels`, String(guide.position));
+    const next = window.prompt(`Set ${guide.axis === 'x' ? 'vertical' : 'horizontal'} guide position in pixels`, String(guide.position));
     if (next === null) return;
     const parsed = Number(next);
     if (!Number.isFinite(parsed)) return;
-    updateGuidePosition(guide.id, clampGuidePosition(guide.orientation, parsed));
+    updateGuidePosition(guide.id, clampGuidePosition(guide.axis, parsed));
   };
 
   const isAreaTextLayer = (layer: Layer): layer is Extract<Layer, { kind: 'text' }> => (
@@ -1192,7 +1192,7 @@ export function DesignRoute() {
                   <div
                     className="absolute top-0 overflow-hidden border-b border-slate-600/80 bg-slate-900/95"
                     style={{ left: `${RULER_SIZE}px`, width: `${canvasWidth * stageScale}px`, height: `${RULER_SIZE}px` }}
-                    onMouseDown={(event) => startGuideFromRuler('horizontal', event)}
+                    onMouseDown={(event) => startGuideFromRuler('y', event)}
                   >
                     {horizontalRulerTicks.map((tick) => (
                       <div key={`hx-${tick.value}`} className="pointer-events-none absolute bottom-0" style={{ left: `${tick.position}px`, height: `${tick.major ? 14 : 8}px`, borderLeft: tick.major ? '1px solid rgba(148,163,184,0.95)' : '1px solid rgba(148,163,184,0.55)' }}>
@@ -1203,7 +1203,7 @@ export function DesignRoute() {
                   <div
                     className="absolute left-0 overflow-hidden border-r border-slate-600/80 bg-slate-900/95"
                     style={{ top: `${RULER_SIZE}px`, width: `${RULER_SIZE}px`, height: `${canvasHeight * stageScale}px` }}
-                    onMouseDown={(event) => startGuideFromRuler('vertical', event)}
+                    onMouseDown={(event) => startGuideFromRuler('x', event)}
                   >
                     {verticalRulerTicks.map((tick) => (
                       <div key={`vy-${tick.value}`} className="pointer-events-none absolute right-0" style={{ top: `${tick.position}px`, width: `${tick.major ? 14 : 8}px`, borderTop: tick.major ? '1px solid rgba(148,163,184,0.95)' : '1px solid rgba(148,163,184,0.55)' }}>
@@ -1215,8 +1215,7 @@ export function DesignRoute() {
               )}
               <div className="absolute" style={{ left: `${rulerOffset}px`, top: `${rulerOffset}px`, width: `${canvasWidth * stageScale}px`, height: `${canvasHeight * stageScale}px` }}>
               <div ref={stageRef} className="relative overflow-hidden rounded border border-slate-500 bg-slate-900 shadow-[0_0_0_1px_rgba(148,163,184,0.25),0_20px_60px_rgba(0,0,0,0.45)]" style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px`, transform: `scale(${stageScale})`, transformOrigin: 'top left' }} onMouseDown={(event) => {
-                const target = event.target as HTMLElement;
-                if (!target.closest('[data-layer-node="true"]') && !target.closest('[data-guide-node="true"]')) {
+                if (event.target === event.currentTarget) {
                   setSelectedLayerIds([]);
                   setSelectedGuideId(null);
                 }
@@ -1226,7 +1225,7 @@ export function DesignRoute() {
                 <div
                   key={guide.id}
                   data-guide-node="true" className="absolute z-50"
-                  style={guide.orientation === 'vertical'
+                  style={guide.axis === 'x'
                     ? { left: `${guide.position}px`, top: 0, width: '1px', height: '100%', background: selectedGuideId === guide.id ? 'rgba(251,191,36,1)' : 'rgba(34,211,238,0.9)', cursor: 'ew-resize' }
                     : { left: 0, top: `${guide.position}px`, width: '100%', height: '1px', background: selectedGuideId === guide.id ? 'rgba(251,191,36,1)' : 'rgba(34,211,238,0.9)', cursor: 'ns-resize' }}
                   onMouseDown={(event) => onGuideMouseDown(guide, event)}
