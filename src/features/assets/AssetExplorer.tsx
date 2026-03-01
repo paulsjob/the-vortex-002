@@ -127,6 +127,8 @@ export function AssetExplorer({ kind, title }: Props) {
     }
   };
 
+  const hasTextPayloadType = (event: DragEvent) => Array.from(event.dataTransfer.types).includes('text/plain');
+
   const canDropOnFolder = (payload: DragPayload | null, targetFolderId: string) => {
     if (!payload) return false;
     if (payload.kind === 'assets') return true;
@@ -145,16 +147,16 @@ export function AssetExplorer({ kind, title }: Props) {
     if (!payload) return;
     if (!canDropOnFolder(payload, explorer.rootId)) return;
     setHoverFolderId(null);
-    if (DEBUG_DND) console.log('[AssetExplorer:dnd] drop', { folderId: 'root', ids: payload.ids, kind: payload.kind });
+    if (DEBUG_DND) console.log('[AssetExplorer:dnd] drop', { folderId: 'root', payload });
     if (payload.kind === 'assets') {
       store.setSelection(kind, payload.ids, payload.ids[0] ?? null);
-      const moved = store.moveNodesToFolder(payload.ids, null, kind);
+      const moved = store.moveNodes(payload.kind, payload.ids, null, kind);
       if (moved) setCurrentFolderId(explorer.rootId);
       return;
     }
     const folderId = payload.ids[0];
     if (!folderId || !store.canMoveFolder(folderId, null, kind).ok) return;
-    if (store.moveFolderToFolder(folderId, null, kind)) setCurrentFolderId(explorer.rootId);
+    if (store.moveFolder(payload.kind, folderId, null, kind)) setCurrentFolderId(explorer.rootId);
   };
 
   const onDropOnFolder = (event: DragEvent, targetFolderId: string) => {
@@ -164,16 +166,16 @@ export function AssetExplorer({ kind, title }: Props) {
     if (!payload) return;
     if (!canDropOnFolder(payload, targetFolderId)) return;
     setHoverFolderId(null);
-    if (DEBUG_DND) console.log('[AssetExplorer:dnd] drop', { folderId: targetFolderId, ids: payload.ids, kind: payload.kind });
+    if (DEBUG_DND) console.log('[AssetExplorer:dnd] drop', { folderId: targetFolderId, payload });
     if (payload.kind === 'assets') {
       store.setSelection(kind, payload.ids, payload.ids[0] ?? null);
-      const moved = store.moveNodesToFolder(payload.ids, targetFolderId, kind);
+      const moved = store.moveNodes(payload.kind, payload.ids, targetFolderId, kind);
       if (moved) setCurrentFolderId(targetFolderId);
       return;
     }
     const folderId = payload.ids[0];
     if (!folderId || !store.canMoveFolder(folderId, targetFolderId, kind).ok) return;
-    if (store.moveFolderToFolder(folderId, targetFolderId, kind)) setCurrentFolderId(targetFolderId);
+    if (store.moveFolder(payload.kind, folderId, targetFolderId, kind)) setCurrentFolderId(targetFolderId);
   };
 
   const renderTree = (folderId: string, depth = 0): JSX.Element | null => {
@@ -189,19 +191,25 @@ export function AssetExplorer({ kind, title }: Props) {
           className="relative flex items-center gap-1 pointer-events-auto"
           onDragEnter={(event) => {
             const payload = readDragPayload(event);
-            if (!canDropOnFolder(payload, folder.id)) return;
+            const canAccept = canDropOnFolder(payload, folder.id) || (!payload && hasTextPayloadType(event));
+            if (!canAccept) return;
             event.preventDefault();
             event.stopPropagation();
             setHoverFolderId(folder.id);
           }}
           onDragOver={(event) => {
             const payload = readDragPayload(event);
-            if (!canDropOnFolder(payload, folder.id)) return;
+            const canAccept = canDropOnFolder(payload, folder.id) || (!payload && hasTextPayloadType(event));
+            if (!canAccept) return;
             event.preventDefault();
             event.stopPropagation();
             event.dataTransfer.dropEffect = 'move';
             setHoverFolderId(folder.id);
-            if (DEBUG_DND) console.log('[AssetExplorer:dnd] dragover', { folderId: folder.id, kind: payload?.kind });
+            if (DEBUG_DND) console.log('[AssetExplorer:dnd] dragover', {
+              folderId: folder.id,
+              payloadKindOrNull: payload?.kind ?? null,
+              types: Array.from(event.dataTransfer.types),
+            });
           }}
           onDragLeave={() => setHoverFolderId((prev) => (prev === folder.id ? null : prev))}
           onDrop={(event) => onDropOnFolder(event, folder.id)}
@@ -240,19 +248,25 @@ export function AssetExplorer({ kind, title }: Props) {
           className={`mb-2 rounded border px-2 py-1 text-xs ${hoverFolderId === explorer.rootId ? 'border-emerald-500/70 bg-emerald-500/10 text-emerald-200' : 'border-slate-700 text-slate-400'}`}
           onDragEnter={(event) => {
             const payload = readDragPayload(event);
-            if (!canDropOnFolder(payload, explorer.rootId)) return;
+            const canAccept = canDropOnFolder(payload, explorer.rootId) || (!payload && hasTextPayloadType(event));
+            if (!canAccept) return;
             event.preventDefault();
             event.stopPropagation();
             setHoverFolderId(explorer.rootId);
           }}
           onDragOver={(event) => {
             const payload = readDragPayload(event);
-            if (!canDropOnFolder(payload, explorer.rootId)) return;
+            const canAccept = canDropOnFolder(payload, explorer.rootId) || (!payload && hasTextPayloadType(event));
+            if (!canAccept) return;
             event.preventDefault();
             event.stopPropagation();
             event.dataTransfer.dropEffect = 'move';
             setHoverFolderId(explorer.rootId);
-            if (DEBUG_DND) console.log('[AssetExplorer:dnd] dragover', { folderId: 'root', kind: payload?.kind });
+            if (DEBUG_DND) console.log('[AssetExplorer:dnd] dragover', {
+              folderId: 'root',
+              payloadKindOrNull: payload?.kind ?? null,
+              types: Array.from(event.dataTransfer.types),
+            });
           }}
           onDragLeave={() => setHoverFolderId((prev) => (prev === explorer.rootId ? null : prev))}
           onDrop={onDropOnRoot}
@@ -349,12 +363,17 @@ export function AssetExplorer({ kind, title }: Props) {
                 onDragOver={(event) => {
                   if (item.type === 'folder') {
                     const payload = readDragPayload(event);
-                    if (canDropOnFolder(payload, item.id)) {
+                    const canAccept = canDropOnFolder(payload, item.id) || (!payload && hasTextPayloadType(event));
+                    if (canAccept) {
                       event.preventDefault();
                       event.stopPropagation();
                       event.dataTransfer.dropEffect = 'move';
                       setHoverFolderId(item.id);
-                      if (DEBUG_DND) console.log('[AssetExplorer:dnd] dragover', { folderId: item.id, kind: payload?.kind });
+                      if (DEBUG_DND) console.log('[AssetExplorer:dnd] dragover', {
+                        folderId: item.id,
+                        payloadKindOrNull: payload?.kind ?? null,
+                        types: Array.from(event.dataTransfer.types),
+                      });
                     }
                   }
                 }}

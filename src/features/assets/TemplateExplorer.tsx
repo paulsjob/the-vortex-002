@@ -71,6 +71,8 @@ export function TemplateExplorer() {
     }
   };
 
+  const hasTextPayloadType = (event: DragEvent) => Array.from(event.dataTransfer.types).includes('text/plain');
+
   const canDropOnFolder = (payload: DragPayload | null, folderId: string): boolean => {
     if (!payload) return false;
     if (payload.kind === 'templates') return true;
@@ -95,7 +97,7 @@ export function TemplateExplorer() {
     if (!payload) return;
     if (!canDropOnRoot(payload)) return;
     setHoverFolderId(null);
-    if (DEBUG_DND) console.log('[TemplateExplorer:dnd] drop', { folderId: 'root', ids: payload.ids, kind: payload.kind });
+    if (DEBUG_DND) console.log('[TemplateExplorer:dnd] drop', { folderId: 'root', payload });
     if (payload.kind === 'templates') {
       templateStore.moveTemplatesToFolder(payload.ids, null);
       templateStore.setSelection(payload.ids, payload.ids[0] ?? null);
@@ -115,7 +117,7 @@ export function TemplateExplorer() {
     if (!payload) return;
     if (!canDropOnFolder(payload, folderId)) return;
     setHoverFolderId(null);
-    if (DEBUG_DND) console.log('[TemplateExplorer:dnd] drop', { folderId, ids: payload.ids, kind: payload.kind });
+    if (DEBUG_DND) console.log('[TemplateExplorer:dnd] drop', { folderId, payload });
     if (payload.kind === 'templates') {
       templateStore.moveTemplatesToFolder(payload.ids, folderId);
       templateStore.setSelection(payload.ids, payload.ids[0] ?? null);
@@ -138,19 +140,25 @@ export function TemplateExplorer() {
           className="relative flex items-center gap-1 pointer-events-auto"
           onDragEnter={(event) => {
             const payload = readDragPayload(event);
-            if (!canDropOnFolder(payload, folder.id)) return;
+            const canAccept = canDropOnFolder(payload, folder.id) || (!payload && hasTextPayloadType(event));
+            if (!canAccept) return;
             event.preventDefault();
             event.stopPropagation();
             setHoverFolderId(folder.id);
           }}
           onDragOver={(event) => {
             const payload = readDragPayload(event);
-            if (!canDropOnFolder(payload, folder.id)) return;
+            const canAccept = canDropOnFolder(payload, folder.id) || (!payload && hasTextPayloadType(event));
+            if (!canAccept) return;
             event.preventDefault();
             event.stopPropagation();
             event.dataTransfer.dropEffect = 'move';
             setHoverFolderId(folder.id);
-            if (DEBUG_DND) console.log('[TemplateExplorer:dnd] dragover', { folderId: folder.id, kind: payload?.kind });
+            if (DEBUG_DND) console.log('[TemplateExplorer:dnd] dragover', {
+              folderId: folder.id,
+              payloadKindOrNull: payload?.kind ?? null,
+              types: Array.from(event.dataTransfer.types),
+            });
           }}
           onDragLeave={() => {
             setHoverFolderId((prev) => (prev === folder.id ? null : prev));
@@ -189,19 +197,25 @@ export function TemplateExplorer() {
           className={`mb-2 rounded border px-2 py-1 text-xs ${hoverFolderId === templateStore.rootId ? 'border-emerald-500/70 bg-emerald-500/10 text-emerald-200' : 'border-slate-700 text-slate-400'}`}
           onDragEnter={(event) => {
             const payload = readDragPayload(event);
-            if (!canDropOnRoot(payload)) return;
+            const canAccept = canDropOnRoot(payload) || (!payload && hasTextPayloadType(event));
+            if (!canAccept) return;
             event.preventDefault();
             event.stopPropagation();
             setHoverFolderId(templateStore.rootId);
           }}
           onDragOver={(event) => {
             const payload = readDragPayload(event);
-            if (!canDropOnRoot(payload)) return;
+            const canAccept = canDropOnRoot(payload) || (!payload && hasTextPayloadType(event));
+            if (!canAccept) return;
             event.preventDefault();
             event.stopPropagation();
             event.dataTransfer.dropEffect = 'move';
             setHoverFolderId(templateStore.rootId);
-            if (DEBUG_DND) console.log('[TemplateExplorer:dnd] dragover', { folderId: 'root', kind: payload?.kind });
+            if (DEBUG_DND) console.log('[TemplateExplorer:dnd] dragover', {
+              folderId: 'root',
+              payloadKindOrNull: payload?.kind ?? null,
+              types: Array.from(event.dataTransfer.types),
+            });
           }}
           onDragLeave={() => {
             setHoverFolderId((prev) => (prev === templateStore.rootId ? null : prev));

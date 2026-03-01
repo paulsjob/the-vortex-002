@@ -14,6 +14,7 @@ const STORAGE_KEYS = {
 type ExplorerKind = 'branded' | 'fonts' | 'templates';
 
 type MoveCheck = { ok: boolean; reason?: string };
+type AssetDragKind = 'assets' | 'assetFolders';
 
 type PersistedBlob = {
   brandedExplorer: ExplorerState;
@@ -299,6 +300,8 @@ interface AssetStore {
   moveNode: (nodeId: string, targetFolderId: string, kind: ExplorerKind) => boolean;
   moveNodesToFolder: (nodeIds: string[], targetFolderId: string | null, kind: ExplorerKind) => boolean;
   moveFolderToFolder: (folderId: string, targetParentId: string | null, kind: ExplorerKind) => boolean;
+  moveNodes: (dragKind: AssetDragKind, nodeIds: string[], targetFolderId: string | null, kind: ExplorerKind) => boolean;
+  moveFolder: (dragKind: AssetDragKind, folderId: string, targetParentId: string | null, kind: ExplorerKind) => boolean;
   toggleExpanded: (id: string, kind: ExplorerKind) => void;
   exportState: () => string;
   resetState: () => void;
@@ -604,6 +607,14 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
     const explorer = get()[key];
     const resolvedTargetParentId = targetParentId ?? explorer.rootId;
     return get().moveNode(folderId, resolvedTargetParentId, kind);
+  },
+  moveNodes: (dragKind, nodeIds, targetFolderId, kind) => {
+    if (dragKind !== 'assets') return false;
+    return get().moveNodesToFolder(nodeIds, targetFolderId, kind);
+  },
+  moveFolder: (dragKind, folderId, targetParentId, kind) => {
+    if (dragKind !== 'assetFolders') return false;
+    return get().moveFolderToFolder(folderId, targetParentId, kind);
   },
   clearSelection: (kind) => set((state) => ({
     selectedIds: { ...state.selectedIds, [kind]: [] },
