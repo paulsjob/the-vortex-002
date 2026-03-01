@@ -32,6 +32,7 @@ export function ControlRoomRoute() {
   const setTransitionType = usePlayoutStore((s) => s.setTransitionType);
   const setTransitionDurationMs = usePlayoutStore((s) => s.setTransitionDurationMs);
   const takeToProgram = usePlayoutStore((s) => s.takeToProgram);
+  const clearProgram = usePlayoutStore((s) => s.clearProgram);
 
   const engineRunning = useDataEngineStore((s) => s.running);
   const sponsorChoices = useDemoSessionStore((s) => s.sponsorChoices);
@@ -264,6 +265,14 @@ export function ControlRoomRoute() {
               >
                 {transitionActive ? 'TRANSITIONING' : 'TAKE'}
               </button>
+
+              <button
+                className="mt-2 w-full rounded-md border border-amber-500/70 bg-amber-700/70 px-6 py-2 text-sm font-bold tracking-[0.2em] text-amber-100 transition hover:bg-amber-600/80 disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={clearProgram}
+                disabled={transitionActive}
+              >
+                CLEAR
+              </button>
             </div>
 
             <div className="relative min-h-0">
@@ -272,7 +281,7 @@ export function ControlRoomRoute() {
                   <div className="flex h-full items-center justify-center">Blackout</div>
                 </div>
               )}
-              <TemplatePreview template={programTemplate} label="PROGRAM" sponsor={programSponsor} tone="program" />
+              <TemplatePreview template={programTemplate} label="PROGRAM" sponsor={programSponsor ?? 'Renderless Sports'} tone="program" />
             </div>
           </div>
 

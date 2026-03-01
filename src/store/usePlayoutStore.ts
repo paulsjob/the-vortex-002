@@ -16,7 +16,7 @@ interface PlayoutStore {
   previewTemplate: SavedTemplate | null;
   programTemplate: SavedTemplate | null;
   previewSponsor: string;
-  programSponsor: string;
+  programSponsor: string | null;
   transitionType: TransitionType;
   transitionDurationMs: number;
   lastTakeAt: string | null;
@@ -52,7 +52,7 @@ const templatesMatch = (left: SavedTemplate | null, right: SavedTemplate | null)
 
 export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
   previewSponsor: 'Renderless Sports',
-  programSponsor: 'Renderless Sports',
+  programSponsor: null,
   transitionType: 'cut',
   transitionDurationMs: 300,
   previewTemplate: null,
@@ -77,7 +77,7 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
       lastTakeAt: new Date().toISOString(),
     });
   },
-  clearProgram: () => set({ programTemplate: null }),
+  clearProgram: () => set({ programTemplate: null, programSponsor: null }),
   activateProgramTemplate: (template) => set((state) => {
     if (!template) return state;
     const nextProgram = cloneTemplate(template);
@@ -91,7 +91,7 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
     previewTemplate: null,
     programTemplate: null,
     previewSponsor: 'Renderless Sports',
-    programSponsor: 'Renderless Sports',
+    programSponsor: null,
     transitionType: 'cut',
     transitionDurationMs: 300,
     lastTakeAt: null,
