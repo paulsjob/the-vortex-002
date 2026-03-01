@@ -20,6 +20,8 @@ const durationChoices = [150, 300, 500, 1000];
 const QUICK_LAUNCH_DEFAULT_COUNT = 4;
 const COLLAPSED_LAUNCHER_ROW_HEIGHT = '9.5rem';
 const EXPANDED_LAUNCHER_ROW_HEIGHT = '15rem';
+const COLLAPSED_LAUNCHER_GRID_ROWS = '1fr';
+const EXPANDED_LAUNCHER_GRID_ROWS = 'repeat(2, minmax(0, 1fr))';
 
 export function ControlRoomRoute() {
   const templateStore = useTemplateStore();
@@ -229,10 +231,7 @@ export function ControlRoomRoute() {
 
   const launcherPanelHeight = (expanded: boolean) => (expanded ? EXPANDED_LAUNCHER_ROW_HEIGHT : COLLAPSED_LAUNCHER_ROW_HEIGHT);
 
-  const launcherBodyClassName = (expanded: boolean) =>
-    expanded
-      ? 'h-full overflow-y-auto pr-1'
-      : 'h-full overflow-x-auto overflow-y-hidden pb-1';
+  const launcherGridRows = (expanded: boolean) => (expanded ? EXPANDED_LAUNCHER_GRID_ROWS : COLLAPSED_LAUNCHER_GRID_ROWS);
 
   return (
     <section className="grid h-[calc(100vh-11.5rem)] grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-4">
@@ -278,12 +277,12 @@ export function ControlRoomRoute() {
           </div>
         </aside>
 
-        <section className="grid h-full min-h-0 gap-4 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-4" style={{ gridTemplateRows: 'minmax(0,1fr) auto auto auto' }}>
+        <section className="grid h-full min-h-0 gap-4 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-4" style={{ gridTemplateRows: 'minmax(0,1fr) minmax(0,auto)' }}>
           <div
             className="grid min-h-0 gap-4"
-            style={{ gridTemplateColumns: 'minmax(420px, 1fr) 240px minmax(420px, 1fr)' }}
+            style={{ gridTemplateColumns: 'minmax(0,1fr) 240px minmax(0,1fr)' }}
           >
-            <div className="min-h-0">
+            <div className="flex min-h-0 items-center">
               <TemplatePreview template={previewTemplate} label="PREVIEW" sponsor={previewSponsor} tone="preview" />
             </div>
 
@@ -337,19 +336,20 @@ export function ControlRoomRoute() {
               </button>
             </div>
 
-            <div className="relative min-h-0">
+            <div className="relative flex min-h-0 items-center">
               {blackoutActive && (
                 <div className="pointer-events-none absolute inset-0 z-10 rounded-md border border-slate-800 bg-black/95 text-center text-sm font-semibold uppercase tracking-[0.25em] text-white">
                   <div className="flex h-full items-center justify-center">Blackout</div>
                 </div>
               )}
-              <div className="h-full min-h-0">
+              <div className="h-full min-h-0 w-full">
                 <TemplatePreview template={programTemplate} label="PROGRAM" sponsor={programSponsor} tone="program" />
               </div>
             </div>
           </div>
 
-          <div className="rounded-md border border-slate-700 bg-slate-900 p-3">
+          <div className="grid min-h-0 gap-4 overflow-hidden" style={{ gridTemplateRows: 'auto auto minmax(0,1fr)' }}>
+          <div className="min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-3">
             <div className="flex items-center justify-between gap-2">
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">FAVORITES</p>
               <button
@@ -360,8 +360,8 @@ export function ControlRoomRoute() {
                 {favoritesExpanded ? 'Show less' : 'Show more'}
               </button>
             </div>
-            <div className={`mt-2 ${launcherBodyClassName(favoritesExpanded)}`} style={{ height: launcherPanelHeight(favoritesExpanded) }}>
-              <div className={`gap-3 ${favoritesExpanded ? 'grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] content-start' : 'flex w-max min-w-full'}`}>
+            <div className="mt-2 overflow-x-auto overflow-y-hidden pb-1" style={{ height: launcherPanelHeight(favoritesExpanded) }}>
+              <div className="grid auto-cols-[220px] grid-flow-col gap-3" style={{ gridTemplateRows: launcherGridRows(favoritesExpanded) }}>
               {favoriteTemplates.length === 0 ? (
                 <p className="text-sm text-slate-500">Star templates in the library to pin your favorites.</p>
               ) : favoriteTemplates.map((template) => (
@@ -378,7 +378,7 @@ export function ControlRoomRoute() {
             </div>
           </div>
 
-          <div className="rounded-md border border-slate-700 bg-slate-900 p-3">
+          <div className="min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-3">
             <div className="flex items-center justify-between gap-2">
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">QUICK LAUNCH</p>
               <button
@@ -389,8 +389,8 @@ export function ControlRoomRoute() {
                 {quickLaunchExpanded ? 'Show less' : 'Show more'}
               </button>
             </div>
-            <div className={`mt-2 ${launcherBodyClassName(quickLaunchExpanded)}`} style={{ height: launcherPanelHeight(quickLaunchExpanded) }}>
-              <div className={`gap-3 ${quickLaunchExpanded ? 'grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] content-start' : 'flex w-max min-w-full'}`}>
+            <div className="mt-2 overflow-x-auto overflow-y-hidden pb-1" style={{ height: launcherPanelHeight(quickLaunchExpanded) }}>
+              <div className="grid auto-cols-[220px] grid-flow-col gap-3" style={{ gridTemplateRows: launcherGridRows(quickLaunchExpanded) }}>
               {quickLaunchTemplates.length === 0 ? (
                 <p className="text-sm text-slate-500">Add templates with 🚀 in the library for one-tap preloading.</p>
               ) : quickLaunchTemplates.map((template) => (
@@ -428,6 +428,7 @@ export function ControlRoomRoute() {
                 Copy Output URL
               </button>
             </div>
+          </div>
           </div>
         </section>
       </div>
