@@ -33,7 +33,6 @@ const mapDemoBindingDefaults = (
 export function OutputRoute() {
   const navigate = useNavigate();
   const templateStore = useTemplateStore();
-  const previewTemplate = usePlayoutStore((s) => s.previewTemplate);
   const programTemplate = usePlayoutStore((s) => s.programTemplate);
   const fontOverrides = usePlayoutStore((s) => s.fontOverrides);
   const initializeBindings = usePlayoutStore((s) => s.initializeBindings);
@@ -52,9 +51,8 @@ export function OutputRoute() {
 
   const activeTemplateRef = useMemo(() => {
     if (programTemplate) return { source: 'native' as const, id: programTemplate.id };
-    if (previewTemplate) return { source: 'native' as const, id: previewTemplate.id };
-    return selectedTemplate;
-  }, [programTemplate, previewTemplate, selectedTemplate]);
+    return selectedTemplate?.source === 'vortex' ? selectedTemplate : null;
+  }, [programTemplate, selectedTemplate]);
 
   const vortexRenderState = useMemo(() => {
     if (!activeTemplateRef || activeTemplateRef.source !== 'vortex') return null;
@@ -137,7 +135,7 @@ export function OutputRoute() {
   const vortexSchema = vortexRenderState && 'template' in vortexRenderState ? vortexRenderState.schema : undefined;
   const bindingState = vortexTemplate ? getBindingState(vortexTemplate.id) : undefined;
   const transformedVortexTemplate = vortexTemplate && vortexSchema ? applyBindingsToScene(vortexTemplate, vortexSchema, bindingState) : undefined;
-  const activeTemplate = transformedVortexTemplate || programTemplate || previewTemplate;
+  const activeTemplate = transformedVortexTemplate || programTemplate;
   const override = vortexTemplate ? fontOverrides[vortexTemplate.id] : undefined;
 
   const shouldBlockForFonts = Boolean(vortexRenderState?.template && fontGateResult && !fontGateResult.ok && !override?.enabled);
