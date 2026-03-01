@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import type { AssetItem, ExplorerNode, ExplorerState, FileNode, FolderNode } from '../types/domain';
 import type { SavedTemplate } from './useTemplateStore';
-import { deleteBlob, getBlob, putBlob } from './blobDb';
+import { clearStore, deleteBlob, getBlob, putBlob } from './blobDb';
+
+type BlobStoreName = 'assets' | 'fonts';
 
 const STORAGE_KEYS = {
   branded: 'renderless.fileExplorer.v2',
@@ -22,13 +24,17 @@ type PersistedBlob = {
 type AssetRecord = {
   id: string;
   name: string;
-  kind: 'image' | 'svg' | 'font' | 'other';
+  kind: 'brandedAsset' | 'font';
   mime: string;
   size: number;
-  folderId: string;
+  folderId: string | null;
   createdAt: number;
+};
+
+type LegacyBlobCandidate = {
   blobKey: string;
-  url?: string;
+  data: string;
+  mime: string;
 };
 
 const mkFolder = (name: string, parentId: string | null, id: string): FolderNode => ({
@@ -51,7 +57,42 @@ const INITIAL_BRANDED = defaultExplorer('root', 'Branded Assets');
 const INITIAL_FONTS = defaultExplorer('fonts-root', 'Fonts');
 const INITIAL_TEMPLATES = defaultExplorer('template-root', 'Templates');
 
-const normalizeExplorer = (value: unknown, fallback: ExplorerState, fileKind: FileNode['kind']): ExplorerState => {
+const getBlobStore = (kind: 'branded' | 'fonts'): BlobStoreName => (kind === 'fonts' ? 'fonts' : 'assets');
+
+const dataUrlToBlob = async (dataUrl: string): Promise<Blob> => {
+  const response = await fetch(dataUrl);
+  return response.blob();
+};
+
+const toDataUrl = (value: string, mime: string): string => (
+  value.startsWith('data:') ? value : `data:${mime};base64,${value}`
+);
+
+const pickLegacyCandidate = (rawNode: Record<string, unknown>, fallbackMime: string): LegacyBlobCandidate | null => {
+  const blobKey = typeof rawNode.blobKey === 'string' && rawNode.blobKey.trim()
+    ? rawNode.blobKey
+    : typeof rawNode.id === 'string'
+      ? rawNode.id
+      : null;
+  if (!blobKey) return null;
+
+  const possible = [rawNode.dataUrl, rawNode.content, rawNode.base64, rawNode.fileBytes, rawNode.src];
+  const data = possible.find((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0);
+  if (!data) return null;
+
+  return {
+    blobKey,
+    data,
+    mime: typeof rawNode.mime === 'string' && rawNode.mime ? rawNode.mime : fallbackMime,
+  };
+};
+
+const normalizeExplorer = (
+  value: unknown,
+  fallback: ExplorerState,
+  fileKind: FileNode['kind'],
+  legacyCandidates: LegacyBlobCandidate[],
+): ExplorerState => {
   if (!value || typeof value !== 'object') return fallback;
   const raw = value as ExplorerState;
   if (!raw.rootId || !Array.isArray(raw.nodes)) return fallback;
@@ -69,6 +110,7 @@ const normalizeExplorer = (value: unknown, fallback: ExplorerState, fileKind: Fi
         };
       }
       if (base.type === 'file') {
+        const rawNode = node as unknown as Record<string, unknown>;
         const incomingKind = (base as FileNode).kind ?? fileKind;
         const mime = typeof (base as FileNode).mime === 'string' ? (base as FileNode).mime : '';
         const size = typeof (base as FileNode).size === 'number' ? (base as FileNode).size : 0;
@@ -76,10 +118,11 @@ const normalizeExplorer = (value: unknown, fallback: ExplorerState, fileKind: Fi
         const blobKey = typeof rawBlobKey === 'string' && rawBlobKey.trim()
           ? rawBlobKey
           : base.id;
-        const rawSrc = (base as FileNode).src;
-        const maybeSrc = typeof rawSrc === 'string' && !rawSrc.startsWith('data:')
-          ? rawSrc
-          : undefined;
+
+        if (fileKind !== 'template') {
+          const legacy = pickLegacyCandidate(rawNode, mime || 'application/octet-stream');
+          if (legacy) legacyCandidates.push(legacy);
+        }
 
         return {
           id: base.id,
@@ -89,7 +132,7 @@ const normalizeExplorer = (value: unknown, fallback: ExplorerState, fileKind: Fi
           createdAt: base.createdAt || new Date().toISOString(),
           parentId: base.parentId || fallback.rootId,
           dimension: (base as FileNode).dimension ?? 'unknown',
-          src: fileKind === 'template' ? (base as FileNode).src : maybeSrc,
+          src: fileKind === 'template' ? (base as FileNode).src : undefined,
           mime,
           size,
           blobKey,
@@ -106,11 +149,16 @@ const normalizeExplorer = (value: unknown, fallback: ExplorerState, fileKind: Fi
   return { rootId: raw.rootId, nodes };
 };
 
-const loadExplorer = (key: string, fallback: ExplorerState, fileKind: FileNode['kind']) => {
+const loadExplorer = (
+  key: string,
+  fallback: ExplorerState,
+  fileKind: FileNode['kind'],
+  legacyCandidates: LegacyBlobCandidate[],
+) => {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return fallback;
-    return normalizeExplorer(JSON.parse(raw), fallback, fileKind);
+    return normalizeExplorer(JSON.parse(raw), fallback, fileKind, legacyCandidates);
   } catch {
     return fallback;
   }
@@ -180,14 +228,15 @@ const detectImageSizeFromBlob = async (blob: Blob): Promise<{ width: number; hei
 
 const inferAssetKind = (file: File): AssetRecord['kind'] => {
   const lowerName = file.name.toLowerCase();
-  if (file.type === 'image/svg+xml' || lowerName.endsWith('.svg')) return 'svg';
-  if (file.type.startsWith('image/')) return 'image';
   if (file.type.startsWith('font/') || /\.(ttf|otf|woff2?)$/i.test(lowerName)) return 'font';
-  return 'other';
+  return 'brandedAsset';
 };
 
 const revokeFileUrl = (node: ExplorerNode | undefined) => {
-  if (node?.type === 'file' && node.url) URL.revokeObjectURL(node.url);
+  if (node?.type === 'file') {
+    if (node.url) URL.revokeObjectURL(node.url);
+    if (node.src && node.src.startsWith('blob:') && node.src !== node.url) URL.revokeObjectURL(node.src);
+  }
 };
 
 const collectNodeAndDescendantIds = (explorer: ExplorerState, id: string): string[] => {
@@ -240,7 +289,7 @@ interface AssetStore {
   expandedTemplates: Record<string, boolean>;
   selectedIds: Record<ExplorerKind, string[]>;
   selectionAnchorId: Record<ExplorerKind, string | null>;
-  addAsset: (asset: AssetItem, metadata: Pick<AssetRecord, 'kind' | 'mime' | 'size' | 'blobKey' | 'url'>, targetFolderId: string, kind: ExplorerKind) => void;
+  addAsset: (asset: AssetItem, metadata: AssetRecord, targetFolderId: string, kind: ExplorerKind) => void;
   uploadFiles: (files: File[], targetFolderId: string, kind: ExplorerKind) => Promise<void>;
   addFolder: (name: string, parentId: string, kind: ExplorerKind) => void;
   renameNode: (id: string, name: string, kind: ExplorerKind) => void;
@@ -292,9 +341,24 @@ const buildMoveCheck = (explorer: ExplorerState, nodeId: string, targetFolderId:
   return { ok: true };
 };
 
-const brandedExplorer = loadExplorer(STORAGE_KEYS.branded, INITIAL_BRANDED, 'asset');
-const fontsExplorer = loadExplorer(STORAGE_KEYS.fonts, INITIAL_FONTS, 'font');
-const templateExplorer = loadExplorer(STORAGE_KEYS.templates, INITIAL_TEMPLATES, 'template');
+const migrateLegacyBinaries = async (kind: 'branded' | 'fonts', entries: LegacyBlobCandidate[]) => {
+  const storeName = getBlobStore(kind);
+  await Promise.all(entries.map(async (entry) => {
+    try {
+      const blob = await dataUrlToBlob(toDataUrl(entry.data, entry.mime));
+      await putBlob(storeName, entry.blobKey, blob);
+    } catch (error) {
+      console.warn(`Failed to migrate legacy ${kind} binary for key ${entry.blobKey}.`, error);
+    }
+  }));
+};
+
+const brandedLegacyCandidates: LegacyBlobCandidate[] = [];
+const fontsLegacyCandidates: LegacyBlobCandidate[] = [];
+
+const brandedExplorer = loadExplorer(STORAGE_KEYS.branded, INITIAL_BRANDED, 'asset', brandedLegacyCandidates);
+const fontsExplorer = loadExplorer(STORAGE_KEYS.fonts, INITIAL_FONTS, 'font', fontsLegacyCandidates);
+const templateExplorer = loadExplorer(STORAGE_KEYS.templates, INITIAL_TEMPLATES, 'template', []);
 
 export const useAssetStore = create<AssetStore>((set, get) => ({
   assets: extractAssets(brandedExplorer, fontsExplorer, templateExplorer),
@@ -325,16 +389,14 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
       id: asset.id,
       type: 'file',
       kind: kind === 'fonts' ? 'font' : kind === 'templates' ? 'template' : 'asset',
-      assetKind: metadata.kind,
+      assetKind: metadata.kind === 'font' ? 'font' : 'image',
       name: asset.name,
       parentId: targetFolderId,
-      src: asset.src,
-      url: metadata.url,
       dimension: asset.dimension,
       createdAt: asset.createdAt,
       mime: metadata.mime,
       size: metadata.size,
-      blobKey: metadata.blobKey,
+      blobKey: metadata.id,
     });
 
     persist(kind, next);
@@ -350,23 +412,23 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
   },
   uploadFiles: async (files, targetFolderId, kind) => {
     for (const file of files) {
-      const assetId = `${kind}-file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const assetId = crypto.randomUUID();
+      const blobStore = kind === 'fonts' ? 'fonts' : 'assets';
+
       try {
-        await putBlob(assetId, file);
+        await putBlob(blobStore, assetId, file);
       } catch (error) {
         console.error('Failed to persist uploaded file in IndexedDB.', error);
-        window.alert(`Could not store "${file.name}" locally. Please try again.`);
         continue;
       }
 
       const fileKind = inferAssetKind(file);
-      const canPreview = fileKind === 'image' || fileKind === 'svg';
+      const canPreview = fileKind === 'brandedAsset';
       const { width, height } = canPreview ? await detectImageSizeFromBlob(file) : { width: 0, height: 0 };
-      const objectUrl = canPreview ? URL.createObjectURL(file) : undefined;
       const asset: AssetItem = {
         id: assetId,
         name: file.name,
-        src: objectUrl ?? '',
+        src: '',
         dimension: width && height ? `${width}x${height}` : 'unknown',
         createdAt: new Date().toISOString(),
       };
@@ -378,10 +440,12 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
         size: file.size,
         folderId: targetFolderId,
         createdAt: Date.now(),
-        blobKey: assetId,
-        url: objectUrl,
       };
-      get().addAsset({ ...asset, src: metadata.url ?? '' }, metadata, targetFolderId, kind);
+      get().addAsset(asset, metadata, targetFolderId, kind);
+    }
+
+    if (kind === 'branded' || kind === 'fonts') {
+      await get().hydrateBlobBackedAssets(kind);
     }
   },
   addFolder: (name, parentId, kind) => {
@@ -446,7 +510,7 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
         .filter((node): node is FileNode => Boolean(node))
         .forEach((node) => {
           const blobKey = node.blobKey || node.id;
-          void deleteBlob(blobKey).catch((error) => console.error('Failed to delete blob from IndexedDB.', error));
+          void deleteBlob(kind === 'fonts' ? 'fonts' : 'assets', blobKey).catch((error) => console.error('Failed to delete blob from IndexedDB.', error));
         });
     }
   },
@@ -574,6 +638,8 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
     localStorage.removeItem(STORAGE_KEYS.templates);
     [...get().brandedExplorer.nodes, ...get().fontsExplorer.nodes]
       .forEach((node) => revokeFileUrl(node));
+    void clearStore('assets').catch((error) => console.error('Failed to clear asset blobs.', error));
+    void clearStore('fonts').catch((error) => console.error('Failed to clear font blobs.', error));
     set({
       brandedExplorer: structuredClone(INITIAL_BRANDED),
       fontsExplorer: structuredClone(INITIAL_FONTS),
@@ -641,7 +707,7 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
 
     const updates = await Promise.all(files.map(async (fileNode) => {
       if (fileNode.url || fileNode.src) return null;
-      const blob = await getBlob(fileNode.blobKey || fileNode.id);
+      const blob = await getBlob(kind === 'fonts' ? 'fonts' : 'assets', fileNode.blobKey || fileNode.id);
       if (!blob) return null;
       return {
         id: fileNode.id,
@@ -670,5 +736,20 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
   },
 }));
 
-void useAssetStore.getState().hydrateBlobBackedAssets('branded');
-void useAssetStore.getState().hydrateBlobBackedAssets('fonts');
+if (brandedLegacyCandidates.length) {
+  void migrateLegacyBinaries('branded', brandedLegacyCandidates)
+    .then(() => useAssetStore.getState().hydrateBlobBackedAssets('branded'))
+    .catch((error) => console.warn('Legacy branded asset migration failed.', error));
+  persist('branded', useAssetStore.getState().brandedExplorer);
+} else {
+  void useAssetStore.getState().hydrateBlobBackedAssets('branded');
+}
+
+if (fontsLegacyCandidates.length) {
+  void migrateLegacyBinaries('fonts', fontsLegacyCandidates)
+    .then(() => useAssetStore.getState().hydrateBlobBackedAssets('fonts'))
+    .catch((error) => console.warn('Legacy font migration failed.', error));
+  persist('fonts', useAssetStore.getState().fontsExplorer);
+} else {
+  void useAssetStore.getState().hydrateBlobBackedAssets('fonts');
+}

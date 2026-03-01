@@ -1,55 +1,61 @@
-const DB_NAME = 'renderless-db';
-const STORE_NAME = 'blobs';
+const DB_NAME = 'renderless.db';
 const DB_VERSION = 1;
 
-type BlobRecord = { key: string; blob: Blob };
+type BlobStoreName = 'assets' | 'fonts';
 
 const openDb = (): Promise<IDBDatabase> => new Promise((resolve, reject) => {
   const request = indexedDB.open(DB_NAME, DB_VERSION);
 
   request.onupgradeneeded = () => {
     const db = request.result;
-    if (!db.objectStoreNames.contains(STORE_NAME)) {
-      db.createObjectStore(STORE_NAME, { keyPath: 'key' });
-    }
+    if (!db.objectStoreNames.contains('assets')) db.createObjectStore('assets');
+    if (!db.objectStoreNames.contains('fonts')) db.createObjectStore('fonts');
   };
 
   request.onsuccess = () => resolve(request.result);
   request.onerror = () => reject(request.error ?? new Error('Failed to open IndexedDB.'));
 });
 
-const withStore = async <T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> => {
+const runRequest = async <T>(
+  storeName: BlobStoreName,
+  mode: IDBTransactionMode,
+  runner: (store: IDBObjectStore) => IDBRequest<T>,
+): Promise<T> => {
   const db = await openDb();
 
   return new Promise<T>((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, mode);
-    const store = transaction.objectStore(STORE_NAME);
-    const request = run(store);
+    const tx = db.transaction(storeName, mode);
+    const store = tx.objectStore(storeName);
+    const request = runner(store);
 
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error('IndexedDB request failed.'));
 
-    transaction.oncomplete = () => db.close();
-    transaction.onerror = () => {
+    tx.oncomplete = () => db.close();
+    tx.onerror = () => {
       db.close();
-      reject(transaction.error ?? new Error('IndexedDB transaction failed.'));
+      reject(tx.error ?? new Error('IndexedDB transaction failed.'));
     };
-    transaction.onabort = () => {
+    tx.onabort = () => {
       db.close();
-      reject(transaction.error ?? new Error('IndexedDB transaction aborted.'));
+      reject(tx.error ?? new Error('IndexedDB transaction aborted.'));
     };
   });
 };
 
-export const putBlob = async (key: string, blob: Blob): Promise<void> => {
-  await withStore('readwrite', (store) => store.put({ key, blob } satisfies BlobRecord));
+export const putBlob = async (storeName: BlobStoreName, key: string, blob: Blob): Promise<void> => {
+  await runRequest(storeName, 'readwrite', (store) => store.put(blob, key));
 };
 
-export const getBlob = async (key: string): Promise<Blob | null> => {
-  const result = await withStore<BlobRecord | undefined>('readonly', (store) => store.get(key));
-  return result?.blob ?? null;
+export const getBlob = async (storeName: BlobStoreName, key: string): Promise<Blob | null> => {
+  const result = await runRequest<Blob | undefined>(storeName, 'readonly', (store) => store.get(key));
+  return result ?? null;
 };
 
-export const deleteBlob = async (key: string): Promise<void> => {
-  await withStore('readwrite', (store) => store.delete(key));
+export const deleteBlob = async (storeName: BlobStoreName, key: string): Promise<void> => {
+  await runRequest(storeName, 'readwrite', (store) => store.delete(key));
+};
+
+export const clearStore = async (storeName: BlobStoreName): Promise<void> => {
+  await runRequest(storeName, 'readwrite', (store) => store.clear());
 };
