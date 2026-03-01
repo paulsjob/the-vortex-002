@@ -5,14 +5,24 @@ import { TemplateSceneSvg } from './TemplateSceneSvg';
 interface Props {
   template: SavedTemplate | null;
   label: string;
+  sponsor: string;
   tone?: 'preview' | 'program';
 }
 
-export function TemplatePreview({ template, label, tone = 'preview' }: Props) {
+const SPONSOR_STYLES: Record<string, { accentFillClass: string; accentBorderClass: string; logo: string }> = {
+  'Renderless Sports': { accentFillClass: 'from-cyan-500/45 to-blue-500/45', accentBorderClass: 'border-cyan-400/70', logo: 'RSN' },
+  'Orbit Cola': { accentFillClass: 'from-fuchsia-500/45 to-rose-500/45', accentBorderClass: 'border-fuchsia-400/70', logo: 'ORBIT' },
+  'Velocity Bank': { accentFillClass: 'from-emerald-500/45 to-lime-500/45', accentBorderClass: 'border-emerald-400/70', logo: 'VB' },
+};
+
+const getSponsorStyle = (sponsor: string) => SPONSOR_STYLES[sponsor] ?? SPONSOR_STYLES['Renderless Sports'];
+
+export function TemplatePreview({ template, label, sponsor, tone = 'preview' }: Props) {
   const game = useDataEngineStore((s) => s.game);
   const running = useDataEngineStore((s) => s.running);
   const isProgram = tone === 'program';
   const aspectRatio = template ? `${template.canvasWidth} / ${template.canvasHeight}` : '16 / 9';
+  const sponsorStyle = getSponsorStyle(sponsor);
 
   return (
     <section className="flex h-full min-h-0 flex-col gap-2">
@@ -34,7 +44,7 @@ export function TemplatePreview({ template, label, tone = 'preview' }: Props) {
             <span>16 × 9</span>
           </div>
         )}
-        <div className={`relative flex-1 overflow-hidden rounded-lg border ${isProgram ? 'border-red-600/70 bg-slate-950' : 'border-blue-600/40 bg-slate-950'}`}>
+        <div className={`relative flex-1 overflow-hidden rounded-lg border bg-slate-950 ${isProgram ? 'border-red-600/70' : sponsorStyle.accentBorderClass}`}>
           <div className="absolute inset-0 grid place-items-center">
             <div className="w-full" style={{ aspectRatio }} />
           </div>
@@ -44,9 +54,13 @@ export function TemplatePreview({ template, label, tone = 'preview' }: Props) {
             </div>
           ) : null}
             <div className="absolute inset-0 bg-[linear-gradient(45deg,#0f172a_25%,#111827_25%,#111827_50%,#0f172a_50%,#0f172a_75%,#111827_75%,#111827_100%)] bg-[length:18px_18px] opacity-70" />
+            {!isProgram && <div className={`absolute inset-0 bg-gradient-to-br ${sponsorStyle.accentFillClass} opacity-55`} />}
             {template ? <div className="relative z-10 mx-auto w-full" style={{ aspectRatio }}><TemplateSceneSvg template={template} className="absolute inset-0 h-full w-full" /></div> : null}
             <div className={`absolute right-2 top-2 rounded border px-2 py-0.5 text-[10px] font-semibold tracking-wider ${isProgram ? 'border-red-500 bg-red-900/60 text-red-100' : 'border-blue-500 bg-blue-900/45 text-blue-100'}`}>
               {isProgram ? 'LOCKED' : 'EDITABLE'}
+            </div>
+            <div className="absolute left-2 top-2 rounded border border-slate-200/35 bg-slate-900/70 px-2 py-0.5 text-[10px] font-semibold tracking-[0.2em] text-slate-100">
+              {sponsorStyle.logo} · {sponsor}
             </div>
           </div>
         <div className="mt-1 grid grid-cols-3 gap-2 text-[10px] text-slate-500">

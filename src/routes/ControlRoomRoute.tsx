@@ -14,11 +14,13 @@ export function ControlRoomRoute() {
   const previewTemplate = usePlayoutStore((s) => s.previewTemplate);
   const programTemplate = usePlayoutStore((s) => s.programTemplate);
   const lastTakeAt = usePlayoutStore((s) => s.lastTakeAt);
+  const previewSponsor = usePlayoutStore((s) => s.previewSponsor);
+  const programSponsor = usePlayoutStore((s) => s.programSponsor);
   const setPreviewTemplate = usePlayoutStore((s) => s.setPreviewTemplate);
+  const setPreviewSponsor = usePlayoutStore((s) => s.setPreviewSponsor);
   const takeToProgram = usePlayoutStore((s) => s.takeToProgram);
 
   const engineRunning = useDataEngineStore((s) => s.running);
-  const selectedSponsor = useDemoSessionStore((s) => s.selectedSponsor);
   const sponsorChoices = useDemoSessionStore((s) => s.sponsorChoices);
   const updateSelections = useDemoSessionStore((s) => s.updateSelections);
 
@@ -134,24 +136,25 @@ export function ControlRoomRoute() {
           <div className="mt-2 h-full overflow-hidden pr-1">{renderTreeNode(tree)}</div>
         </div>
 
-        {!previewTemplate && (
-          <p className="rounded-md border border-slate-700 bg-slate-900 p-3 text-xs text-slate-400">Select a template from the folder tree to enable operator controls.</p>
-        )}
-
-        {previewTemplate && (
-          <div className="space-y-2 rounded-md border border-slate-700 bg-slate-900 p-3">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Contextual Controls</p>
-            <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">Sponsor</label>
-            <select className="w-full rounded border border-slate-600 bg-slate-950 px-2 py-2 text-sm text-slate-100" value={selectedSponsor} onChange={(e) => updateSelections({ sponsor: e.target.value })}>
-              {sponsorChoices.map((sponsor) => <option key={sponsor} value={sponsor}>{sponsor}</option>)}
-            </select>
-            {previewReady && (
-              <button className="w-full rounded-md border border-red-500 bg-red-600 px-6 py-2 text-sm font-bold tracking-[0.2em] text-white hover:bg-red-500" onClick={takeToProgram}>
-                TAKE
-              </button>
-            )}
-          </div>
-        )}
+        <div className="space-y-2 rounded-md border border-slate-700 bg-slate-900 p-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Contextual Controls</p>
+          {!previewTemplate && (
+            <p className="text-xs text-slate-400">Select a template from the folder tree to enable TAKE.</p>
+          )}
+          <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">Sponsor</label>
+          <select className="w-full rounded border border-slate-600 bg-slate-950 px-2 py-2 text-sm text-slate-100" value={previewSponsor} onChange={(e) => {
+            const sponsor = e.target.value;
+            updateSelections({ sponsor });
+            setPreviewSponsor(sponsor);
+          }}>
+            {sponsorChoices.map((sponsor) => <option key={sponsor} value={sponsor}>{sponsor}</option>)}
+          </select>
+          {previewReady && (
+            <button className="w-full rounded-md border border-red-500 bg-red-600 px-6 py-2 text-sm font-bold tracking-[0.2em] text-white hover:bg-red-500" onClick={takeToProgram}>
+              TAKE
+            </button>
+          )}
+        </div>
 
         <div className="grid grid-cols-2 gap-2 rounded-md border border-slate-700 bg-slate-900 p-3">
           <div>
@@ -169,8 +172,8 @@ export function ControlRoomRoute() {
 
       <section className="flex h-full min-h-0 flex-col gap-4 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-4">
         <div className="grid min-h-0 flex-1 grid-cols-2 gap-4">
-          <TemplatePreview template={previewTemplate} label="PREVIEW" tone="preview" />
-          <TemplatePreview template={programTemplate} label="PROGRAM" tone="program" />
+          <TemplatePreview template={previewTemplate} label="PREVIEW" sponsor={previewSponsor} tone="preview" />
+          <TemplatePreview template={programTemplate} label="PROGRAM" sponsor={programSponsor} tone="program" />
         </div>
 
         <div className="rounded-md border border-slate-700 bg-slate-900 p-3 text-sm text-slate-300">
