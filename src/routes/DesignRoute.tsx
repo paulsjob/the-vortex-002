@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { useAssetStore } from '../store/useAssetStore';
 import { useDataEngineStore } from '../store/useDataEngineStore';
 import { useLayerStore } from '../store/useLayerStore';
@@ -739,11 +739,14 @@ export function DesignRoute() {
     setLastClickedLayerId(layerId);
   };
 
-  const onLayerMouseDown = (layer: Layer, event: ReactMouseEvent) => {
+  const onLayerPointerDown = (layer: Layer, event: ReactPointerEvent<HTMLDivElement>) => {
     selectLayer(layer.id, event);
     if (event.button !== 0 || layer.locked) return;
     const stage = stageRef.current;
     if (!stage) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
     const base = new Map<string, { x: number; y: number }>();
     const isAlreadySelected = selectedLayerIds.includes(layer.id);
     const activeIds = (event.metaKey || event.ctrlKey)
@@ -753,8 +756,9 @@ export function DesignRoute() {
       const l = layerById.get(id);
       if (l && !l.locked) base.set(id, { x: l.x, y: l.y });
     });
+    if (!base.size) return;
     dragRef.current = { startX: event.clientX, startY: event.clientY, base };
-    const onMove = (move: globalThis.MouseEvent) => {
+    const onMove = (move: globalThis.PointerEvent) => {
       if (!dragRef.current) return;
       const rawDx = (move.clientX - dragRef.current.startX) / stageScale;
       const rawDy = (move.clientY - dragRef.current.startY) / stageScale;
@@ -774,11 +778,13 @@ export function DesignRoute() {
     };
     const onUp = () => {
       dragRef.current = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
     };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
   };
 
 
@@ -974,7 +980,7 @@ export function DesignRoute() {
     };
 
     return (
-      <div key={layer.id} data-layer-node="true" className={`absolute select-none ${selectedLayerIds.includes(layer.id) ? 'outline outline-2 outline-blue-400' : 'outline outline-1 outline-slate-500/40'} ${layer.locked ? 'cursor-not-allowed' : 'cursor-move'}`} style={style} onMouseDown={(event) => onLayerMouseDown(layer, event)}>
+      <div key={layer.id} data-layer-node="true" className={`absolute select-none ${selectedLayerIds.includes(layer.id) ? 'outline outline-2 outline-blue-400' : 'outline outline-1 outline-slate-500/40'} ${layer.locked ? 'cursor-not-allowed' : 'cursor-move'}`} style={style} onPointerDown={(event) => onLayerPointerDown(layer, event)}>
         {layer.kind === 'asset' && <img src={assetById.get(layer.assetId)?.src} alt={layer.name} className="h-full w-full object-contain" draggable={false} />}
         {layer.kind === 'shape' && (
           <div className="h-full w-full" style={{ background: layer.fill, borderRadius: layer.shapeType === 'ellipse' ? '9999px' : '0' }} />
@@ -1187,10 +1193,10 @@ export function DesignRoute() {
           <div ref={stageViewportRef} className="grid flex-1 min-h-0 place-items-center overflow-hidden rounded-lg border border-slate-700 bg-slate-800 p-6">
             <div className="relative" style={{ width: `${canvasWidth * stageScale + rulerOffset}px`, height: `${canvasHeight * stageScale + rulerOffset}px` }}>
               {showRulers && (
-                <div className="absolute inset-0 z-20 text-[10px] text-slate-300/90">
+                <div className="pointer-events-none absolute inset-0 z-20 text-[10px] text-slate-300/90">
                   <div className="absolute left-0 top-0 border-b border-r border-slate-600/80 bg-slate-900/95" style={{ width: `${RULER_SIZE}px`, height: `${RULER_SIZE}px` }} />
                   <div
-                    className="absolute top-0 overflow-hidden border-b border-slate-600/80 bg-slate-900/95"
+                    className="pointer-events-auto absolute top-0 overflow-hidden border-b border-slate-600/80 bg-slate-900/95"
                     style={{ left: `${RULER_SIZE}px`, width: `${canvasWidth * stageScale}px`, height: `${RULER_SIZE}px` }}
                     onMouseDown={(event) => startGuideFromRuler('y', event)}
                   >
@@ -1201,7 +1207,7 @@ export function DesignRoute() {
                     ))}
                   </div>
                   <div
-                    className="absolute left-0 overflow-hidden border-r border-slate-600/80 bg-slate-900/95"
+                    className="pointer-events-auto absolute left-0 overflow-hidden border-r border-slate-600/80 bg-slate-900/95"
                     style={{ top: `${RULER_SIZE}px`, width: `${RULER_SIZE}px`, height: `${canvasHeight * stageScale}px` }}
                     onMouseDown={(event) => startGuideFromRuler('x', event)}
                   >
@@ -1214,7 +1220,7 @@ export function DesignRoute() {
                 </div>
               )}
               <div className="absolute" style={{ left: `${rulerOffset}px`, top: `${rulerOffset}px`, width: `${canvasWidth * stageScale}px`, height: `${canvasHeight * stageScale}px` }}>
-              <div ref={stageRef} className="relative overflow-hidden rounded border border-slate-500 bg-slate-900 shadow-[0_0_0_1px_rgba(148,163,184,0.25),0_20px_60px_rgba(0,0,0,0.45)]" style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px`, transform: `scale(${stageScale})`, transformOrigin: 'top left' }} onMouseDown={(event) => {
+              <div ref={stageRef} className="relative overflow-hidden rounded border border-slate-500 bg-slate-900 shadow-[0_0_0_1px_rgba(148,163,184,0.25),0_20px_60px_rgba(0,0,0,0.45)]" style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px`, transform: `scale(${stageScale})`, transformOrigin: 'top left' }} onPointerDown={(event) => {
                 if (event.target === event.currentTarget) {
                   setSelectedLayerIds([]);
                   setSelectedGuideId(null);
@@ -1224,7 +1230,7 @@ export function DesignRoute() {
               {showGuides && guides.map((guide) => (
                 <div
                   key={guide.id}
-                  data-guide-node="true" className="absolute z-50"
+                  data-guide-node="true" className="pointer-events-auto absolute z-50"
                   style={guide.axis === 'x'
                     ? { left: `${guide.position}px`, top: 0, width: '1px', height: '100%', background: selectedGuideId === guide.id ? 'rgba(251,191,36,1)' : 'rgba(34,211,238,0.9)', cursor: 'ew-resize' }
                     : { left: 0, top: `${guide.position}px`, width: '100%', height: '1px', background: selectedGuideId === guide.id ? 'rgba(251,191,36,1)' : 'rgba(34,211,238,0.9)', cursor: 'ns-resize' }}
