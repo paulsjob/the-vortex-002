@@ -13,6 +13,8 @@ type TemplateFolder = {
   name: string;
   parentId: string | null;
   children: string[];
+  childrenFolderIds: string[];
+  childrenTemplateIds: string[];
   createdAt: string;
 };
 
@@ -54,9 +56,80 @@ type PersistedTemplateState = {
 
 const defaultState = (): PersistedTemplateState => ({
   rootId: 'template-root',
-  folders: [{ id: 'template-root', name: 'Templates', parentId: null, children: [], createdAt: new Date().toISOString() }],
+  folders: [{ id: 'template-root', name: 'Templates', parentId: null, children: [], childrenFolderIds: [], childrenTemplateIds: [], createdAt: new Date().toISOString() }],
   templates: [],
 });
+
+const normalizeState = (state: PersistedTemplateState): PersistedTemplateState => {
+  const folderById = new Map<string, TemplateFolder>();
+  const folders = state.folders.map((folder) => {
+    const childrenFolderIds = Array.isArray(folder.childrenFolderIds)
+      ? [...folder.childrenFolderIds]
+      : Array.isArray(folder.children)
+        ? [...folder.children]
+        : [];
+    const normalized: TemplateFolder = {
+      ...folder,
+      parentId: folder.parentId ?? null,
+      children: [...childrenFolderIds],
+      childrenFolderIds,
+      childrenTemplateIds: Array.isArray(folder.childrenTemplateIds) ? [...folder.childrenTemplateIds] : [],
+      createdAt: folder.createdAt ?? new Date().toISOString(),
+    };
+    folderById.set(folder.id, normalized);
+    return normalized;
+  });
+
+  const templates = state.templates.map((template) => ({
+    ...template,
+    folderId: template.folderId || state.rootId,
+  }));
+
+  folders.forEach((folder) => {
+    folder.childrenFolderIds = folder.childrenFolderIds.filter((childId) => folderById.has(childId));
+    folder.children = [...folder.childrenFolderIds];
+  });
+
+  const root = folderById.get(state.rootId);
+  if (!root) {
+    return defaultState();
+  }
+
+  const childrenByParent = new Map<string, string[]>();
+  folders.forEach((folder) => {
+    if (!folder.parentId || !folderById.has(folder.parentId) || folder.id === state.rootId) return;
+    const list = childrenByParent.get(folder.parentId) ?? [];
+    if (!list.includes(folder.id)) list.push(folder.id);
+    childrenByParent.set(folder.parentId, list);
+  });
+  childrenByParent.forEach((childIds, parentId) => {
+    const parent = folderById.get(parentId);
+    if (!parent) return;
+    const merged = [...parent.childrenFolderIds.filter((id) => childIds.includes(id)), ...childIds.filter((id) => !parent.childrenFolderIds.includes(id))];
+    parent.childrenFolderIds = merged;
+    parent.children = [...merged];
+  });
+
+  const templatesByFolder = new Map<string, string[]>();
+  templates.forEach((template) => {
+    const folderId = folderById.has(template.folderId) ? template.folderId : state.rootId;
+    template.folderId = folderId;
+    const list = templatesByFolder.get(folderId) ?? [];
+    if (!list.includes(template.id)) list.push(template.id);
+    templatesByFolder.set(folderId, list);
+  });
+  folders.forEach((folder) => {
+    const existing = folder.childrenTemplateIds.filter((templateId) => templates.some((template) => template.id === templateId && template.folderId === folder.id));
+    const required = templatesByFolder.get(folder.id) ?? [];
+    folder.childrenTemplateIds = [...existing, ...required.filter((id) => !existing.includes(id))];
+  });
+
+  return {
+    rootId: state.rootId,
+    folders,
+    templates,
+  };
+};
 
 const load = (): PersistedTemplateState => {
   try {
@@ -64,7 +137,7 @@ const load = (): PersistedTemplateState => {
     if (!raw) return defaultState();
     const parsed = JSON.parse(raw) as PersistedTemplateState;
     if (!parsed?.rootId || !Array.isArray(parsed.folders) || !Array.isArray(parsed.templates)) return defaultState();
-    return parsed;
+    return normalizeState(parsed);
   } catch {
     return defaultState();
   }
@@ -104,9 +177,18 @@ interface TemplateStore extends PersistedTemplateState {
   toggleSelection: (id: string) => void;
   rangeSelect: (orderedVisibleIds: string[], clickedId: string) => void;
   moveSelectionToFolder: (targetFolderId: string | null) => boolean;
+  moveTemplates: (templateIds: string[], targetFolderId: string | null) => void;
+  moveFolder: (folderId: string, targetParentId: string | null) => void;
+  canMoveFolder: (folderId: string, targetParentId: string | null) => { ok: boolean; reason?: string };
+  isDescendantFolder: (ancestorId: string, possibleDescendantId: string) => boolean;
+  reorderWithinFolder: (params: { folderId: string; templateIds?: string[]; folderIds?: string[] }) => void;
 }
 
 const initial = load();
+
+const resolveFolderId = (rootId: string, folderId: string | null) => folderId ?? rootId;
+
+const syncLegacyChildren = (folders: TemplateFolder[]) => folders.map((folder) => ({ ...folder, children: [...folder.childrenFolderIds] }));
 
 export const useTemplateStore = create<TemplateStore>((set, get) => ({
   ...initial,
@@ -123,11 +205,12 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     const parent = folders.find((f) => f.id === parentId);
     if (!parent) return;
     const id = `tpl-folder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    parent.children.push(id);
-    folders.push({ id, name: trimmed, parentId, children: [], createdAt: new Date().toISOString() });
-    const next = { rootId: get().rootId, folders, templates: get().templates };
+    parent.childrenFolderIds.push(id);
+    parent.children = [...parent.childrenFolderIds];
+    folders.push({ id, name: trimmed, parentId, children: [], childrenFolderIds: [], childrenTemplateIds: [], createdAt: new Date().toISOString() });
+    const next = { rootId: get().rootId, folders: syncLegacyChildren(folders), templates: get().templates };
     persist(next);
-    set({ folders });
+    set({ folders: syncLegacyChildren(folders) });
   },
   renameFolder: (folderId, name) => {
     const trimmed = name.trim();
@@ -136,9 +219,9 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     const folder = folders.find((f) => f.id === folderId);
     if (!folder) return;
     folder.name = trimmed;
-    const next = { rootId: get().rootId, folders, templates: get().templates };
+    const next = { rootId: get().rootId, folders: syncLegacyChildren(folders), templates: get().templates };
     persist(next);
-    set({ folders });
+    set({ folders: syncLegacyChildren(folders) });
   },
   deleteFolder: (folderId) => {
     if (folderId === get().rootId) return;
@@ -149,10 +232,16 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       doomed.add(id);
       const folder = folders.find((f) => f.id === id);
       if (!folder) return;
-      folder.children.forEach(walk);
+      folder.childrenFolderIds.forEach(walk);
     };
     walk(folderId);
-    const nextFolders = folders.filter((f) => !doomed.has(f.id)).map((f) => ({ ...f, children: f.children.filter((c) => !doomed.has(c)) }));
+    const nextFolders = syncLegacyChildren(folders
+      .filter((f) => !doomed.has(f.id))
+      .map((f) => ({
+        ...f,
+        childrenFolderIds: f.childrenFolderIds.filter((c) => !doomed.has(c)),
+        childrenTemplateIds: f.childrenTemplateIds.filter((templateId) => templates.some((template) => template.id === templateId && !doomed.has(template.folderId))),
+      })));
     const nextTemplates = templates.filter((t) => !doomed.has(t.folderId));
     const next = { rootId: get().rootId, folders: nextFolders, templates: nextTemplates };
     persist(next);
@@ -172,38 +261,65 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       layers: structuredClone(layers),
       createdAt: new Date().toISOString(),
     };
-    const templates = [template, ...get().templates];
-    const next = { rootId: get().rootId, folders: get().folders, templates };
+    const targetFolderId = resolveFolderId(get().rootId, folderId);
+    const templateWithFolder = { ...template, folderId: targetFolderId };
+    const templates = [templateWithFolder, ...get().templates];
+    const folders = structuredClone(get().folders);
+    const folder = folders.find((entry) => entry.id === targetFolderId);
+    if (folder && !folder.childrenTemplateIds.includes(id)) {
+      folder.childrenTemplateIds.push(id);
+    }
+    const next = { rootId: get().rootId, folders: syncLegacyChildren(folders), templates };
     persist(next);
-    set({ templates });
-    useAssetStore.getState().upsertTemplateAsset(template);
+    set({ templates, folders: syncLegacyChildren(folders) });
+    useAssetStore.getState().upsertTemplateAsset(templateWithFolder);
     return id;
   },
   updateTemplate: (templateId, { name, folderId, canvasWidth, canvasHeight, layers }) => {
     const trimmed = name.trim();
     if (!trimmed) return;
     let updatedTemplate: SavedTemplate | null = null;
+    const targetFolderId = resolveFolderId(get().rootId, folderId);
     const templates = get().templates.map((template) => (
       template.id === templateId
         ? (() => {
-          updatedTemplate = { ...template, name: trimmed, folderId, canvasWidth, canvasHeight, layers: structuredClone(layers), updatedAt: new Date().toISOString() };
+          updatedTemplate = { ...template, name: trimmed, folderId: targetFolderId, canvasWidth, canvasHeight, layers: structuredClone(layers), updatedAt: new Date().toISOString() };
           return updatedTemplate;
         })()
         : template
     ));
-    const next = { rootId: get().rootId, folders: get().folders, templates };
+    const folders = structuredClone(get().folders).map((folder) => ({
+      ...folder,
+      childrenTemplateIds: folder.childrenTemplateIds.filter((id) => id !== templateId),
+    }));
+    const nextFolder = folders.find((folder) => folder.id === targetFolderId);
+    if (nextFolder && !nextFolder.childrenTemplateIds.includes(templateId)) {
+      nextFolder.childrenTemplateIds.push(templateId);
+    }
+    const next = { rootId: get().rootId, folders: syncLegacyChildren(folders), templates };
     persist(next);
-    set({ templates });
+    set({ templates, folders: syncLegacyChildren(folders) });
     if (updatedTemplate) useAssetStore.getState().upsertTemplateAsset(updatedTemplate);
   },
   deleteTemplate: (templateId) => {
     const templates = get().templates.filter((template) => template.id !== templateId);
-    const next = { rootId: get().rootId, folders: get().folders, templates };
+    const folders = structuredClone(get().folders).map((folder) => ({
+      ...folder,
+      childrenTemplateIds: folder.childrenTemplateIds.filter((id) => id !== templateId),
+    }));
+    const next = { rootId: get().rootId, folders: syncLegacyChildren(folders), templates };
     persist(next);
-    set({ templates });
+    set({ templates, folders: syncLegacyChildren(folders) });
     useAssetStore.getState().removeTemplateAsset(templateId);
   },
-  getTemplatesInFolder: (folderId) => get().templates.filter((t) => t.folderId === folderId),
+  getTemplatesInFolder: (folderId) => {
+    const folder = get().folders.find((entry) => entry.id === folderId);
+    if (!folder) return [];
+    const templateById = new Map(get().templates.map((template) => [template.id, template]));
+    return folder.childrenTemplateIds
+      .map((templateId) => templateById.get(templateId))
+      .filter((template): template is SavedTemplate => Boolean(template));
+  },
   getTemplateById: (templateId) => get().templates.find((t) => t.id === templateId),
   getFolderById: (folderId) => get().folders.find((f) => f.id === folderId),
   getRootFolder: () => get().folders.find((f) => f.id === get().rootId) || get().folders[0],
@@ -292,23 +408,94 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     };
   }),
   moveSelectionToFolder: (targetFolderId) => {
-    const resolvedTargetId = targetFolderId ?? get().rootId;
-    const target = get().folders.find((folder) => folder.id === resolvedTargetId);
-    if (!target) return false;
     const selectedIds = uniqueIds(get().selectedIds).filter((id) => get().templates.some((template) => template.id === id));
     if (!selectedIds.length) return false;
+    get().moveTemplates(selectedIds, targetFolderId);
+    set({ selectedIds, selectionAnchorId: selectedIds[0] ?? null });
+    return true;
+  },
+  moveTemplates: (templateIds, targetFolderId) => {
+    const selectedIds = uniqueIds(templateIds);
+    if (!selectedIds.length) return;
+    const resolvedTargetId = resolveFolderId(get().rootId, targetFolderId);
+    const folders = structuredClone(get().folders);
+    const targetFolder = folders.find((folder) => folder.id === resolvedTargetId);
+    if (!targetFolder) return;
+    const now = new Date().toISOString();
     const templates = get().templates.map((template) => (
       selectedIds.includes(template.id)
-        ? { ...template, folderId: resolvedTargetId, updatedAt: new Date().toISOString() }
+        ? { ...template, folderId: resolvedTargetId, updatedAt: now }
         : template
     ));
-    const next = { rootId: get().rootId, folders: get().folders, templates };
-    persist(next);
-    set({ templates, selectedIds, selectionAnchorId: selectedIds[0] ?? null });
-    templates.filter((template) => selectedIds.includes(template.id)).forEach((template) => {
-      useAssetStore.getState().upsertTemplateAsset(template);
+    folders.forEach((folder) => {
+      folder.childrenTemplateIds = folder.childrenTemplateIds.filter((id) => !selectedIds.includes(id));
     });
-    return true;
+    selectedIds.forEach((id) => {
+      if (!targetFolder.childrenTemplateIds.includes(id)) targetFolder.childrenTemplateIds.push(id);
+    });
+    const syncedFolders = syncLegacyChildren(folders);
+    const next = { rootId: get().rootId, folders: syncedFolders, templates };
+    persist(next);
+    set({ templates, folders: syncedFolders });
+    templates.filter((template) => selectedIds.includes(template.id)).forEach((template) => useAssetStore.getState().upsertTemplateAsset(template));
+  },
+  isDescendantFolder: (ancestorId, possibleDescendantId) => {
+    const folderById = new Map(get().folders.map((folder) => [folder.id, folder]));
+    const stack = [...(folderById.get(ancestorId)?.childrenFolderIds ?? [])];
+    while (stack.length) {
+      const nextId = stack.pop();
+      if (!nextId) continue;
+      if (nextId === possibleDescendantId) return true;
+      const folder = folderById.get(nextId);
+      if (folder) stack.push(...folder.childrenFolderIds);
+    }
+    return false;
+  },
+  canMoveFolder: (folderId, targetParentId) => {
+    const rootId = get().rootId;
+    const resolvedTargetParentId = resolveFolderId(rootId, targetParentId);
+    const folder = get().folders.find((entry) => entry.id === folderId);
+    const target = get().folders.find((entry) => entry.id === resolvedTargetParentId);
+    if (!folder || !target) return { ok: false, reason: 'Folder not found' };
+    if (folder.id === rootId) return { ok: false, reason: 'Cannot move root folder' };
+    if (folder.id === resolvedTargetParentId) return { ok: false, reason: 'Cannot move folder into itself' };
+    if (get().isDescendantFolder(folder.id, resolvedTargetParentId)) return { ok: false, reason: 'Cannot move folder into descendant' };
+    if (folder.parentId === resolvedTargetParentId) return { ok: false, reason: 'Folder already in target parent' };
+    return { ok: true };
+  },
+  moveFolder: (folderId, targetParentId) => {
+    const rootId = get().rootId;
+    const resolvedTargetParentId = resolveFolderId(rootId, targetParentId);
+    const guard = get().canMoveFolder(folderId, resolvedTargetParentId);
+    if (!guard.ok) return;
+    const folders = structuredClone(get().folders);
+    const folder = folders.find((entry) => entry.id === folderId);
+    if (!folder) return;
+    const prevParent = folders.find((entry) => entry.id === folder.parentId);
+    if (prevParent) {
+      prevParent.childrenFolderIds = prevParent.childrenFolderIds.filter((id) => id !== folderId);
+    }
+    const target = folders.find((entry) => entry.id === resolvedTargetParentId);
+    if (!target) return;
+    if (!target.childrenFolderIds.includes(folderId)) {
+      target.childrenFolderIds.push(folderId);
+    }
+    folder.parentId = resolvedTargetParentId;
+    const syncedFolders = syncLegacyChildren(folders);
+    const next = { rootId, folders: syncedFolders, templates: get().templates };
+    persist(next);
+    set({ folders: syncedFolders });
+  },
+  reorderWithinFolder: ({ folderId, templateIds, folderIds }) => {
+    const folders = structuredClone(get().folders);
+    const folder = folders.find((entry) => entry.id === folderId);
+    if (!folder) return;
+    if (templateIds) folder.childrenTemplateIds = uniqueIds(templateIds);
+    if (folderIds) folder.childrenFolderIds = uniqueIds(folderIds);
+    const syncedFolders = syncLegacyChildren(folders);
+    const next = { rootId: get().rootId, folders: syncedFolders, templates: get().templates };
+    persist(next);
+    set({ folders: syncedFolders });
   },
   selectTemplate: (selection) => set({ selectedTemplate: selection }),
 }));
