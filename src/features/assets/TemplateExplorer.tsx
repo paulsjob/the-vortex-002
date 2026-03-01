@@ -7,10 +7,17 @@ import { loadVortexPackage } from '../packages/loadVortexPackage';
 
 const iconBtn = 'h-8 w-8 rounded border border-slate-700 bg-slate-900 text-sm text-slate-200 hover:bg-slate-800 disabled:opacity-50';
 
-type DragPayload = {
-  kind: 'assets' | 'templates';
-  ids: string[];
+type TemplateDragPayload = {
+  kind: 'templates';
+  templateIds: string[];
 };
+
+type FolderDragPayload = {
+  kind: 'templateFolder';
+  folderId: string;
+};
+
+type DragPayload = TemplateDragPayload | FolderDragPayload;
 
 export function TemplateExplorer() {
   const navigate = useNavigate();
@@ -20,6 +27,7 @@ export function TemplateExplorer() {
   const [query, setQuery] = useState('');
   const [importStatus, setImportStatus] = useState<string>('');
   const [hoverFolderId, setHoverFolderId] = useState<string | null>(null);
+  const [invalidHoverFolderId, setInvalidHoverFolderId] = useState<string | null>(null);
 
   const selectedSet = useMemo(() => new Set(templateStore.selectedIds), [templateStore.selectedIds]);
 
@@ -70,37 +78,64 @@ export function TemplateExplorer() {
     }
   };
 
+  const canDropOnFolder = (payload: DragPayload | null, folderId: string): boolean => {
+    if (!payload) return false;
+    if (payload.kind === 'templates') return true;
+    return templateStore.canMoveFolder(payload.folderId, folderId).ok;
+  };
+
   const onDropOnFolder = (event: DragEvent, folderId: string) => {
     event.preventDefault();
     event.stopPropagation();
     setHoverFolderId(null);
+    setInvalidHoverFolderId(null);
     const payload = parsePayload(event);
-    if (!payload || payload.kind !== 'templates') return;
-    templateStore.moveSelectionToFolder(folderId);
-    setCurrentFolderId(folderId);
+    if (!payload) return;
+    if (payload.kind === 'templates') {
+      templateStore.moveTemplates(payload.templateIds, folderId);
+      templateStore.setSelection(payload.templateIds, payload.templateIds[0] ?? null);
+      setCurrentFolderId(folderId);
+      return;
+    }
+    if (!templateStore.canMoveFolder(payload.folderId, folderId).ok) return;
+    templateStore.moveFolder(payload.folderId, folderId);
   };
 
   const renderFolderTree = (folderId: string, depth = 0): JSX.Element | null => {
     const folder = getFolder(folderId);
     if (!folder) return null;
-    const childFolders = folder.children.map(getFolder).filter(Boolean) as NonNullable<ReturnType<typeof getFolder>>[];
+    const childFolders = folder.childrenFolderIds.map(getFolder).filter(Boolean) as NonNullable<ReturnType<typeof getFolder>>[];
     const isOpen = templateStore.expanded[folderId] ?? depth === 0;
     return (
       <div key={folderId} style={{ marginLeft: depth * 12 }} className="space-y-1">
         <div className="flex items-center gap-1">
           {childFolders.length ? <button className="h-5 w-5 rounded border border-slate-700 bg-slate-800 text-xs" onClick={() => templateStore.toggleExpanded(folderId)}>{isOpen ? '▾' : '▸'}</button> : <span className="inline-block h-5 w-5" />}
           <button
-            className={`w-full rounded border px-2 py-1 text-left ${currentFolderId === folder.id ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'} ${hoverFolderId === folder.id ? 'ring-2 ring-emerald-500/70' : ''}`}
+            className={`w-full rounded border px-2 py-1 text-left ${currentFolderId === folder.id ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'} ${hoverFolderId === folder.id ? 'ring-2 ring-emerald-500/70' : ''} ${invalidHoverFolderId === folder.id ? 'ring-0' : ''}`}
+            draggable={folder.id !== templateStore.rootId}
             onClick={() => setCurrentFolderId(folder.id)}
             onDoubleClick={() => renameFolder(folder.id, folder.name)}
+            onDragStart={(event) => {
+              if (folder.id === templateStore.rootId) return;
+              event.dataTransfer.effectAllowed = 'move';
+              event.dataTransfer.setData('application/json', JSON.stringify({ kind: 'templateFolder', folderId: folder.id } satisfies FolderDragPayload));
+            }}
             onDragOver={(event) => {
               const payload = parsePayload(event);
-              if (payload?.kind === 'templates') {
+              if (!payload) return;
+              if (canDropOnFolder(payload, folder.id)) {
                 event.preventDefault();
                 setHoverFolderId(folder.id);
+                setInvalidHoverFolderId(null);
+              } else {
+                setHoverFolderId((prev) => (prev === folder.id ? null : prev));
+                setInvalidHoverFolderId(folder.id);
               }
             }}
-            onDragLeave={() => setHoverFolderId((prev) => (prev === folder.id ? null : prev))}
+            onDragLeave={() => {
+              setHoverFolderId((prev) => (prev === folder.id ? null : prev));
+              setInvalidHoverFolderId((prev) => (prev === folder.id ? null : prev));
+            }}
             onDrop={(event) => onDropOnFolder(event, folder.id)}
           >
             {folder.name}
@@ -126,14 +161,21 @@ export function TemplateExplorer() {
         onDragOver={(event) => {
           const payload = parsePayload(event);
           if (payload?.kind === 'templates') event.preventDefault();
+          if (payload?.kind === 'templateFolder' && templateStore.canMoveFolder(payload.folderId, null).ok) event.preventDefault();
         }}
         onDrop={(event) => {
           event.preventDefault();
           setHoverFolderId(null);
           const payload = parsePayload(event);
-          if (!payload || payload.kind !== 'templates') return;
-          templateStore.moveSelectionToFolder(null);
-          setCurrentFolderId(templateStore.rootId);
+          if (!payload) return;
+          if (payload.kind === 'templates') {
+            templateStore.moveTemplates(payload.templateIds, null);
+            templateStore.setSelection(payload.templateIds, payload.templateIds[0] ?? null);
+            setCurrentFolderId(templateStore.rootId);
+            return;
+          }
+          if (!templateStore.canMoveFolder(payload.folderId, null).ok) return;
+          templateStore.moveFolder(payload.folderId, null);
         }}
       >
         <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -198,12 +240,12 @@ export function TemplateExplorer() {
                 draggable={!isVortex}
                 onDragStart={(event) => {
                   if (isVortex) return;
-                  const ids = selectedSet.has(template.id) ? templateStore.selectedIds : [template.id];
+                  const templateIds = selectedSet.has(template.id) ? templateStore.selectedIds : [template.id];
                   if (!selectedSet.has(template.id)) {
                     templateStore.setSelection([template.id], template.id);
                   }
                   event.dataTransfer.effectAllowed = 'move';
-                  event.dataTransfer.setData('application/json', JSON.stringify({ kind: 'templates', ids } satisfies DragPayload));
+                  event.dataTransfer.setData('application/json', JSON.stringify({ kind: 'templates', templateIds } satisfies TemplateDragPayload));
                 }}
                 onClick={(event) => {
                   if (isVortex) return;
