@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { type DragEvent, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLayerStore } from '../../store/useLayerStore';
 import { useTemplateStore, type TemplateListItem } from '../../store/useTemplateStore';
@@ -7,6 +7,11 @@ import { loadVortexPackage } from '../packages/loadVortexPackage';
 
 const iconBtn = 'h-8 w-8 rounded border border-slate-700 bg-slate-900 text-sm text-slate-200 hover:bg-slate-800 disabled:opacity-50';
 
+type DragPayload = {
+  kind: 'assets' | 'templates';
+  ids: string[];
+};
+
 export function TemplateExplorer() {
   const navigate = useNavigate();
   const templateStore = useTemplateStore();
@@ -14,6 +19,9 @@ export function TemplateExplorer() {
   const [currentFolderId, setCurrentFolderId] = useState(templateStore.rootId);
   const [query, setQuery] = useState('');
   const [importStatus, setImportStatus] = useState<string>('');
+  const [hoverFolderId, setHoverFolderId] = useState<string | null>(null);
+
+  const selectedSet = useMemo(() => new Set(templateStore.selectedIds), [templateStore.selectedIds]);
 
   const getFolder = (id: string) => templateStore.folders.find((f) => f.id === id);
 
@@ -41,10 +49,35 @@ export function TemplateExplorer() {
     return [...nativeItems, ...vortexItems];
   }, [allTemplates, templates]);
 
+  const orderedVisibleIds = useMemo(
+    () => templatesForDisplay.filter((template) => template.source === 'native').map((template) => template.id),
+    [templatesForDisplay],
+  );
+
   const renameFolder = (folderId: string, currentName: string) => {
     const next = window.prompt('Rename folder', currentName)?.trim();
     if (!next || next === currentName) return;
     templateStore.renameFolder(folderId, next);
+  };
+
+  const parsePayload = (event: DragEvent): DragPayload | null => {
+    const raw = event.dataTransfer.getData('application/json');
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as DragPayload;
+    } catch {
+      return null;
+    }
+  };
+
+  const onDropOnFolder = (event: DragEvent, folderId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setHoverFolderId(null);
+    const payload = parsePayload(event);
+    if (!payload || payload.kind !== 'templates') return;
+    templateStore.moveSelectionToFolder(folderId);
+    setCurrentFolderId(folderId);
   };
 
   const renderFolderTree = (folderId: string, depth = 0): JSX.Element | null => {
@@ -56,7 +89,22 @@ export function TemplateExplorer() {
       <div key={folderId} style={{ marginLeft: depth * 12 }} className="space-y-1">
         <div className="flex items-center gap-1">
           {childFolders.length ? <button className="h-5 w-5 rounded border border-slate-700 bg-slate-800 text-xs" onClick={() => templateStore.toggleExpanded(folderId)}>{isOpen ? '▾' : '▸'}</button> : <span className="inline-block h-5 w-5" />}
-          <button className={`w-full rounded border px-2 py-1 text-left ${currentFolderId === folder.id ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'}`} onClick={() => setCurrentFolderId(folder.id)} onDoubleClick={() => renameFolder(folder.id, folder.name)}>{folder.name}</button>
+          <button
+            className={`w-full rounded border px-2 py-1 text-left ${currentFolderId === folder.id ? 'border-blue-500 bg-slate-800' : 'border-slate-700 bg-slate-900'} ${hoverFolderId === folder.id ? 'ring-2 ring-emerald-500/70' : ''}`}
+            onClick={() => setCurrentFolderId(folder.id)}
+            onDoubleClick={() => renameFolder(folder.id, folder.name)}
+            onDragOver={(event) => {
+              const payload = parsePayload(event);
+              if (payload?.kind === 'templates') {
+                event.preventDefault();
+                setHoverFolderId(folder.id);
+              }
+            }}
+            onDragLeave={() => setHoverFolderId((prev) => (prev === folder.id ? null : prev))}
+            onDrop={(event) => onDropOnFolder(event, folder.id)}
+          >
+            {folder.name}
+          </button>
         </div>
         {isOpen && childFolders.map((child) => renderFolderTree(child.id, depth + 1))}
       </div>
@@ -70,7 +118,24 @@ export function TemplateExplorer() {
         {renderFolderTree(templateStore.rootId)}
       </aside>
 
-      <div className="rounded-lg border border-slate-800 bg-slate-950 p-3">
+      <div
+        className="rounded-lg border border-slate-800 bg-slate-950 p-3"
+        onClick={(event) => {
+          if (event.target === event.currentTarget) templateStore.clearSelection();
+        }}
+        onDragOver={(event) => {
+          const payload = parsePayload(event);
+          if (payload?.kind === 'templates') event.preventDefault();
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          setHoverFolderId(null);
+          const payload = parsePayload(event);
+          if (!payload || payload.kind !== 'templates') return;
+          templateStore.moveSelectionToFolder(null);
+          setCurrentFolderId(templateStore.rootId);
+        }}
+      >
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <input value={query} onChange={(e) => setQuery(e.target.value)} className="flex-1 rounded border border-slate-700 bg-slate-900 px-2 py-1" placeholder="Search templates" />
           <label className="cursor-pointer rounded border border-violet-500/60 bg-violet-500/10 px-2 py-1 text-xs text-violet-200 hover:bg-violet-500/20" title="Import Illustrator SVG">
@@ -118,16 +183,38 @@ export function TemplateExplorer() {
           <button className={iconBtn} title="Delete selected folder" onClick={() => templateStore.deleteFolder(currentFolderId)} disabled={currentFolderId === templateStore.rootId}>🗑</button>
         </div>
 
-        <div className="grid gap-2 text-sm">
+        <div className="grid gap-2 text-sm" onClick={(event) => event.stopPropagation()}>
           {importStatus && <p className="text-xs text-slate-300">{importStatus}</p>}
+          <p className="text-xs text-slate-400">Selected: <span className="font-semibold text-slate-200">{templateStore.selectedIds.length}</span></p>
           <div className="grid grid-cols-[1.6fr_0.8fr_1fr_1fr_auto_auto] text-slate-400"><span>Name</span><span>Type</span><span>Dimensions</span><span>Modified</span><span>Load</span><span>Delete</span></div>
           {templatesForDisplay.map((template) => {
             const isVortex = template.source === 'vortex';
+            const isSelected = template.source === 'native' && selectedSet.has(template.id);
             const updatedAt = template.updatedAt ? new Date(template.updatedAt).toLocaleDateString() : '—';
             return (
               <div
                 key={`${template.source}:${template.id}`}
-                className="grid grid-cols-[1.6fr_0.8fr_1fr_1fr_auto_auto] items-center gap-2 rounded border border-slate-800 bg-slate-900 p-2 hover:border-blue-500/60 hover:bg-slate-800"
+                className={`grid grid-cols-[1.6fr_0.8fr_1fr_1fr_auto_auto] items-center gap-2 rounded border p-2 ${isSelected ? 'border-blue-500 bg-blue-500/10' : 'border-slate-800 bg-slate-900 hover:border-blue-500/60 hover:bg-slate-800'}`}
+                draggable={!isVortex}
+                onDragStart={(event) => {
+                  if (isVortex) return;
+                  const ids = selectedSet.has(template.id) ? templateStore.selectedIds : [template.id];
+                  if (!selectedSet.has(template.id)) {
+                    templateStore.setSelection([template.id], template.id);
+                  }
+                  event.dataTransfer.effectAllowed = 'move';
+                  event.dataTransfer.setData('application/json', JSON.stringify({ kind: 'templates', ids } satisfies DragPayload));
+                }}
+                onClick={(event) => {
+                  if (isVortex) return;
+                  if (event.shiftKey) {
+                    templateStore.rangeSelect(orderedVisibleIds, template.id);
+                  } else if (event.ctrlKey || event.metaKey) {
+                    templateStore.toggleSelection(template.id);
+                  } else {
+                    templateStore.setSelection([template.id], template.id);
+                  }
+                }}
                 onDoubleClick={() => {
                   if (isVortex) return;
                   const nativeTemplate = templateStore.getTemplateById(template.id);

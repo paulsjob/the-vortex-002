@@ -25,7 +25,7 @@ export function DashboardRoute() {
     <section className="space-y-4">
       <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-300">Dashboard</h2>
-        <p className="mt-2 text-sm text-slate-400">Single-pane explorer for Branded Assets, Fonts, and Templates with persisted folder/file management.</p>
+        <p className="mt-2 text-sm text-slate-400">Single-pane explorer for Branded Assets, Fonts, and Templates with persisted folder/file management, multi-select, and drag-move support.</p>
       </div>
 
       <section className="grid grid-cols-1 gap-3 lg:grid-cols-[220px_1fr]">

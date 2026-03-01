@@ -238,6 +238,8 @@ interface AssetStore {
   expandedBranded: Record<string, boolean>;
   expandedFonts: Record<string, boolean>;
   expandedTemplates: Record<string, boolean>;
+  selectedIds: Record<ExplorerKind, string[]>;
+  selectionAnchorId: Record<ExplorerKind, string | null>;
   addAsset: (asset: AssetItem, metadata: Pick<AssetRecord, 'kind' | 'mime' | 'size' | 'blobKey' | 'url'>, targetFolderId: string, kind: ExplorerKind) => void;
   uploadFiles: (files: File[], targetFolderId: string, kind: ExplorerKind) => Promise<void>;
   addFolder: (name: string, parentId: string, kind: ExplorerKind) => void;
@@ -251,7 +253,19 @@ interface AssetStore {
   upsertTemplateAsset: (template: SavedTemplate) => void;
   removeTemplateAsset: (templateId: string) => void;
   hydrateBlobBackedAssets: (kind?: 'branded' | 'fonts') => Promise<void>;
+  clearSelection: (kind: ExplorerKind) => void;
+  setSelection: (kind: ExplorerKind, ids: string[], anchorId?: string | null) => void;
+  toggleSelection: (kind: ExplorerKind, id: string) => void;
+  rangeSelect: (kind: ExplorerKind, orderedVisibleIds: string[], clickedId: string) => void;
+  moveSelectionToFolder: (kind: ExplorerKind, targetFolderId: string | null) => boolean;
 }
+
+const uniqueIds = (ids: string[]) => [...new Set(ids)];
+
+const pruneNestedSelection = (explorer: ExplorerState, ids: string[]) => {
+  const selected = new Set(ids);
+  return ids.filter((id) => !ids.some((candidate) => candidate !== id && isDescendantFolder(explorer, candidate, id) && selected.has(candidate)));
+};
 
 const buildMoveCheck = (explorer: ExplorerState, nodeId: string, targetFolderId: string): MoveCheck => {
   const node = explorer.nodes.find((entry) => entry.id === nodeId);
@@ -290,6 +304,16 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
   expandedBranded: { [brandedExplorer.rootId]: true },
   expandedFonts: { [fontsExplorer.rootId]: true },
   expandedTemplates: { [templateExplorer.rootId]: true },
+  selectedIds: {
+    branded: [],
+    fonts: [],
+    templates: [],
+  },
+  selectionAnchorId: {
+    branded: null,
+    fonts: null,
+    templates: null,
+  },
   addAsset: (asset, metadata, targetFolderId, kind) => {
     const key = getExplorerKey(kind);
     const next = structuredClone(get()[key]);
@@ -460,6 +484,78 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
         kind === 'templates' ? next : get().templateExplorer,
       ),
     });
+    return true;
+  },
+  clearSelection: (kind) => set((state) => ({
+    selectedIds: { ...state.selectedIds, [kind]: [] },
+    selectionAnchorId: { ...state.selectionAnchorId, [kind]: null },
+  })),
+  setSelection: (kind, ids, anchorId) => set((state) => ({
+    selectedIds: { ...state.selectedIds, [kind]: uniqueIds(ids) },
+    selectionAnchorId: { ...state.selectionAnchorId, [kind]: anchorId ?? ids[0] ?? null },
+  })),
+  toggleSelection: (kind, id) => set((state) => {
+    const current = state.selectedIds[kind];
+    const exists = current.includes(id);
+    return {
+      selectedIds: { ...state.selectedIds, [kind]: exists ? current.filter((entry) => entry !== id) : [...current, id] },
+      selectionAnchorId: { ...state.selectionAnchorId, [kind]: id },
+    };
+  }),
+  rangeSelect: (kind, orderedVisibleIds, clickedId) => set((state) => {
+    const anchorId = state.selectionAnchorId[kind] ?? clickedId;
+    const start = orderedVisibleIds.indexOf(anchorId);
+    const end = orderedVisibleIds.indexOf(clickedId);
+    if (start === -1 || end === -1) {
+      return {
+        selectedIds: { ...state.selectedIds, [kind]: [clickedId] },
+        selectionAnchorId: { ...state.selectionAnchorId, [kind]: clickedId },
+      };
+    }
+    const [from, to] = start < end ? [start, end] : [end, start];
+    return {
+      selectedIds: { ...state.selectedIds, [kind]: orderedVisibleIds.slice(from, to + 1) },
+      selectionAnchorId: { ...state.selectionAnchorId, [kind]: anchorId },
+    };
+  }),
+  moveSelectionToFolder: (kind, targetFolderId) => {
+    const key = getExplorerKey(kind);
+    const explorer = structuredClone(get()[key]);
+    const selectedIds = pruneNestedSelection(explorer, get().selectedIds[kind]);
+    if (!selectedIds.length) return false;
+    const resolvedTargetFolderId = targetFolderId ?? explorer.rootId;
+
+    for (const id of selectedIds) {
+      const check = buildMoveCheck(explorer, id, resolvedTargetFolderId);
+      if (!check.ok) return false;
+    }
+
+    const targetFolder = explorer.nodes.find((node) => node.type === 'folder' && node.id === resolvedTargetFolderId);
+    if (!targetFolder || targetFolder.type !== 'folder') return false;
+
+    selectedIds.forEach((id) => {
+      const node = explorer.nodes.find((entry) => entry.id === id);
+      const previousParent = node?.parentId
+        ? explorer.nodes.find((entry) => entry.type === 'folder' && entry.id === node.parentId)
+        : undefined;
+      if (!node || !previousParent || previousParent.type !== 'folder') return;
+      previousParent.children = previousParent.children.filter((childId) => childId !== id);
+      targetFolder.children.push(id);
+      node.parentId = resolvedTargetFolderId;
+    });
+
+    persist(kind, explorer);
+    const patch = { [key]: explorer } as Partial<AssetStore>;
+    set((state) => ({
+      ...patch,
+      assets: extractAssets(
+        kind === 'branded' ? explorer : state.brandedExplorer,
+        kind === 'fonts' ? explorer : state.fontsExplorer,
+        kind === 'templates' ? explorer : state.templateExplorer,
+      ),
+      selectedIds: { ...state.selectedIds, [kind]: selectedIds },
+      selectionAnchorId: { ...state.selectionAnchorId, [kind]: selectedIds[0] ?? null },
+    }));
     return true;
   },
   toggleExpanded: (id, kind) => {
