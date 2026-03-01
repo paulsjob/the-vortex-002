@@ -1,4 +1,5 @@
 import { type DragEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { getBlob } from '../../store/blobDb';
 import { useAssetStore } from '../../store/useAssetStore';
 import type { ExplorerNode } from '../../types/domain';
 
@@ -21,6 +22,8 @@ export function AssetExplorer({ kind, title }: Props) {
   const [query, setQuery] = useState('');
   const [hoverFolderId, setHoverFolderId] = useState<string | null>(null);
   const uploadRef = useRef<HTMLInputElement | null>(null);
+  const previewUrlsRef = useRef<Record<string, string>>({});
+  const [, forcePreviewRefresh] = useState(0);
 
   useEffect(() => {
     setCurrentFolderId(explorer.rootId);
@@ -53,6 +56,46 @@ export function AssetExplorer({ kind, title }: Props) {
   const filteredChildren = children.filter((item) => item.name.toLowerCase().includes(query.toLowerCase()));
   const orderedVisibleIds = useMemo(() => filteredChildren.map((item) => item.id), [filteredChildren]);
 
+  const revokePreviewUrl = (id: string) => {
+    const url = previewUrlsRef.current[id];
+    if (url) {
+      URL.revokeObjectURL(url);
+      delete previewUrlsRef.current[id];
+      forcePreviewRefresh((v) => v + 1);
+    }
+  };
+
+  useEffect(() => {
+    if (kind === 'templates') return undefined;
+    let cancelled = false;
+    const storeName = kind === 'fonts' ? 'fonts' : 'assets';
+    const files = children.filter((item): item is Extract<ExplorerNode, { type: 'file' }> => item.type === 'file' && item.kind === 'asset');
+
+    void Promise.all(files.map(async (item) => {
+      if (previewUrlsRef.current[item.id]) return;
+      const blob = await getBlob(storeName, item.blobKey || item.id);
+      if (!blob || cancelled) return;
+      previewUrlsRef.current[item.id] = URL.createObjectURL(blob);
+    })).then(() => {
+      if (!cancelled) forcePreviewRefresh((v) => v + 1);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [children, kind]);
+
+  useEffect(() => {
+    const validIds = new Set(explorer.nodes.filter((node) => node.type === 'file').map((node) => node.id));
+    Object.keys(previewUrlsRef.current)
+      .filter((id) => !validIds.has(id))
+      .forEach(revokePreviewUrl);
+  }, [explorer.nodes]);
+
+  useEffect(() => () => {
+    Object.keys(previewUrlsRef.current).forEach((id) => revokePreviewUrl(id));
+  }, []);
+
   const renameItem = (item: ExplorerNode) => {
     const nextName = window.prompt('Rename item', item.name)?.trim();
     if (!nextName || nextName === item.name) return;
@@ -67,6 +110,7 @@ export function AssetExplorer({ kind, title }: Props) {
       const confirmed = window.confirm(`Delete "${item.name}"?`);
       if (!confirmed) return;
     }
+    revokePreviewUrl(item.id);
     store.deleteNode(item.id, kind);
     if (item.id === currentFolderId) setCurrentFolderId(explorer.rootId);
   };
@@ -242,8 +286,8 @@ export function AssetExplorer({ kind, title }: Props) {
                 <span className="flex items-center gap-2">
                   {item.type === 'folder' ? (
                     <span>📁</span>
-                  ) : item.kind === 'asset' && item.src ? (
-                    <img src={item.src} alt={item.name} className="h-8 w-8 rounded border border-slate-700 object-cover" />
+                  ) : item.kind === 'asset' && (previewUrlsRef.current[item.id] || item.src) ? (
+                    <img src={previewUrlsRef.current[item.id] || item.src} alt={item.name} className="h-8 w-8 rounded border border-slate-700 object-cover" />
                   ) : (
                     <span>🖼️</span>
                   )}
