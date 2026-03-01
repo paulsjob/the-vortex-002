@@ -118,9 +118,9 @@ export function AssetExplorer({ kind, title }: Props) {
   };
 
   const readDragPayload = (event: DragEvent): DragPayload | null => {
-    const raw = event.dataTransfer.getData('application/json') || event.dataTransfer.getData('text/plain');
-    if (!raw) return null;
     try {
+      const raw = event.dataTransfer.getData('application/json') || event.dataTransfer.getData('text/plain');
+      if (!raw) return null;
       return JSON.parse(raw) as DragPayload;
     } catch {
       return null;
@@ -132,48 +132,48 @@ export function AssetExplorer({ kind, title }: Props) {
     if (payload.kind === 'assets') return true;
     if (payload.kind === 'assetFolders') {
       const folderId = payload.ids[0];
-      return Boolean(folderId && store.canMoveNode(folderId, targetFolderId, kind).ok);
+      return Boolean(folderId && store.canMoveFolder(folderId, targetFolderId, kind).ok);
     }
     return false;
   };
 
 
   const onDropOnRoot = (event: DragEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
     const payload = readDragPayload(event);
     if (!payload) return;
     if (!canDropOnFolder(payload, explorer.rootId)) return;
-    event.preventDefault();
-    event.stopPropagation();
     setHoverFolderId(null);
     if (DEBUG_DND) console.log('[AssetExplorer:dnd] drop', { folderId: 'root', ids: payload.ids, kind: payload.kind });
     if (payload.kind === 'assets') {
       store.setSelection(kind, payload.ids, payload.ids[0] ?? null);
-      const moved = store.moveSelectionToFolder(kind, null);
+      const moved = store.moveNodesToFolder(payload.ids, null, kind);
       if (moved) setCurrentFolderId(explorer.rootId);
       return;
     }
     const folderId = payload.ids[0];
-    if (!folderId || !store.canMoveNode(folderId, explorer.rootId, kind).ok) return;
-    if (store.moveNode(folderId, explorer.rootId, kind)) setCurrentFolderId(explorer.rootId);
+    if (!folderId || !store.canMoveFolder(folderId, null, kind).ok) return;
+    if (store.moveFolderToFolder(folderId, null, kind)) setCurrentFolderId(explorer.rootId);
   };
 
   const onDropOnFolder = (event: DragEvent, targetFolderId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
     const payload = readDragPayload(event);
     if (!payload) return;
     if (!canDropOnFolder(payload, targetFolderId)) return;
-    event.preventDefault();
-    event.stopPropagation();
     setHoverFolderId(null);
     if (DEBUG_DND) console.log('[AssetExplorer:dnd] drop', { folderId: targetFolderId, ids: payload.ids, kind: payload.kind });
     if (payload.kind === 'assets') {
       store.setSelection(kind, payload.ids, payload.ids[0] ?? null);
-      const moved = store.moveSelectionToFolder(kind, targetFolderId);
+      const moved = store.moveNodesToFolder(payload.ids, targetFolderId, kind);
       if (moved) setCurrentFolderId(targetFolderId);
       return;
     }
     const folderId = payload.ids[0];
-    if (!folderId || !store.canMoveNode(folderId, targetFolderId, kind).ok) return;
-    if (store.moveNode(folderId, targetFolderId, kind)) setCurrentFolderId(targetFolderId);
+    if (!folderId || !store.canMoveFolder(folderId, targetFolderId, kind).ok) return;
+    if (store.moveFolderToFolder(folderId, targetFolderId, kind)) setCurrentFolderId(targetFolderId);
   };
 
   const renderTree = (folderId: string, depth = 0): JSX.Element | null => {

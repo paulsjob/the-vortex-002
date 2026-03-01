@@ -295,7 +295,10 @@ interface AssetStore {
   renameNode: (id: string, name: string, kind: ExplorerKind) => void;
   deleteNode: (id: string, kind: ExplorerKind) => void;
   canMoveNode: (nodeId: string, targetFolderId: string, kind: ExplorerKind) => MoveCheck;
+  canMoveFolder: (folderId: string, targetParentId: string | null, kind: ExplorerKind) => MoveCheck;
   moveNode: (nodeId: string, targetFolderId: string, kind: ExplorerKind) => boolean;
+  moveNodesToFolder: (nodeIds: string[], targetFolderId: string | null, kind: ExplorerKind) => boolean;
+  moveFolderToFolder: (folderId: string, targetParentId: string | null, kind: ExplorerKind) => boolean;
   toggleExpanded: (id: string, kind: ExplorerKind) => void;
   exportState: () => string;
   resetState: () => void;
@@ -518,6 +521,12 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
     const key = getExplorerKey(kind);
     return buildMoveCheck(get()[key], nodeId, targetFolderId);
   },
+  canMoveFolder: (folderId, targetParentId, kind) => {
+    const key = getExplorerKey(kind);
+    const explorer = get()[key];
+    const resolvedTargetParentId = targetParentId ?? explorer.rootId;
+    return buildMoveCheck(explorer, folderId, resolvedTargetParentId);
+  },
   moveNode: (nodeId, targetFolderId, kind) => {
     const key = getExplorerKey(kind);
     const next = structuredClone(get()[key]);
@@ -549,6 +558,52 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
       ),
     });
     return true;
+  },
+  moveNodesToFolder: (nodeIds, targetFolderId, kind) => {
+    const key = getExplorerKey(kind);
+    const explorer = structuredClone(get()[key]);
+    const selectedIds = pruneNestedSelection(explorer, uniqueIds(nodeIds));
+    if (!selectedIds.length) return false;
+    const resolvedTargetFolderId = targetFolderId ?? explorer.rootId;
+
+    for (const id of selectedIds) {
+      const check = buildMoveCheck(explorer, id, resolvedTargetFolderId);
+      if (!check.ok) return false;
+    }
+
+    const targetFolder = explorer.nodes.find((node) => node.type === 'folder' && node.id === resolvedTargetFolderId);
+    if (!targetFolder || targetFolder.type !== 'folder') return false;
+
+    selectedIds.forEach((id) => {
+      const node = explorer.nodes.find((entry) => entry.id === id);
+      const previousParent = node?.parentId
+        ? explorer.nodes.find((entry) => entry.type === 'folder' && entry.id === node.parentId)
+        : undefined;
+      if (!node || !previousParent || previousParent.type !== 'folder') return;
+      previousParent.children = previousParent.children.filter((childId) => childId !== id);
+      if (!targetFolder.children.includes(id)) targetFolder.children.push(id);
+      node.parentId = resolvedTargetFolderId;
+    });
+
+    persist(kind, explorer);
+    const patch = { [key]: explorer } as Partial<AssetStore>;
+    set((state) => ({
+      ...patch,
+      assets: extractAssets(
+        kind === 'branded' ? explorer : state.brandedExplorer,
+        kind === 'fonts' ? explorer : state.fontsExplorer,
+        kind === 'templates' ? explorer : state.templateExplorer,
+      ),
+      selectedIds: { ...state.selectedIds, [kind]: selectedIds },
+      selectionAnchorId: { ...state.selectionAnchorId, [kind]: selectedIds[0] ?? null },
+    }));
+    return true;
+  },
+  moveFolderToFolder: (folderId, targetParentId, kind) => {
+    const key = getExplorerKey(kind);
+    const explorer = get()[key];
+    const resolvedTargetParentId = targetParentId ?? explorer.rootId;
+    return get().moveNode(folderId, resolvedTargetParentId, kind);
   },
   clearSelection: (kind) => set((state) => ({
     selectedIds: { ...state.selectedIds, [kind]: [] },
@@ -583,44 +638,7 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
     };
   }),
   moveSelectionToFolder: (kind, targetFolderId) => {
-    const key = getExplorerKey(kind);
-    const explorer = structuredClone(get()[key]);
-    const selectedIds = pruneNestedSelection(explorer, get().selectedIds[kind]);
-    if (!selectedIds.length) return false;
-    const resolvedTargetFolderId = targetFolderId ?? explorer.rootId;
-
-    for (const id of selectedIds) {
-      const check = buildMoveCheck(explorer, id, resolvedTargetFolderId);
-      if (!check.ok) return false;
-    }
-
-    const targetFolder = explorer.nodes.find((node) => node.type === 'folder' && node.id === resolvedTargetFolderId);
-    if (!targetFolder || targetFolder.type !== 'folder') return false;
-
-    selectedIds.forEach((id) => {
-      const node = explorer.nodes.find((entry) => entry.id === id);
-      const previousParent = node?.parentId
-        ? explorer.nodes.find((entry) => entry.type === 'folder' && entry.id === node.parentId)
-        : undefined;
-      if (!node || !previousParent || previousParent.type !== 'folder') return;
-      previousParent.children = previousParent.children.filter((childId) => childId !== id);
-      targetFolder.children.push(id);
-      node.parentId = resolvedTargetFolderId;
-    });
-
-    persist(kind, explorer);
-    const patch = { [key]: explorer } as Partial<AssetStore>;
-    set((state) => ({
-      ...patch,
-      assets: extractAssets(
-        kind === 'branded' ? explorer : state.brandedExplorer,
-        kind === 'fonts' ? explorer : state.fontsExplorer,
-        kind === 'templates' ? explorer : state.templateExplorer,
-      ),
-      selectedIds: { ...state.selectedIds, [kind]: selectedIds },
-      selectionAnchorId: { ...state.selectionAnchorId, [kind]: selectedIds[0] ?? null },
-    }));
-    return true;
+    return get().moveNodesToFolder(get().selectedIds[kind], targetFolderId, kind);
   },
   toggleExpanded: (id, kind) => {
     if (kind === 'branded') set((s) => ({ expandedBranded: { ...s.expandedBranded, [id]: !s.expandedBranded[id] } }));
