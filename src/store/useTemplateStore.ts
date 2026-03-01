@@ -178,7 +178,9 @@ interface TemplateStore extends PersistedTemplateState {
   rangeSelect: (orderedVisibleIds: string[], clickedId: string) => void;
   moveSelectionToFolder: (targetFolderId: string | null) => boolean;
   moveTemplates: (templateIds: string[], targetFolderId: string | null) => void;
+  moveTemplatesToFolder: (templateIds: string[], targetFolderId: string | null) => void;
   moveFolder: (folderId: string, targetParentId: string | null) => void;
+  moveFolderToFolder: (folderId: string, targetParentId: string | null) => void;
   canMoveFolder: (folderId: string, targetParentId: string | null) => { ok: boolean; reason?: string };
   isDescendantFolder: (ancestorId: string, possibleDescendantId: string) => boolean;
   reorderWithinFolder: (params: { folderId: string; templateIds?: string[]; folderIds?: string[] }) => void;
@@ -439,6 +441,10 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     set({ templates, folders: syncedFolders });
     templates.filter((template) => selectedIds.includes(template.id)).forEach((template) => useAssetStore.getState().upsertTemplateAsset(template));
   },
+
+  moveTemplatesToFolder: (templateIds, targetFolderId) => {
+    get().moveTemplates(templateIds, targetFolderId);
+  },
   isDescendantFolder: (ancestorId, possibleDescendantId) => {
     const folderById = new Map(get().folders.map((folder) => [folder.id, folder]));
     const stack = [...(folderById.get(ancestorId)?.childrenFolderIds ?? [])];
@@ -485,6 +491,10 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     const next = { rootId, folders: syncedFolders, templates: get().templates };
     persist(next);
     set({ folders: syncedFolders });
+  },
+
+  moveFolderToFolder: (folderId, targetParentId) => {
+    get().moveFolder(folderId, targetParentId);
   },
   reorderWithinFolder: ({ folderId, templateIds, folderIds }) => {
     const folders = structuredClone(get().folders);

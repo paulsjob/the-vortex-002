@@ -62,9 +62,9 @@ export function TemplateExplorer() {
   };
 
   const readDragPayload = (event: DragEvent): DragPayload | null => {
-    const raw = event.dataTransfer.getData('application/json') || event.dataTransfer.getData('text/plain');
-    if (!raw) return null;
     try {
+      const raw = event.dataTransfer.getData('application/json') || event.dataTransfer.getData('text/plain');
+      if (!raw) return null;
       return JSON.parse(raw) as DragPayload;
     } catch {
       return null;
@@ -89,42 +89,42 @@ export function TemplateExplorer() {
   };
 
   const onDropOnRoot = (event: DragEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
     const payload = readDragPayload(event);
     if (!payload) return;
     if (!canDropOnRoot(payload)) return;
-    event.preventDefault();
-    event.stopPropagation();
     setHoverFolderId(null);
     if (DEBUG_DND) console.log('[TemplateExplorer:dnd] drop', { folderId: 'root', ids: payload.ids, kind: payload.kind });
     if (payload.kind === 'templates') {
-      templateStore.moveTemplates(payload.ids, null);
+      templateStore.moveTemplatesToFolder(payload.ids, null);
       templateStore.setSelection(payload.ids, payload.ids[0] ?? null);
       setCurrentFolderId(templateStore.rootId);
       return;
     }
     const draggedFolderId = payload.ids[0];
     if (!draggedFolderId || !templateStore.canMoveFolder(draggedFolderId, null).ok) return;
-    templateStore.moveFolder(draggedFolderId, null);
+    templateStore.moveFolderToFolder(draggedFolderId, null);
     setCurrentFolderId(templateStore.rootId);
   };
 
   const onDropOnFolder = (event: DragEvent, folderId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
     const payload = readDragPayload(event);
     if (!payload) return;
     if (!canDropOnFolder(payload, folderId)) return;
-    event.preventDefault();
-    event.stopPropagation();
     setHoverFolderId(null);
     if (DEBUG_DND) console.log('[TemplateExplorer:dnd] drop', { folderId, ids: payload.ids, kind: payload.kind });
     if (payload.kind === 'templates') {
-      templateStore.moveTemplates(payload.ids, folderId);
+      templateStore.moveTemplatesToFolder(payload.ids, folderId);
       templateStore.setSelection(payload.ids, payload.ids[0] ?? null);
       setCurrentFolderId(folderId);
       return;
     }
     const draggedFolderId = payload.ids[0];
     if (!draggedFolderId || !templateStore.canMoveFolder(draggedFolderId, folderId).ok) return;
-    templateStore.moveFolder(draggedFolderId, folderId);
+    templateStore.moveFolderToFolder(draggedFolderId, folderId);
   };
 
   const renderFolderTree = (folderId: string, depth = 0): JSX.Element | null => {
