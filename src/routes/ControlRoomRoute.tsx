@@ -18,6 +18,8 @@ const transitionOptions: Array<{ type: TransitionType; label: string }> = [
 
 const durationChoices = [150, 300, 500, 1000];
 const QUICK_LAUNCH_DEFAULT_COUNT = 4;
+const COLLAPSED_LAUNCHER_ROW_HEIGHT = '9.5rem';
+const EXPANDED_LAUNCHER_ROW_HEIGHT = '15rem';
 
 export function ControlRoomRoute() {
   const templateStore = useTemplateStore();
@@ -42,6 +44,8 @@ export function ControlRoomRoute() {
   const [treeOpen, setTreeOpen] = useState<Record<string, boolean>>({ [templateStore.rootId]: true });
   const [blackoutActive, setBlackoutActive] = useState(false);
   const [transitionActive, setTransitionActive] = useState(false);
+  const [favoritesExpanded, setFavoritesExpanded] = useState(false);
+  const [quickLaunchExpanded, setQuickLaunchExpanded] = useState(false);
   const transitionTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -223,8 +227,15 @@ export function ControlRoomRoute() {
     );
   };
 
+  const launcherPanelHeight = (expanded: boolean) => (expanded ? EXPANDED_LAUNCHER_ROW_HEIGHT : COLLAPSED_LAUNCHER_ROW_HEIGHT);
+
+  const launcherBodyClassName = (expanded: boolean) =>
+    expanded
+      ? 'h-full overflow-y-auto pr-1'
+      : 'h-full overflow-x-auto overflow-y-hidden pb-1';
+
   return (
-    <section className="grid h-[calc(100vh-11.5rem)] min-h-[560px] grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-4">
+    <section className="grid h-[calc(100vh-11.5rem)] grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-4">
       <div>
         <h2 className="text-lg font-semibold text-slate-100">Control Room</h2>
       </div>
@@ -267,10 +278,7 @@ export function ControlRoomRoute() {
           </div>
         </aside>
 
-        <section
-          className="grid h-full min-h-0 gap-4 overflow-auto rounded-lg border border-slate-700 bg-slate-950 p-4"
-          style={{ gridTemplateRows: 'minmax(360px, 45vh) auto auto minmax(0, 1fr)' }}
-        >
+        <section className="grid h-full min-h-0 gap-4 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-4" style={{ gridTemplateRows: 'minmax(0,1fr) auto auto auto' }}>
           <div
             className="grid min-h-0 gap-4"
             style={{ gridTemplateColumns: 'minmax(420px, 1fr) 240px minmax(420px, 1fr)' }}
@@ -342,8 +350,18 @@ export function ControlRoomRoute() {
           </div>
 
           <div className="rounded-md border border-slate-700 bg-slate-900 p-3">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">FAVORITES</p>
-            <div className="mt-2 flex gap-3 overflow-x-auto pb-1">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">FAVORITES</p>
+              <button
+                type="button"
+                className="rounded border border-slate-600 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-200 hover:bg-slate-800"
+                onClick={() => setFavoritesExpanded((current) => !current)}
+              >
+                {favoritesExpanded ? 'Show less' : 'Show more'}
+              </button>
+            </div>
+            <div className={`mt-2 ${launcherBodyClassName(favoritesExpanded)}`} style={{ height: launcherPanelHeight(favoritesExpanded) }}>
+              <div className={`gap-3 ${favoritesExpanded ? 'grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] content-start' : 'flex w-max min-w-full'}`}>
               {favoriteTemplates.length === 0 ? (
                 <p className="text-sm text-slate-500">Star templates in the library to pin your favorites.</p>
               ) : favoriteTemplates.map((template) => (
@@ -356,12 +374,23 @@ export function ControlRoomRoute() {
                   <p className="truncate text-sm font-semibold text-slate-100">{template.name}</p>
                 </button>
               ))}
+              </div>
             </div>
           </div>
 
           <div className="rounded-md border border-slate-700 bg-slate-900 p-3">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">QUICK LAUNCH</p>
-            <div className="mt-2 flex gap-3 overflow-x-auto pb-1">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">QUICK LAUNCH</p>
+              <button
+                type="button"
+                className="rounded border border-slate-600 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-200 hover:bg-slate-800"
+                onClick={() => setQuickLaunchExpanded((current) => !current)}
+              >
+                {quickLaunchExpanded ? 'Show less' : 'Show more'}
+              </button>
+            </div>
+            <div className={`mt-2 ${launcherBodyClassName(quickLaunchExpanded)}`} style={{ height: launcherPanelHeight(quickLaunchExpanded) }}>
+              <div className={`gap-3 ${quickLaunchExpanded ? 'grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] content-start' : 'flex w-max min-w-full'}`}>
               {quickLaunchTemplates.length === 0 ? (
                 <p className="text-sm text-slate-500">Add templates with 🚀 in the library for one-tap preloading.</p>
               ) : quickLaunchTemplates.map((template) => (
@@ -380,10 +409,11 @@ export function ControlRoomRoute() {
                   </button>
                 </div>
               ))}
+              </div>
             </div>
           </div>
 
-          <div className="rounded-md border border-slate-700 bg-slate-900 p-3 text-sm text-slate-300">
+          <div className="min-h-0 overflow-auto rounded-md border border-slate-700 bg-slate-900 p-3 text-sm text-slate-300">
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Broadcast Notes</p>
             {fallbackMessage ? (
               <p className="mt-2 text-slate-300">{fallbackMessage}</p>
