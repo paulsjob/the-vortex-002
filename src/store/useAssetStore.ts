@@ -84,6 +84,7 @@ interface AssetStore {
   renameNode: (id: string, name: string, kind: 'branded' | 'fonts' | 'templates') => void;
   deleteFolder: (id: string, kind: 'branded' | 'fonts' | 'templates') => void;
   deleteNode: (id: string, kind: 'branded' | 'fonts' | 'templates') => void;
+  moveNode: (nodeId: string, targetFolderId: string, kind: 'branded' | 'fonts' | 'templates') => boolean;
   toggleExpanded: (id: string, kind: 'branded' | 'fonts' | 'templates') => void;
   upsertTemplateAsset: (template: SavedTemplate) => void;
   removeTemplateAsset: (templateId: string) => void;
@@ -110,6 +111,20 @@ const removeNodeFromExplorer = (explorer: ExplorerState, id: string): ExplorerSt
   return next;
 };
 
+const getExplorerKey = (kind: 'branded' | 'fonts' | 'templates') => (
+  kind === 'branded' ? 'brandedExplorer' : kind === 'fonts' ? 'fontsExplorer' : 'templateExplorer'
+);
+
+const isDescendantFolder = (explorer: ExplorerState, folderId: string, candidateId: string): boolean => {
+  const folder = explorer.nodes.find((node) => node.type === 'folder' && node.id === folderId);
+  if (!folder || folder.type !== 'folder') return false;
+  if (folder.children.includes(candidateId)) return true;
+  return folder.children.some((childId) => {
+    const child = explorer.nodes.find((node) => node.id === childId);
+    return child?.type === 'folder' ? isDescendantFolder(explorer, child.id, candidateId) : false;
+  });
+};
+
 export const useAssetStore = create<AssetStore>((set, get) => ({
   assets: extractAssets(brandedExplorer, fontsExplorer, templateExplorer),
   brandedExplorer,
@@ -119,7 +134,7 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
   expandedFonts: { 'fonts-root': true },
   expandedTemplates: { 'template-root': true },
   addAsset: (asset, targetFolderId, kind) => {
-    const key = kind === 'branded' ? 'brandedExplorer' : kind === 'fonts' ? 'fontsExplorer' : 'templateExplorer';
+    const key = getExplorerKey(kind);
     const next = structuredClone(get()[key]);
     const folder = next.nodes.find((n) => n.id === targetFolderId && n.type === 'folder');
     if (!folder || folder.type !== 'folder') return;
@@ -153,7 +168,7 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
   addFolder: (name, parentId, kind) => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    const key = kind === 'branded' ? 'brandedExplorer' : kind === 'fonts' ? 'fontsExplorer' : 'templateExplorer';
+    const key = getExplorerKey(kind);
     const next = structuredClone(get()[key]);
     const parent = next.nodes.find((n) => n.id === parentId && n.type === 'folder');
     if (!parent || parent.type !== 'folder') return;
@@ -168,7 +183,7 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
     set({ [key]: next } as Partial<AssetStore>);
   },
   renameFolder: (id, name, kind) => {
-    const key = kind === 'branded' ? 'brandedExplorer' : kind === 'fonts' ? 'fontsExplorer' : 'templateExplorer';
+    const key = getExplorerKey(kind);
     const next = structuredClone(get()[key]);
     const folder = next.nodes.find((n) => n.id === id && n.type === 'folder');
     if (!folder || folder.type !== 'folder') return;
@@ -179,7 +194,7 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
   renameNode: (id, name, kind) => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    const key = kind === 'branded' ? 'brandedExplorer' : kind === 'fonts' ? 'fontsExplorer' : 'templateExplorer';
+    const key = getExplorerKey(kind);
     const next = structuredClone(get()[key]);
     const node = next.nodes.find((n) => n.id === id);
     if (!node) return;
@@ -196,7 +211,7 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
     });
   },
   deleteFolder: (id, kind) => {
-    const key = kind === 'branded' ? 'brandedExplorer' : kind === 'fonts' ? 'fontsExplorer' : 'templateExplorer';
+    const key = getExplorerKey(kind);
     const next = removeNodeFromExplorer(get()[key], id);
     persist(kind, next);
     const patch = { [key]: next } as Partial<AssetStore>;
@@ -210,7 +225,7 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
     });
   },
   deleteNode: (id, kind) => {
-    const key = kind === 'branded' ? 'brandedExplorer' : kind === 'fonts' ? 'fontsExplorer' : 'templateExplorer';
+    const key = getExplorerKey(kind);
     const next = removeNodeFromExplorer(get()[key], id);
     persist(kind, next);
     const patch = { [key]: next } as Partial<AssetStore>;
@@ -222,6 +237,42 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
         kind === 'templates' ? next : get().templateExplorer,
       ),
     });
+  },
+  moveNode: (nodeId, targetFolderId, kind) => {
+    const key = getExplorerKey(kind);
+    const next = structuredClone(get()[key]);
+    const node = next.nodes.find((entry) => entry.id === nodeId);
+    const targetFolder = next.nodes.find((entry) => entry.type === 'folder' && entry.id === targetFolderId);
+    if (!node || !targetFolder || targetFolder.type !== 'folder') return false;
+    if (node.id === next.rootId || node.id === targetFolderId) return false;
+    if (node.parentId === targetFolderId) return false;
+    if (node.type === 'folder' && isDescendantFolder(next, node.id, targetFolderId)) return false;
+
+    const duplicate = targetFolder.children
+      .map((childId) => next.nodes.find((childNode) => childNode.id === childId))
+      .some((childNode) => !!childNode && childNode.name.toLowerCase() === node.name.toLowerCase());
+    if (duplicate) return false;
+
+    const previousParent = node.parentId
+      ? next.nodes.find((entry) => entry.type === 'folder' && entry.id === node.parentId)
+      : undefined;
+    if (!previousParent || previousParent.type !== 'folder') return false;
+
+    previousParent.children = previousParent.children.filter((childId) => childId !== node.id);
+    targetFolder.children.push(node.id);
+    node.parentId = targetFolder.id;
+
+    persist(kind, next);
+    const patch = { [key]: next } as Partial<AssetStore>;
+    set({
+      ...patch,
+      assets: extractAssets(
+        kind === 'branded' ? next : get().brandedExplorer,
+        kind === 'fonts' ? next : get().fontsExplorer,
+        kind === 'templates' ? next : get().templateExplorer,
+      ),
+    });
+    return true;
   },
   toggleExpanded: (id, kind) => {
     if (kind === 'branded') set((s) => ({ expandedBranded: { ...s.expandedBranded, [id]: !s.expandedBranded[id] } }));
