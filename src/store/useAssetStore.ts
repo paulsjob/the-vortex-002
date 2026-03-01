@@ -4,6 +4,7 @@ import type { SavedTemplate } from './useTemplateStore';
 
 const STORAGE_KEYS = {
   branded: 'renderless.fileExplorer.v1',
+  fonts: 'renderless.fontExplorer.v1',
   templates: 'renderless.templateLibrary.v1',
 };
 
@@ -32,8 +33,9 @@ const loadExplorer = (key: string, rootId: string, rootName: string) => {
   }
 };
 
-const persist = (kind: 'branded' | 'templates', explorer: ExplorerState) => {
-  localStorage.setItem(kind === 'branded' ? STORAGE_KEYS.branded : STORAGE_KEYS.templates, JSON.stringify(explorer));
+const persist = (kind: 'branded' | 'fonts' | 'templates', explorer: ExplorerState) => {
+  const key = kind === 'branded' ? STORAGE_KEYS.branded : kind === 'fonts' ? STORAGE_KEYS.fonts : STORAGE_KEYS.templates;
+  localStorage.setItem(key, JSON.stringify(explorer));
 };
 
 const mapFileToAsset = (node: ExplorerNode): AssetItem | null => {
@@ -47,8 +49,8 @@ const mapFileToAsset = (node: ExplorerNode): AssetItem | null => {
   };
 };
 
-const extractAssets = (brandedExplorer: ExplorerState, templateExplorer: ExplorerState): AssetItem[] => (
-  [...brandedExplorer.nodes, ...templateExplorer.nodes]
+const extractAssets = (brandedExplorer: ExplorerState, fontsExplorer: ExplorerState, templateExplorer: ExplorerState): AssetItem[] => (
+  [...brandedExplorer.nodes, ...fontsExplorer.nodes, ...templateExplorer.nodes]
     .map(mapFileToAsset)
     .filter((asset): asset is AssetItem => !!asset)
 );
@@ -70,22 +72,25 @@ const detectImageSize = (src: string): Promise<{ width: number; height: number }
 interface AssetStore {
   assets: AssetItem[];
   brandedExplorer: ExplorerState;
+  fontsExplorer: ExplorerState;
   templateExplorer: ExplorerState;
   expandedBranded: Record<string, boolean>;
+  expandedFonts: Record<string, boolean>;
   expandedTemplates: Record<string, boolean>;
-  addAsset: (asset: AssetItem, targetFolderId: string, kind: 'branded' | 'templates') => void;
-  uploadFiles: (files: File[], targetFolderId: string, kind: 'branded' | 'templates') => Promise<void>;
-  addFolder: (name: string, parentId: string, kind: 'branded' | 'templates') => void;
-  renameFolder: (id: string, name: string, kind: 'branded' | 'templates') => void;
-  renameNode: (id: string, name: string, kind: 'branded' | 'templates') => void;
-  deleteFolder: (id: string, kind: 'branded' | 'templates') => void;
-  deleteNode: (id: string, kind: 'branded' | 'templates') => void;
-  toggleExpanded: (id: string, kind: 'branded' | 'templates') => void;
+  addAsset: (asset: AssetItem, targetFolderId: string, kind: 'branded' | 'fonts' | 'templates') => void;
+  uploadFiles: (files: File[], targetFolderId: string, kind: 'branded' | 'fonts' | 'templates') => Promise<void>;
+  addFolder: (name: string, parentId: string, kind: 'branded' | 'fonts' | 'templates') => void;
+  renameFolder: (id: string, name: string, kind: 'branded' | 'fonts' | 'templates') => void;
+  renameNode: (id: string, name: string, kind: 'branded' | 'fonts' | 'templates') => void;
+  deleteFolder: (id: string, kind: 'branded' | 'fonts' | 'templates') => void;
+  deleteNode: (id: string, kind: 'branded' | 'fonts' | 'templates') => void;
+  toggleExpanded: (id: string, kind: 'branded' | 'fonts' | 'templates') => void;
   upsertTemplateAsset: (template: SavedTemplate) => void;
   removeTemplateAsset: (templateId: string) => void;
 }
 
 const brandedExplorer = loadExplorer(STORAGE_KEYS.branded, 'root', 'Branded Assets');
+const fontsExplorer = loadExplorer(STORAGE_KEYS.fonts, 'fonts-root', 'Fonts');
 const templateExplorer = loadExplorer(STORAGE_KEYS.templates, 'template-root', 'Templates');
 
 const removeNodeFromExplorer = (explorer: ExplorerState, id: string): ExplorerState => {
@@ -106,13 +111,15 @@ const removeNodeFromExplorer = (explorer: ExplorerState, id: string): ExplorerSt
 };
 
 export const useAssetStore = create<AssetStore>((set, get) => ({
-  assets: extractAssets(brandedExplorer, templateExplorer),
+  assets: extractAssets(brandedExplorer, fontsExplorer, templateExplorer),
   brandedExplorer,
+  fontsExplorer,
   templateExplorer,
   expandedBranded: { root: true },
+  expandedFonts: { 'fonts-root': true },
   expandedTemplates: { 'template-root': true },
   addAsset: (asset, targetFolderId, kind) => {
-    const key = kind === 'branded' ? 'brandedExplorer' : 'templateExplorer';
+    const key = kind === 'branded' ? 'brandedExplorer' : kind === 'fonts' ? 'fontsExplorer' : 'templateExplorer';
     const next = structuredClone(get()[key]);
     const folder = next.nodes.find((n) => n.id === targetFolderId && n.type === 'folder');
     if (!folder || folder.type !== 'folder') return;
@@ -120,7 +127,14 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
     next.nodes.push({ id: asset.id, type: 'file', name: asset.name, parentId: targetFolderId, src: asset.src, dimension: asset.dimension, createdAt: asset.createdAt });
     persist(kind, next);
     const patch = { [key]: next } as Partial<AssetStore>;
-    set({ ...patch, assets: extractAssets(kind === 'branded' ? next : get().brandedExplorer, kind === 'templates' ? next : get().templateExplorer) });
+    set({
+      ...patch,
+      assets: extractAssets(
+        kind === 'branded' ? next : get().brandedExplorer,
+        kind === 'fonts' ? next : get().fontsExplorer,
+        kind === 'templates' ? next : get().templateExplorer,
+      ),
+    });
   },
   uploadFiles: async (files, targetFolderId, kind) => {
     for (const file of files) {
@@ -139,7 +153,7 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
   addFolder: (name, parentId, kind) => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    const key = kind === 'branded' ? 'brandedExplorer' : 'templateExplorer';
+    const key = kind === 'branded' ? 'brandedExplorer' : kind === 'fonts' ? 'fontsExplorer' : 'templateExplorer';
     const next = structuredClone(get()[key]);
     const parent = next.nodes.find((n) => n.id === parentId && n.type === 'folder');
     if (!parent || parent.type !== 'folder') return;
@@ -154,7 +168,7 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
     set({ [key]: next } as Partial<AssetStore>);
   },
   renameFolder: (id, name, kind) => {
-    const key = kind === 'branded' ? 'brandedExplorer' : 'templateExplorer';
+    const key = kind === 'branded' ? 'brandedExplorer' : kind === 'fonts' ? 'fontsExplorer' : 'templateExplorer';
     const next = structuredClone(get()[key]);
     const folder = next.nodes.find((n) => n.id === id && n.type === 'folder');
     if (!folder || folder.type !== 'folder') return;
@@ -165,31 +179,53 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
   renameNode: (id, name, kind) => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    const key = kind === 'branded' ? 'brandedExplorer' : 'templateExplorer';
+    const key = kind === 'branded' ? 'brandedExplorer' : kind === 'fonts' ? 'fontsExplorer' : 'templateExplorer';
     const next = structuredClone(get()[key]);
     const node = next.nodes.find((n) => n.id === id);
     if (!node) return;
     node.name = trimmed;
     persist(kind, next);
     const patch = { [key]: next } as Partial<AssetStore>;
-    set({ ...patch, assets: extractAssets(kind === 'branded' ? next : get().brandedExplorer, kind === 'templates' ? next : get().templateExplorer) });
+    set({
+      ...patch,
+      assets: extractAssets(
+        kind === 'branded' ? next : get().brandedExplorer,
+        kind === 'fonts' ? next : get().fontsExplorer,
+        kind === 'templates' ? next : get().templateExplorer,
+      ),
+    });
   },
   deleteFolder: (id, kind) => {
-    const key = kind === 'branded' ? 'brandedExplorer' : 'templateExplorer';
+    const key = kind === 'branded' ? 'brandedExplorer' : kind === 'fonts' ? 'fontsExplorer' : 'templateExplorer';
     const next = removeNodeFromExplorer(get()[key], id);
     persist(kind, next);
     const patch = { [key]: next } as Partial<AssetStore>;
-    set({ ...patch, assets: extractAssets(kind === 'branded' ? next : get().brandedExplorer, kind === 'templates' ? next : get().templateExplorer) });
+    set({
+      ...patch,
+      assets: extractAssets(
+        kind === 'branded' ? next : get().brandedExplorer,
+        kind === 'fonts' ? next : get().fontsExplorer,
+        kind === 'templates' ? next : get().templateExplorer,
+      ),
+    });
   },
   deleteNode: (id, kind) => {
-    const key = kind === 'branded' ? 'brandedExplorer' : 'templateExplorer';
+    const key = kind === 'branded' ? 'brandedExplorer' : kind === 'fonts' ? 'fontsExplorer' : 'templateExplorer';
     const next = removeNodeFromExplorer(get()[key], id);
     persist(kind, next);
     const patch = { [key]: next } as Partial<AssetStore>;
-    set({ ...patch, assets: extractAssets(kind === 'branded' ? next : get().brandedExplorer, kind === 'templates' ? next : get().templateExplorer) });
+    set({
+      ...patch,
+      assets: extractAssets(
+        kind === 'branded' ? next : get().brandedExplorer,
+        kind === 'fonts' ? next : get().fontsExplorer,
+        kind === 'templates' ? next : get().templateExplorer,
+      ),
+    });
   },
   toggleExpanded: (id, kind) => {
     if (kind === 'branded') set((s) => ({ expandedBranded: { ...s.expandedBranded, [id]: !s.expandedBranded[id] } }));
+    else if (kind === 'fonts') set((s) => ({ expandedFonts: { ...s.expandedFonts, [id]: !s.expandedFonts[id] } }));
     else set((s) => ({ expandedTemplates: { ...s.expandedTemplates, [id]: !s.expandedTemplates[id] } }));
   },
   upsertTemplateAsset: (template) => {
@@ -228,7 +264,7 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
     persist('templates', next);
     set({
       templateExplorer: next,
-      assets: extractAssets(get().brandedExplorer, next),
+      assets: extractAssets(get().brandedExplorer, get().fontsExplorer, next),
     });
   },
   removeTemplateAsset: (templateId) => {
@@ -236,7 +272,7 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
     persist('templates', next);
     set({
       templateExplorer: next,
-      assets: extractAssets(get().brandedExplorer, next),
+      assets: extractAssets(get().brandedExplorer, get().fontsExplorer, next),
     });
   },
 }));
