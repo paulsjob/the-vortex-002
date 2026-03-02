@@ -38,7 +38,7 @@ export const nbaSimulator: SimulatorPlugin = {
   key: 'nba',
   label: 'NBA',
   createInitialGame: () => {
-    const boxScore = initializeBoxScore('nba', homePlayers, awayPlayers, ['pts', 'ast', 'reb', 'stl', 'blk', 'fgm', 'fga', 'tpm', 'tpa', 'ftm', 'fta', 'fouls', 'turnovers', 'minutes']);
+    const boxScore = initializeBoxScore('nba', homePlayers, awayPlayers, ['pts', 'ast', 'reb', 'stl', 'blk', 'fgm', 'fga', 'tpm', 'tpa', 'ftm', 'fta', 'fouls', 'turnovers', 'minutes','paintPts','doubleDouble']);
     const game: NbaGameState = {
       sport: 'nba', homeTeam: 'LAL', awayTeam: 'BOS', scoreHome: 0, scoreAway: 0, period: 1, periodLabel: 'Q1', clockSeconds: QUARTER_SECONDS, possession: 'away',
       lastEvent: 'Tip-off controlled by BOS.', keyStats: [], lastPlay: { type: 'tipoff', description: 'Tip-off controlled by BOS.', points: 0, shooter: 'N/A' },
@@ -69,11 +69,17 @@ export const nbaSimulator: SimulatorPlugin = {
       const rebTeam: 'home' | 'away' = ctx.random() < 0.75 ? (offense === 'home' ? 'away' : 'home') : offense;
       const rebPlayer = (rebTeam === 'home' ? homePlayers : awayPlayers)[ctx.randomInt(0, 4)];
       bumpPlayerStat(game.boxScore!, rebTeam, rebPlayer, 'reb', 1);
+      summary = `${rebTeam===offense?'Offensive':'Defensive'} rebound by ${rebPlayer}.`;
+      type = rebTeam===offense?'off-reb':'def-reb';
       if (rebTeam !== offense) game.possession = rebTeam;
     };
 
     const roll = ctx.random();
-    if (roll < 0.12) {
+    if (roll < 0.07) {
+      type = 'timeout';
+      summary = `${offense === 'home' ? game.homeTeam : game.awayTeam} takes timeout.`;
+      game.shotClock = shotClockMax;
+    } else if (roll < 0.16) {
       type = 'turnover';
       game.shotResult = 'turnover';
       bumpPlayerStat(game.boxScore!, offense, shooter, 'turnovers', 1);
@@ -112,7 +118,7 @@ export const nbaSimulator: SimulatorPlugin = {
         points = isThree ? 3 : 2;
         bumpPlayerStat(game.boxScore!, offense, shooter, 'fgm', 1);
         if (isThree) bumpPlayerStat(game.boxScore!, offense, shooter, 'tpm', 1);
-        bumpPlayerStat(game.boxScore!, offense, shooter, 'pts', points);
+        bumpPlayerStat(game.boxScore!, offense, shooter, 'pts', points); if(!isThree) bumpPlayerStat(game.boxScore!, offense, shooter, 'paintPts', 2);
         if (assister !== shooter && ctx.random() < 0.7) bumpPlayerStat(game.boxScore!, offense, assister, 'ast', 1);
         summary = `${shooter} ${isThree ? 'hits from deep' : 'scores at the rim'}.`;
       } else {
@@ -141,6 +147,8 @@ export const nbaSimulator: SimulatorPlugin = {
     homePlayers.forEach((p) => bumpPlayerStat(game.boxScore!, 'home', p, 'minutes', 0.2));
     awayPlayers.forEach((p) => bumpPlayerStat(game.boxScore!, 'away', p, 'minutes', 0.2));
     sumTeamTotals(game.boxScore!);
+    for (const [player, line] of Object.entries(game.boxScore!.homePlayers)) { if ((line.pts ?? 0) >= 10 && ((line.reb ?? 0) >= 10 || (line.ast ?? 0) >= 10)) game.boxScore!.homePlayers[player].doubleDouble = 1; }
+    for (const [player, line] of Object.entries(game.boxScore!.awayPlayers)) { if ((line.pts ?? 0) >= 10 && ((line.reb ?? 0) >= 10 || (line.ast ?? 0) >= 10)) game.boxScore!.awayPlayers[player].doubleDouble = 1; }
     game.turnoversHome = Math.round(game.boxScore!.teamTotals.home.turnovers ?? 0);
     game.turnoversAway = Math.round(game.boxScore!.teamTotals.away.turnovers ?? 0);
     game.bonusHome = game.teamFoulsAway >= 5;

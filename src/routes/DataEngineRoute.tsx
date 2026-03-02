@@ -1,4 +1,5 @@
 import { StatusBadge } from '../components/ui/StatusBadge';
+import { buildNormalizedPayload, buildTeamMetrics } from '../features/simulation/derived';
 import { simulatorOptions } from '../features/simulation/registry';
 import { Speed, useDataEngineStore } from '../store/useDataEngineStore';
 
@@ -26,25 +27,9 @@ export function DataEngineRoute() {
 
   const leaderCategories = Object.keys(game.teamLeaders?.home ?? {});
 
-  const samplePayload = {
-    sport: activeSport,
-    gameId: 'demo-001',
-    homeTeam: game.homeTeam,
-    awayTeam: game.awayTeam,
-    score: { home: game.scoreHome, away: game.scoreAway },
-    period: game.periodLabel,
-    clock: clockLabel(game.clockSeconds),
-    possession: game.possession,
-    lastEvent: game.lastEvent,
-    lastPlay: game.lastPlay,
-    keyStats: game.keyStats,
-    boxScore: game.boxScore,
-    teamLeaders: game.teamLeaders,
-    gameLeaders: game.gameLeaders,
-    consistencyIssues: game.consistencyIssues,
-    ...(game.sport === 'mlb' ? { pitcher: game.pitcher, batter: game.batter, lastPitch: game.lastPitch } : {}),
-    updatedAt: new Date().toISOString(),
-  };
+  const samplePayload = buildNormalizedPayload(game, 'demo-001');
+  const teamMetrics = buildTeamMetrics(game);
+  const consistencyCode = consistency.issues && consistency.issues.length > 0 ? consistency.issues[0] : 'OK';
 
   return (
     <section className="grid h-full min-h-0 gap-4 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-4 lg:grid-cols-[300px_minmax(0,1fr)]">
@@ -167,11 +152,7 @@ export function DataEngineRoute() {
 
         <div className="rounded border border-slate-700 bg-slate-900 p-3">
           <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">Consistency</p>
-          {consistency.issues && consistency.issues.length > 0 ? (
-            <ul className="list-disc pl-5 text-sm text-amber-200">{consistency.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>
-          ) : (
-            <p className="text-sm text-emerald-300">OK</p>
-          )}
+          <p className={`text-sm ${consistencyCode === 'OK' ? 'text-emerald-300' : 'text-amber-200'}`}>{consistencyCode}</p>
         </div>
 
 
@@ -186,6 +167,18 @@ export function DataEngineRoute() {
             <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">Game Leaders</p>
             {leaderCategories.map((cat) => (
               <p key={cat} className="text-xs text-slate-200">{cat}: {(game.gameLeaders?.[cat] ?? []).map((entry) => `${entry.player} ${entry.value}`).join(', ')}</p>
+            ))}
+          </div>
+        </div>
+
+
+        <div className="rounded border border-slate-700 bg-slate-900 p-3">
+          <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">Team Metrics</p>
+          <div className="space-y-1 text-xs">
+            {teamMetrics.map((metric) => (
+              <p key={metric.label} className="text-slate-200">
+                {metric.label}: {game.homeTeam} {metric.home} · {game.awayTeam} {metric.away}
+              </p>
             ))}
           </div>
         </div>
