@@ -33,9 +33,9 @@ export function DataEngineRoute() {
     clock: clockLabel(game.clockSeconds),
     possession: game.possession,
     lastEvent: game.lastEvent,
-    pitcher: game.pitcher,
-    batter: game.batter,
-    lastPitch: game.lastPitch,
+    lastPlay: game.lastPlay,
+    keyStats: game.keyStats,
+    ...(game.sport === 'mlb' ? { pitcher: game.pitcher, batter: game.batter, lastPitch: game.lastPitch } : {}),
     updatedAt: new Date().toISOString(),
   };
 
@@ -137,6 +137,24 @@ export function DataEngineRoute() {
             <p>GET /api/feed/live-game</p>
             <p>GET /api/endpoints/derived-stats</p>
             <p>GET /api/endpoints/normalized-scorebug</p>
+          </div>
+        </div>
+
+        <div className="rounded border border-slate-700 bg-slate-900 p-3">
+          <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">Key Stats</p>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {game.keyStats.map((stat) => (
+              <div key={`${stat.label}-${stat.value}`} className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs">
+                <p className="text-slate-400">{stat.label}</p>
+                <p
+                  className={`font-medium ${
+                    stat.emphasis === 'high' ? 'text-amber-200' : stat.emphasis === 'med' ? 'text-cyan-200' : 'text-slate-100'
+                  }`}
+                >
+                  {stat.value}
+                </p>
+              </div>
+            ))}
           </div>
         </div>
 

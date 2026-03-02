@@ -1,5 +1,5 @@
 import { createDefaultPitch } from '../core';
-import type { GameState, HalfInning, PitchType, SimulatorPlugin } from '../types';
+import type { KeyStat, MlbGameState, HalfInning, PitchType, SimulatorPlugin } from '../types';
 
 const battersAway = ['A. Jones', 'B. Cruz', 'C. Watts', 'D. Hale', 'E. Reed', 'F. Knox', 'G. Ray', 'H. Snow', 'I. Dale'];
 const battersHome = ['J. Cole', 'K. Ford', 'L. Pope', 'M. Wade', 'N. Moss', 'O. Beck', 'P. Shaw', 'Q. Boyd', 'R. Lane'];
@@ -29,7 +29,7 @@ const nextBatter = (half: HalfInning) => {
   return battersHome[homeIndex];
 };
 
-const advanceRunners = (game: GameState, bases: 1 | 2 | 3 | 4) => {
+const advanceRunners = (game: MlbGameState, bases: 1 | 2 | 3 | 4) => {
   let runs = 0;
   let first = game.onFirst;
   let second = game.onSecond;
@@ -50,14 +50,25 @@ const advanceRunners = (game: GameState, bases: 1 | 2 | 3 | 4) => {
   return { runs, first, second, third };
 };
 
+const buildKeyStats = (game: MlbGameState): KeyStat[] => [
+  { label: 'Count', value: `${game.balls}-${game.strikes}`, emphasis: 'med' },
+  { label: 'Outs', value: game.outs },
+  { label: 'Inning', value: `${game.half === 'top' ? 'Top' : 'Bot'} ${game.inning}` },
+  { label: 'Pitcher', value: game.pitcher },
+  { label: 'Batter', value: game.batter },
+  { label: 'Bases', value: `${game.onFirst ? '1' : '-'}${game.onSecond ? '2' : '-'}${game.onThird ? '3' : '-'}` },
+  { label: 'Last Pitch', value: `${game.lastPitch.pitchType} ${game.lastPitch.velocityMph} mph` },
+  { label: 'Pitch Result', value: game.lastPitch.result },
+];
+
 export const mlbSimulator: SimulatorPlugin = {
   key: 'mlb',
   label: 'MLB',
   createInitialGame: () => {
     awayIndex = 0;
     homeIndex = 0;
-    return {
-      sport: 'mlb',
+    const seed = {
+      sport: 'mlb' as const,
       homeTeam: 'Home',
       awayTeam: 'Away',
       scoreHome: 0,
@@ -68,7 +79,7 @@ export const mlbSimulator: SimulatorPlugin = {
       possession: null,
       lastEvent: 'Waiting to start MLB simulation.',
       inning: 1,
-      half: 'top',
+      half: 'top' as const,
       balls: 0,
       strikes: 0,
       outs: 0,
@@ -78,10 +89,14 @@ export const mlbSimulator: SimulatorPlugin = {
       pitcher: pitcherHome,
       batter: battersAway[0],
       lastPitch: createDefaultPitch(),
+      lastPlay: { summary: 'Waiting to start MLB simulation.', tags: ['pregame'] },
+      keyStats: [] as KeyStat[],
     };
+    seed.keyStats = buildKeyStats(seed);
+    return seed;
   },
   step: (previous, ctx) => {
-    const game = structuredClone(previous);
+    const game = structuredClone(previous) as MlbGameState;
     const pitchType = randomPitchType(ctx.random);
     const velocityMph = ctx.randomInt(82, 100);
     const location = randomLocation(ctx.random);
@@ -176,9 +191,8 @@ export const mlbSimulator: SimulatorPlugin = {
 
     game.period = game.inning;
     game.periodLabel = `${game.half === 'top' ? 'Top' : 'Bottom'} ${game.inning}`;
-    game.lastEvent = result;
     game.lastPitch = {
-      pitchNumber: ctx.nextId(),
+      pitchNumber: game.lastPitch.pitchNumber + 1,
       pitchType,
       velocityMph,
       location,
@@ -188,12 +202,15 @@ export const mlbSimulator: SimulatorPlugin = {
       launchAngleDeg,
       projectedDistanceFt,
     };
+    game.lastEvent = result;
+    game.lastPlay = { summary: result, tags: ['pitch'] };
+    game.keyStats = buildKeyStats(game);
 
     return {
       game,
       event: {
-        id: game.lastPitch.pitchNumber,
-        summary: result,
+        id: ctx.nextId(),
+        summary: game.lastEvent,
         periodLabel: game.periodLabel,
         clockLabel: '--:--',
         scoreHome: game.scoreHome,
