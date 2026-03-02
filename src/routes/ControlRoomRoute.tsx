@@ -277,79 +277,88 @@ export function ControlRoomRoute() {
           </div>
         </aside>
 
-        <section className="grid h-full min-h-0 gap-4 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-4" style={{ gridTemplateRows: 'minmax(0,1fr) minmax(0,auto)' }}>
-          <div
-            className="grid min-h-0 gap-4"
-            style={{ gridTemplateColumns: 'minmax(0,1fr) 240px minmax(0,1fr)' }}
-          >
-            <div className="flex min-h-0 items-center">
-              <TemplatePreview template={previewTemplate} label="PREVIEW" sponsor={previewSponsor} tone="preview" />
-            </div>
+        <section className="h-full min-h-0 min-w-0 rounded-lg border border-slate-700 bg-slate-950 p-4">
+          <div className="h-full min-h-0 min-w-0 flex flex-col gap-3">
+            <div className="flex-1 min-h-0">
+              <div className="grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_240px_minmax(0,1fr)] gap-3 items-stretch">
+                <div className="flex items-center justify-center min-h-0 min-w-0">
+                  <div className="w-full max-w-full min-w-0 aspect-video">
+                    <div className="w-full h-full min-w-0">
+                      <TemplatePreview template={previewTemplate} label="PREVIEW" sponsor={previewSponsor} tone="preview" />
+                    </div>
+                  </div>
+                </div>
 
-            <div className="flex min-h-0 flex-col rounded-md border border-slate-700 bg-slate-900 p-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Transitions</p>
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                {transitionOptions.map((option) => (
+                <div className="flex min-h-0 min-w-0 flex-col rounded-md border border-slate-700 bg-slate-900 p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Transitions</p>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    {transitionOptions.map((option) => (
+                      <button
+                        key={option.type}
+                        className={`rounded border px-2 py-2 text-xs font-semibold uppercase tracking-wide transition ${transitionType === option.type ? 'border-blue-400 bg-blue-900/40 text-blue-100' : 'border-slate-600 bg-slate-950 text-slate-200 hover:bg-slate-800'}`}
+                        onClick={() => setTransitionType(option.type)}
+                        disabled={transitionActive}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 rounded border border-slate-700 bg-slate-950 p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <label htmlFor="transition-duration" className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Transition Duration</label>
+                      <span className="text-xs text-slate-300">{transitionDurationMs}ms</span>
+                    </div>
+                    <input
+                      id="transition-duration"
+                      type="range"
+                      min={0}
+                      max={durationChoices.length - 1}
+                      step={1}
+                      value={durationChoices.indexOf(transitionDurationMs)}
+                      onChange={(e) => setTransitionDurationMs(durationChoices[Number(e.target.value)] ?? 300)}
+                      className="w-full accent-blue-400"
+                      disabled={transitionType === 'cut' || transitionActive}
+                    />
+                  </div>
+
                   <button
-                    key={option.type}
-                    className={`rounded border px-2 py-2 text-xs font-semibold uppercase tracking-wide transition ${transitionType === option.type ? 'border-blue-400 bg-blue-900/40 text-blue-100' : 'border-slate-600 bg-slate-950 text-slate-200 hover:bg-slate-800'}`}
-                    onClick={() => setTransitionType(option.type)}
+                    className="mt-4 w-full rounded-md border border-red-500 bg-red-600 px-6 py-3 text-base font-black tracking-[0.24em] text-white shadow-lg shadow-red-950/60 transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+                    onClick={runTransitionTake}
+                    disabled={!previewReady || transitionActive}
+                  >
+                    {transitionActive ? 'TRANSITIONING' : 'TAKE'}
+                  </button>
+
+                  <button
+                    className="mt-2 w-full rounded-md border border-amber-500/70 bg-amber-700/70 px-6 py-2 text-sm font-bold tracking-[0.2em] text-amber-100 transition hover:bg-amber-600/80 disabled:cursor-not-allowed disabled:opacity-40"
+                    onClick={clearProgram}
                     disabled={transitionActive}
                   >
-                    {option.label}
+                    CLEAR
                   </button>
-                ))}
-              </div>
-
-              <div className="mt-4 rounded border border-slate-700 bg-slate-950 p-3">
-                <div className="mb-2 flex items-center justify-between">
-                  <label htmlFor="transition-duration" className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Transition Duration</label>
-                  <span className="text-xs text-slate-300">{transitionDurationMs}ms</span>
                 </div>
-                <input
-                  id="transition-duration"
-                  type="range"
-                  min={0}
-                  max={durationChoices.length - 1}
-                  step={1}
-                  value={durationChoices.indexOf(transitionDurationMs)}
-                  onChange={(e) => setTransitionDurationMs(durationChoices[Number(e.target.value)] ?? 300)}
-                  className="w-full accent-blue-400"
-                  disabled={transitionType === 'cut' || transitionActive}
-                />
+
+                <div className="relative flex items-center justify-center min-h-0 min-w-0">
+                  <div className="w-full max-w-full min-w-0 aspect-video">
+                    <div className="relative w-full h-full min-w-0">
+                      {blackoutActive && (
+                        <div className="pointer-events-none absolute inset-0 z-10 rounded-md border border-slate-800 bg-black/95 text-center text-sm font-semibold uppercase tracking-[0.25em] text-white">
+                          <div className="flex h-full items-center justify-center">Blackout</div>
+                        </div>
+                      )}
+                      <div className="w-full h-full min-w-0">
+                        <TemplatePreview template={programTemplate} label="PROGRAM" sponsor={programSponsor} tone="program" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
-
-              <button
-                className="mt-4 w-full rounded-md border border-red-500 bg-red-600 px-6 py-3 text-base font-black tracking-[0.24em] text-white shadow-lg shadow-red-950/60 transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40"
-                onClick={runTransitionTake}
-                disabled={!previewReady || transitionActive}
-              >
-                {transitionActive ? 'TRANSITIONING' : 'TAKE'}
-              </button>
-
-              <button
-                className="mt-2 w-full rounded-md border border-amber-500/70 bg-amber-700/70 px-6 py-2 text-sm font-bold tracking-[0.2em] text-amber-100 transition hover:bg-amber-600/80 disabled:cursor-not-allowed disabled:opacity-40"
-                onClick={clearProgram}
-                disabled={transitionActive}
-              >
-                CLEAR
-              </button>
             </div>
 
-            <div className="relative flex min-h-0 items-center">
-              {blackoutActive && (
-                <div className="pointer-events-none absolute inset-0 z-10 rounded-md border border-slate-800 bg-black/95 text-center text-sm font-semibold uppercase tracking-[0.25em] text-white">
-                  <div className="flex h-full items-center justify-center">Blackout</div>
-                </div>
-              )}
-              <div className="h-full min-h-0 w-full">
-                <TemplatePreview template={programTemplate} label="PROGRAM" sponsor={programSponsor} tone="program" />
-              </div>
-            </div>
-          </div>
-
-          <div className="grid min-h-0 gap-4 overflow-hidden" style={{ gridTemplateRows: 'auto auto minmax(0,1fr)' }}>
-          <div className="min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-3">
+            <div className="shrink-0 max-h-[260px] min-h-0 overflow-auto">
+              <div className="grid min-h-0 gap-3 pr-1" style={{ gridTemplateRows: 'auto auto minmax(0,1fr)' }}>
+          <div className="min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-2.5">
             <div className="flex items-center justify-between gap-2">
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">FAVORITES</p>
               <button
@@ -361,24 +370,24 @@ export function ControlRoomRoute() {
               </button>
             </div>
             <div className="mt-2 overflow-x-auto overflow-y-hidden pb-1" style={{ height: launcherPanelHeight(favoritesExpanded) }}>
-              <div className="grid auto-cols-[220px] grid-flow-col gap-3" style={{ gridTemplateRows: launcherGridRows(favoritesExpanded) }}>
+              <div className="grid auto-cols-[180px] grid-flow-col gap-2" style={{ gridTemplateRows: launcherGridRows(favoritesExpanded) }}>
               {favoriteTemplates.length === 0 ? (
                 <p className="text-sm text-slate-500">Star templates in the library to pin your favorites.</p>
               ) : favoriteTemplates.map((template) => (
                 <button
                   key={template.id}
-                  className="group min-w-[220px] rounded-md border border-slate-700 bg-slate-950 p-3 text-left transition hover:border-amber-400/60 hover:shadow-[0_0_24px_rgba(251,191,36,0.15)]"
+                  className="group min-w-[180px] rounded-md border border-slate-700 bg-slate-950 p-2 text-left transition hover:border-amber-400/60 hover:shadow-[0_0_24px_rgba(251,191,36,0.15)]"
                   onClick={() => setPreviewTemplate(template)}
                 >
-                  <div className="mb-2 grid h-20 place-items-center rounded border border-slate-700 bg-slate-900 text-[10px] uppercase tracking-[0.2em] text-slate-500">16:9</div>
-                  <p className="truncate text-sm font-semibold text-slate-100">{template.name}</p>
+                  <div className="mb-1.5 grid h-16 place-items-center rounded border border-slate-700 bg-slate-900 text-[10px] uppercase tracking-[0.2em] text-slate-500">16:9</div>
+                  <p className="truncate text-xs font-semibold text-slate-100">{template.name}</p>
                 </button>
               ))}
               </div>
             </div>
           </div>
 
-          <div className="min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-3">
+          <div className="min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-2.5">
             <div className="flex items-center justify-between gap-2">
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">QUICK LAUNCH</p>
               <button
@@ -390,11 +399,11 @@ export function ControlRoomRoute() {
               </button>
             </div>
             <div className="mt-2 overflow-x-auto overflow-y-hidden pb-1" style={{ height: launcherPanelHeight(quickLaunchExpanded) }}>
-              <div className="grid auto-cols-[220px] grid-flow-col gap-3" style={{ gridTemplateRows: launcherGridRows(quickLaunchExpanded) }}>
+              <div className="grid auto-cols-[180px] grid-flow-col gap-2" style={{ gridTemplateRows: launcherGridRows(quickLaunchExpanded) }}>
               {quickLaunchTemplates.length === 0 ? (
                 <p className="text-sm text-slate-500">Add templates with 🚀 in the library for one-tap preloading.</p>
               ) : quickLaunchTemplates.map((template) => (
-                <div key={template.id} className="group relative min-w-[220px] rounded-md border border-slate-700 bg-slate-950 p-3 transition hover:border-cyan-400/60 hover:shadow-[0_0_24px_rgba(34,211,238,0.15)]">
+                <div key={template.id} className="group relative min-w-[180px] rounded-md border border-slate-700 bg-slate-950 p-2 transition hover:border-cyan-400/60 hover:shadow-[0_0_24px_rgba(34,211,238,0.15)]">
                   <button
                     type="button"
                     className="absolute right-2 top-2 rounded px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-800 hover:text-slate-200"
@@ -404,8 +413,8 @@ export function ControlRoomRoute() {
                     ✕
                   </button>
                   <button className="w-full text-left" onClick={() => setPreviewTemplate(template)}>
-                    <div className="mb-2 grid h-20 place-items-center rounded border border-slate-700 bg-slate-900 text-[10px] uppercase tracking-[0.2em] text-slate-500">Quick</div>
-                    <p className="truncate text-sm font-semibold text-slate-100">{template.name}</p>
+                    <div className="mb-1.5 grid h-16 place-items-center rounded border border-slate-700 bg-slate-900 text-[10px] uppercase tracking-[0.2em] text-slate-500">Quick</div>
+                    <p className="truncate text-xs font-semibold text-slate-100">{template.name}</p>
                   </button>
                 </div>
               ))}
@@ -429,6 +438,8 @@ export function ControlRoomRoute() {
               </button>
             </div>
           </div>
+              </div>
+            </div>
           </div>
         </section>
       </div>
