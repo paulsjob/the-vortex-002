@@ -9,6 +9,7 @@ import { buildTemplateFeedUrl } from '../features/playout/publicUrl';
 import { buildNormalizedPayload, buildTeamMetrics } from '../features/simulation/derived';
 import { StageViewportFrame } from '../components/stage/StageViewportFrame';
 import { DataInspectorPanel } from '../components/design/DataInspectorPanel';
+import { buildFieldOptions } from '../components/design/dataBindingPaths';
 
 const TEMPLATE_FORMATS = [
   { id: '16:9', value: '1920x1080', label: '16:9 (1920x1080)', width: 1920, height: 1080 },
@@ -21,7 +22,6 @@ type TemplateFormatId = typeof TEMPLATE_FORMATS[number]['id'];
 type FormatLayoutVariant = { canvasWidth: number; canvasHeight: number; layers: Layer[] };
 
 const FONT_OPTIONS = ['Inter', 'Arial', 'Helvetica', 'Roboto', 'Montserrat', 'Oswald', 'Georgia', 'Times New Roman'];
-const DATA_FIELDS = ['score.home', 'score.away', 'inning.number', 'inning.state', 'count.balls', 'count.strikes', 'count.outs', 'runners.first', 'runners.second', 'runners.third', 'pitch.type', 'pitch.velocity', 'pitch.location', 'bat.batspeed', 'bat.exitvelo', 'bat.launchangle', 'bat.distance', 'matchup.pitcher', 'matchup.batter'];
 const transformDefaults = { anchorX: 0, anchorY: 0, scaleX: 100, scaleY: 100, rotation: 0 };
 const RULER_SIZE = 24;
 const RULER_TARGET_MAJOR_SPACING = 90;
@@ -94,6 +94,7 @@ export function DesignRoute() {
   const assetStore = useAssetStore();
   const templateStore = useTemplateStore();
   const engineGame = useDataEngineStore((s) => s.game);
+  const activeSport = useDataEngineStore((s) => s.activeSport);
   const engineHistoryLength = useDataEngineStore((s) => s.history.length);
   const {
     layers,
@@ -140,6 +141,7 @@ export function DesignRoute() {
   const [snapToGrid, setSnapToGrid] = useState(true);
   const [showSafeZones, setShowSafeZones] = useState(false);
   const [dataBindingBetaEnabled, setDataBindingBetaEnabled] = useState(false);
+  const [bindingContext, setBindingContext] = useState<'live' | 'derived' | 'scorebug'>('live');
   const [guides, setGuides] = useState<Guide[]>([]);
   const [selectedGuideId, setSelectedGuideId] = useState<string | null>(null);
   const [guideReadout, setGuideReadout] = useState<{ x: number; y: number; value: number } | null>(null);
@@ -196,6 +198,16 @@ export function DesignRoute() {
   const scorebugPayload = useMemo(() => (
     hasSimulationData ? buildNormalizedPayload(engineGame, 'live-scorebug') : null
   ), [engineGame, hasSimulationData]);
+
+  const contextPayloads = useMemo(() => ({
+    live: livePayload,
+    derived: derivedPayload,
+    scorebug: scorebugPayload,
+  }), [livePayload, derivedPayload, scorebugPayload]);
+
+  const bindingFieldOptions = useMemo(() => (
+    buildFieldOptions(contextPayloads[bindingContext])
+  ), [contextPayloads, bindingContext]);
 
   const ensureFontLoaded = useCallback((fontFamily: string, size = 56) => {
     if (typeof document === 'undefined' || !('fonts' in document) || !fontFamily) return;
@@ -1308,7 +1320,13 @@ export function DesignRoute() {
           <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-300">Layer Inspector</h3>
           <div className="min-h-0 flex-1 overflow-auto pr-1">
             {dataBindingBetaEnabled && (
-              <DataInspectorPanel live={livePayload} derived={derivedPayload} scorebug={scorebugPayload} />
+              <DataInspectorPanel
+                live={livePayload}
+                derived={derivedPayload}
+                scorebug={scorebugPayload}
+                activeTab={bindingContext}
+                onActiveTabChange={setBindingContext}
+              />
             )}
             {!selectedPrimary ? <p className="mt-3 text-slate-400">Select a layer to edit.</p> : (
             <div className="space-y-3 mt-3">
@@ -1330,7 +1348,24 @@ export function DesignRoute() {
                   <div className="space-y-2 rounded border border-slate-700 bg-slate-900 p-3">
                     <h4 className="font-semibold">Data Binding</h4>
                     <label className="text-sm">Source<select className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" value={selectedPrimary.dataBindingSource} onChange={(e) => applyToSelected((layer) => layer.kind === 'text' ? ({ dataBindingSource: e.target.value } as Partial<Layer>) : ({}))}><option value="manual">Manual</option><option value="live-feed">Live Feed</option><option value="game-state">Game State</option><option value="stats-service">Stats Service</option></select></label>
-                    <label className="text-sm">Field<select className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" value={selectedPrimary.dataBindingField} onChange={(e) => applyToSelected((layer) => layer.kind === 'text' ? ({ dataBindingField: e.target.value } as Partial<Layer>) : ({}))}><option value="">Choose field…</option>{DATA_FIELDS.map((field) => <option key={field} value={field}>{field}</option>)}</select></label>
+                    <label className="text-sm">
+                      Field
+                      <select
+                        className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2"
+                        value={selectedPrimary.dataBindingField}
+                        onChange={(e) => applyToSelected((layer) => layer.kind === 'text' ? ({ dataBindingField: e.target.value } as Partial<Layer>) : ({}))}
+                      >
+                        <option value="">Choose field…</option>
+                        {selectedPrimary.dataBindingField && !bindingFieldOptions.includes(selectedPrimary.dataBindingField) && (
+                          <option value={selectedPrimary.dataBindingField}>{`(missing) ${selectedPrimary.dataBindingField}`}</option>
+                        )}
+                        {bindingFieldOptions.map((field) => <option key={field} value={field}>{field}</option>)}
+                      </select>
+                    </label>
+                    {!bindingFieldOptions.length && (
+                      <p className="text-xs text-slate-500">Start simulation to populate fields.</p>
+                    )}
+                    <p className="text-xs text-slate-500">Active sport: {activeSport.toUpperCase()} · Context: {bindingContext.toUpperCase()}</p>
                   </div>
 
                   <div className="space-y-2 rounded border border-slate-700 bg-slate-900 p-3">

@@ -6,6 +6,8 @@ type DataInspectorPanelProps = {
   live: unknown;
   derived: unknown;
   scorebug: unknown;
+  activeTab?: DataInspectorRoot;
+  onActiveTabChange?: (tab: DataInspectorRoot) => void;
 };
 
 type DataEntry = {
@@ -57,10 +59,13 @@ const copyToClipboard = async (value: string) => {
   document.body.removeChild(textArea);
 };
 
-export function DataInspectorPanel({ live, derived, scorebug }: DataInspectorPanelProps) {
-  const [activeTab, setActiveTab] = useState<DataInspectorRoot>('live');
+export function DataInspectorPanel({ live, derived, scorebug, activeTab: controlledTab, onActiveTabChange }: DataInspectorPanelProps) {
+  const [internalActiveTab, setInternalActiveTab] = useState<DataInspectorRoot>('live');
   const [query, setQuery] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
+
+  const activeTab = controlledTab ?? internalActiveTab;
+  const setActiveTab = onActiveTabChange ?? setInternalActiveTab;
 
   const tabData: Record<DataInspectorRoot, unknown> = { live, derived, scorebug };
   const currentData = tabData[activeTab];
