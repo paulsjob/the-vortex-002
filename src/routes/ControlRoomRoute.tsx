@@ -381,7 +381,7 @@ export function ControlRoomRoute() {
                         onClick={copyAggregateOutputUrl}
                         disabled={!programTemplate}
                       >
-                        Copy Output URL
+                        Copy Program URL
                       </button>
                       </div>
                     </div>
