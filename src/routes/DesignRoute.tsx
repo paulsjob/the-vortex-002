@@ -1039,7 +1039,7 @@ export function DesignRoute() {
   };
 
   return (
-    <section className="h-[calc(100vh-120px)] min-h-[640px]">
+    <section className="h-full min-h-0">
       <section className="grid h-full min-h-0 grid-cols-1 gap-3 rounded-xl border border-slate-800 bg-slate-900 p-4 xl:grid-cols-[360px_minmax(0,1fr)_320px] 2xl:grid-cols-[400px_minmax(0,1fr)_360px] overflow-hidden">
         <aside className="flex min-h-0 flex-col rounded-lg border border-slate-700 bg-slate-950 p-3">
           <div className="grid grid-cols-2 border-b border-slate-700 text-xs font-bold uppercase tracking-wider">

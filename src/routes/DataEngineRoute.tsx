@@ -28,8 +28,8 @@ export function DataEngineRoute() {
   };
 
   return (
-    <section className="grid h-[calc(100vh-11.5rem)] min-h-[560px] gap-4 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-4 lg:grid-cols-[300px_minmax(0,1fr)]">
-      <aside className="rounded-lg border border-slate-700 bg-slate-950 p-3">
+    <section className="grid h-full min-h-0 gap-4 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-4 lg:grid-cols-[300px_minmax(0,1fr)]">
+      <aside className="min-h-0 overflow-auto rounded-lg border border-slate-700 bg-slate-950 p-3">
         <h2 className="text-base font-semibold text-slate-100">Feeds</h2>
         <p className="mt-1 text-xs text-slate-400">Demo feed inventory</p>
         <div className="mt-3 space-y-2">

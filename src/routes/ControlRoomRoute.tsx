@@ -234,7 +234,7 @@ export function ControlRoomRoute() {
   const launcherGridRows = (expanded: boolean) => (expanded ? EXPANDED_LAUNCHER_GRID_ROWS : COLLAPSED_LAUNCHER_GRID_ROWS);
 
   return (
-    <section className="grid h-[calc(100vh-11.5rem)] grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-4">
+    <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-4">
       <div>
         <h2 className="text-lg font-semibold text-slate-100">Control Room</h2>
       </div>

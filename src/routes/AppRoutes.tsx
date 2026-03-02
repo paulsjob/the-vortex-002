@@ -106,8 +106,8 @@ export function AppRoutes() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="border-b border-slate-800 bg-slate-900 px-6 py-5">
+    <div className="flex h-screen flex-col overflow-hidden bg-slate-950 text-slate-100">
+      <header className="shrink-0 border-b border-slate-800 bg-slate-900 px-6 py-5">
         <div className="flex items-center justify-between gap-6">
           <h1 className="text-2xl font-bold tracking-wide text-slate-100">Renderless</h1>
           <div className="flex items-center gap-4">
@@ -140,7 +140,7 @@ export function AppRoutes() {
           </div>
         </div>
       </header>
-      <main className="p-6">
+      <main className="min-h-0 flex-1 overflow-auto p-6">
         <Routes>
           <Route path="/" element={<DashboardRoute />} />
           <Route path="/design" element={<DesignRoute />} />
@@ -149,7 +149,7 @@ export function AppRoutes() {
           <Route path="/output" element={<OutputRoute />} />
           <Route path="/template-feed/:templateId" element={<PublicTemplateRoute />} />
           <Route path="/output-feed" element={<PublicOutputRoute />} />
-          <Route path="*" element={<div className="grid h-screen place-items-center text-sm text-slate-400">Route not found.</div>} />
+          <Route path="*" element={<div className="grid h-full min-h-0 place-items-center text-sm text-slate-400">Route not found.</div>} />
         </Routes>
       </main>
     </div>
