@@ -21,6 +21,30 @@ export interface KeyStat {
   emphasis?: 'low' | 'med' | 'high';
 }
 
+export interface LeaderEntry {
+  player: string;
+  team: 'home' | 'away';
+  value: number;
+}
+
+export interface TeamLeaders {
+  home: Record<string, LeaderEntry>;
+  away: Record<string, LeaderEntry>;
+}
+
+export type GameLeaders = Record<string, LeaderEntry[]>;
+
+export interface SportBoxScore {
+  sport: SportKey;
+  homePlayers: Record<string, Record<string, number>>;
+  awayPlayers: Record<string, Record<string, number>>;
+  teamTotals: {
+    home: Record<string, number>;
+    away: Record<string, number>;
+  };
+  meta?: Record<string, number | string | boolean>;
+}
+
 export interface BaseLastPlay {
   type: string;
   description: string;
@@ -75,6 +99,10 @@ interface BaseGameState {
   lastEvent: string;
   keyStats: KeyStat[];
   lastPlay: BaseLastPlay;
+  boxScore?: SportBoxScore;
+  teamLeaders?: TeamLeaders;
+  gameLeaders?: GameLeaders;
+  consistencyIssues?: string[];
 }
 
 export interface MlbGameState extends BaseGameState {
@@ -220,4 +248,6 @@ export interface SimulatorPlugin {
 export interface ConsistencyStatus {
   corrected: boolean;
   corrections: number;
+  ok?: boolean;
+  issues?: string[];
 }
