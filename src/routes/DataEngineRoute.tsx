@@ -1,4 +1,5 @@
 import { StatusBadge } from '../components/ui/StatusBadge';
+import { simulatorOptions } from '../features/simulation/registry';
 import { Speed, useDataEngineStore } from '../store/useDataEngineStore';
 
 const speedOptions: Array<{ label: string; value: Speed }> = [
@@ -7,8 +8,14 @@ const speedOptions: Array<{ label: string; value: Speed }> = [
   { label: 'Fast', value: 'fast' },
 ];
 
+const clockLabel = (seconds: number) => {
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
+};
+
 export function DataEngineRoute() {
-  const { game, history, running, speed, start, stop, reset, setSpeed, stepPitch } = useDataEngineStore();
+  const { activeSport, game, history, running, speed, start, stop, reset, setSpeed, setSport, stepPitch } = useDataEngineStore();
 
   const feeds = [
     { id: 'live-game', name: 'Live Game Feed', status: running ? 'connected' : 'disconnected' },
@@ -17,10 +24,15 @@ export function DataEngineRoute() {
   ] as const;
 
   const samplePayload = {
+    sport: activeSport,
     gameId: 'demo-001',
     homeTeam: game.homeTeam,
     awayTeam: game.awayTeam,
     score: { home: game.scoreHome, away: game.scoreAway },
+    period: game.periodLabel,
+    clock: clockLabel(game.clockSeconds),
+    possession: game.possession,
+    lastEvent: game.lastEvent,
     pitcher: game.pitcher,
     batter: game.batter,
     lastPitch: game.lastPitch,
@@ -50,6 +62,20 @@ export function DataEngineRoute() {
             {running ? <StatusBadge tone="ready">CONNECTED</StatusBadge> : <StatusBadge tone="not-ready">DISCONNECTED</StatusBadge>}
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm">
+            <div className="mr-2 flex items-center gap-1 rounded border border-slate-700 bg-slate-950 p-1">
+              {simulatorOptions.map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => setSport(option.key)}
+                  className={`rounded px-2 py-1 text-xs font-medium ${
+                    activeSport === option.key ? 'bg-cyan-700 text-cyan-100' : 'text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
             <button
               type="button"
               onClick={start}
@@ -99,9 +125,12 @@ export function DataEngineRoute() {
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           <div className="rounded border border-slate-700 bg-slate-900 p-3 text-sm">
-            <p className="text-slate-400">Last Update</p>
-            <p className="font-semibold text-slate-100">{history[0] ? `Pitch #${history[0].pitchNumber}` : 'No data yet'}</p>
-            <p className="mt-1 text-xs text-slate-500">{new Date().toLocaleTimeString()}</p>
+            <p className="text-slate-400">Game Snapshot</p>
+            <p className="font-semibold text-slate-100">
+              {game.awayTeam} {game.scoreAway} - {game.homeTeam} {game.scoreHome}
+            </p>
+            <p className="mt-1 text-xs text-slate-300">{game.periodLabel} · {clockLabel(game.clockSeconds)}</p>
+            <p className="mt-1 text-xs text-slate-500">{game.lastEvent}</p>
           </div>
           <div className="rounded border border-slate-700 bg-slate-900 p-3 text-sm">
             <p className="text-slate-400">Endpoints</p>
@@ -117,13 +146,14 @@ export function DataEngineRoute() {
         </div>
 
         <div className="rounded border border-slate-700 bg-slate-900 p-3">
-          <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">Available Fields</p>
-          <div className="grid gap-1 text-sm text-slate-200 md:grid-cols-2">
-            {['score.home', 'score.away', 'pitch.velocity', 'pitch.location', 'matchup.pitcher', 'matchup.batter', 'inning.number', 'inning.state'].map((field) => (
-              <span key={field} className="rounded border border-slate-700 bg-slate-950 px-2 py-1">
-                {field}
-              </span>
+          <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">Recent Simulation Events</p>
+          <div className="space-y-1 text-sm text-slate-200">
+            {history.slice(0, 8).map((event) => (
+              <p key={event.id} className="rounded border border-slate-700 bg-slate-950 px-2 py-1">
+                {event.periodLabel} {event.clockLabel} · {event.summary} ({game.awayTeam} {event.scoreAway}-{event.scoreHome} {game.homeTeam})
+              </p>
             ))}
+            {history.length === 0 && <p className="text-slate-400">No events yet.</p>}
           </div>
         </div>
       </section>
