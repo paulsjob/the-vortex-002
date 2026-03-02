@@ -267,23 +267,19 @@ export function ControlRoomRoute() {
 
         <section className="h-full min-h-0 min-w-0 rounded-lg border border-slate-700 bg-slate-950 p-4">
           <div className="h-full min-h-0 min-w-0 flex flex-col gap-3">
-            <div className="shrink-0 min-h-0">
-              <div className="grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_minmax(220px,260px)_minmax(0,1fr)] gap-3 items-stretch">
-                <div className="flex items-start justify-center min-h-0 min-w-0">
-                  <div className="h-full flex flex-col min-h-0">
-                    <div className="shrink-0 flex items-center justify-between px-3 pt-2 pb-2 relative z-20">
+            <div className="shrink-0">
+              <div className="grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_minmax(220px,260px)_minmax(0,1fr)] gap-3 items-stretch">
+                <div className="min-h-0 min-w-0">
+                  <div className="relative w-full aspect-video overflow-hidden rounded-md border border-slate-700 bg-slate-900">
+                    <div className="pointer-events-none absolute left-3 right-3 top-2 z-20 flex items-center justify-between">
                       <h4 className="text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-200">PREVIEW</h4>
                       <div className={`rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] ${engineRunning ? 'border-emerald-600 bg-emerald-900/30 text-emerald-300' : 'border-amber-600 bg-amber-900/30 text-amber-300'}`}>
                         Data Engine {engineRunning ? 'Live' : 'Paused'}
                       </div>
                     </div>
-                    <div className="flex-1 min-h-0 px-3 pb-3 relative z-0 overflow-hidden">
-                      <div className="w-full min-h-0 min-w-0 flex items-center justify-center">
-                        <div className="w-full max-w-full aspect-video">
-                          <div className="h-full w-full">
-                            <TemplatePreview template={previewTemplate} sponsor={previewSponsor} tone="preview" />
-                          </div>
-                        </div>
+                    <div className="absolute inset-0 z-0 p-3 pt-8">
+                      <div className="h-full w-full">
+                        <TemplatePreview template={previewTemplate} sponsor={previewSponsor} tone="preview" />
                       </div>
                     </div>
                   </div>
@@ -360,26 +356,22 @@ export function ControlRoomRoute() {
                   </div>
                 </div>
 
-                <div className="relative flex items-center justify-center min-h-0 min-w-0">
-                  <div className="h-full flex flex-col min-h-0">
-                    <div className="shrink-0 flex items-center justify-between px-3 pt-2 pb-2 relative z-20">
+                <div className="min-h-0 min-w-0">
+                  <div className="relative w-full aspect-video overflow-hidden rounded-md border border-slate-700 bg-slate-900">
+                    <div className="pointer-events-none absolute left-3 right-3 top-2 z-20 flex items-center justify-between">
                       <h4 className="text-[10px] font-semibold uppercase tracking-[0.18em] text-red-300">PROGRAM</h4>
                       <div className={`rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] ${engineRunning ? 'border-emerald-600 bg-emerald-900/30 text-emerald-300' : 'border-amber-600 bg-amber-900/30 text-amber-300'}`}>
                         Data Engine {engineRunning ? 'Live' : 'Paused'}
                       </div>
                     </div>
-                    <div className="flex-1 min-h-0 px-3 pb-3 relative z-0 overflow-hidden">
+                    <div className="absolute inset-0 z-0 overflow-hidden p-3 pt-8">
                       {blackoutActive && (
                         <div className="pointer-events-none absolute inset-0 z-10 rounded-md border border-slate-800 bg-black/95 text-center text-sm font-semibold uppercase tracking-[0.25em] text-white">
                           <div className="flex h-full items-center justify-center">Blackout</div>
                         </div>
                       )}
-                      <div className="w-full min-h-0 min-w-0 flex items-center justify-center">
-                        <div className="w-full max-w-full aspect-video">
-                          <div className="h-full w-full">
-                            <TemplatePreview template={programTemplate} sponsor={programSponsor} tone="program" />
-                          </div>
-                        </div>
+                      <div className="h-full w-full">
+                        <TemplatePreview template={programTemplate} sponsor={programSponsor} tone="program" />
                       </div>
                     </div>
                   </div>
@@ -399,17 +391,17 @@ export function ControlRoomRoute() {
                     {favoritesExpanded ? 'Show less' : 'Show more'}
                   </button>
                 </div>
-                <div className="mt-2 h-[calc(100%-2rem)] overflow-x-auto overflow-y-hidden pb-1 no-scrollbar">
-                  <div className="grid h-full auto-cols-[180px] grid-flow-col gap-2" style={{ gridTemplateRows: launcherGridRows(favoritesExpanded) }}>
+                <div className="mt-2 h-[calc(100%-2rem)] min-h-0 overflow-x-auto overflow-y-hidden pb-1 no-scrollbar">
+                  <div className="grid h-full auto-cols-max grid-flow-col gap-2" style={{ gridTemplateRows: launcherGridRows(favoritesExpanded) }}>
                   {favoriteTemplates.length === 0 ? (
                     <p className="text-sm text-slate-500">Star templates in the library to pin your favorites.</p>
                   ) : favoriteTemplates.map((template) => (
                     <button
                       key={template.id}
-                      className="group min-w-[180px] rounded-md border border-slate-700 bg-slate-950 p-2 text-left transition hover:border-amber-400/60 hover:shadow-[0_0_24px_rgba(251,191,36,0.15)]"
+                      className="group shrink-0 rounded-md border border-slate-700 bg-slate-950 p-2 text-left transition hover:border-amber-400/60 hover:shadow-[0_0_24px_rgba(251,191,36,0.15)]"
                       onClick={() => setPreviewTemplate(template)}
                     >
-                      <div className="mb-1 aspect-video w-full overflow-hidden rounded border border-slate-700 bg-slate-900 grid place-items-center text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                      <div className="mb-1 h-[clamp(72px,10vh,110px)] w-auto aspect-video overflow-hidden rounded border border-slate-700 bg-slate-900 grid place-items-center text-[10px] uppercase tracking-[0.2em] text-slate-500">
                         16:9
                       </div>
                       <p className="truncate text-xs font-semibold text-slate-100">{template.name}</p>
@@ -429,12 +421,12 @@ export function ControlRoomRoute() {
                     {quickLaunchExpanded ? 'Show less' : 'Show more'}
                   </button>
                 </div>
-                <div className="mt-2 h-[calc(100%-2rem)] overflow-x-auto overflow-y-hidden pb-1 no-scrollbar">
-                  <div className="grid h-full auto-cols-[180px] grid-flow-col gap-2" style={{ gridTemplateRows: launcherGridRows(quickLaunchExpanded) }}>
+                <div className="mt-2 h-[calc(100%-2rem)] min-h-0 overflow-x-auto overflow-y-hidden pb-1 no-scrollbar">
+                  <div className="grid h-full auto-cols-max grid-flow-col gap-2" style={{ gridTemplateRows: launcherGridRows(quickLaunchExpanded) }}>
                   {quickLaunchTemplates.length === 0 ? (
                     <p className="text-sm text-slate-500">Add templates with 🚀 in the library for one-tap preloading.</p>
                   ) : quickLaunchTemplates.map((template) => (
-                    <div key={template.id} className="group relative min-w-[180px] rounded-md border border-slate-700 bg-slate-950 p-2 transition hover:border-cyan-400/60 hover:shadow-[0_0_24px_rgba(34,211,238,0.15)]">
+                    <div key={template.id} className="group relative shrink-0 rounded-md border border-slate-700 bg-slate-950 p-2 transition hover:border-cyan-400/60 hover:shadow-[0_0_24px_rgba(34,211,238,0.15)]">
                       <button
                         type="button"
                         className="absolute right-2 top-2 rounded px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-800 hover:text-slate-200"
@@ -443,8 +435,8 @@ export function ControlRoomRoute() {
                       >
                         ✕
                       </button>
-                      <button className="w-full text-left" onClick={() => setPreviewTemplate(template)}>
-                        <div className="mb-1 aspect-video w-full overflow-hidden rounded border border-slate-700 bg-slate-900 grid place-items-center text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                      <button className="text-left" onClick={() => setPreviewTemplate(template)}>
+                        <div className="mb-1 h-[clamp(72px,10vh,110px)] w-auto aspect-video overflow-hidden rounded border border-slate-700 bg-slate-900 grid place-items-center text-[10px] uppercase tracking-[0.2em] text-slate-500">
                           Quick
                         </div>
                         <p className="truncate text-xs font-semibold text-slate-100">{template.name}</p>
