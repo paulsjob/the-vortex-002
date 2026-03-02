@@ -128,14 +128,6 @@ export function ControlRoomRoute() {
   const takeTime = lastTakeAt ? new Date(lastTakeAt).toLocaleTimeString() : 'No take yet';
   const previewReady = Boolean(previewTemplate && previewTemplate.layers.length > 0 && engineRunning);
 
-  const fallbackMessage = !previewTemplate
-    ? 'Select a template to stage preview before TAKE.'
-    : previewTemplate.layers.length === 0
-      ? 'Preview template is empty. Add at least one layer in Design.'
-      : !programTemplate
-        ? 'Program is clear. Press TAKE to move Preview to Program.'
-        : null;
-
   const runTransitionTake = () => {
     if (!previewReady || transitionActive) return;
 
@@ -293,61 +285,56 @@ export function ControlRoomRoute() {
 
                 <div className="flex min-h-0 min-w-0 flex-col rounded-md border border-slate-700 bg-slate-900 p-3">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Transitions</p>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    {transitionOptions.map((option) => (
-                      <button
-                        key={option.type}
-                        className={`rounded border px-2 py-2 text-xs font-semibold uppercase tracking-wide transition ${transitionType === option.type ? 'border-blue-400 bg-blue-900/40 text-blue-100' : 'border-slate-600 bg-slate-950 text-slate-200 hover:bg-slate-800'}`}
-                        onClick={() => setTransitionType(option.type)}
-                        disabled={transitionActive}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="mt-4 rounded border border-slate-700 bg-slate-950 p-3">
-                    <div className="mb-2 flex items-center justify-between">
-                      <label htmlFor="transition-duration" className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Transition Duration</label>
-                      <span className="text-xs text-slate-300">{transitionDurationMs}ms</span>
+                  <div className="h-full flex flex-col">
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      {transitionOptions.map((option) => (
+                        <button
+                          key={option.type}
+                          className={`rounded border px-2 py-2 text-xs font-semibold uppercase tracking-wide transition ${transitionType === option.type ? 'border-blue-400 bg-blue-900/40 text-blue-100' : 'border-slate-600 bg-slate-950 text-slate-200 hover:bg-slate-800'}`}
+                          onClick={() => setTransitionType(option.type)}
+                          disabled={transitionActive}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
                     </div>
-                    <input
-                      id="transition-duration"
-                      type="range"
-                      min={0}
-                      max={durationChoices.length - 1}
-                      step={1}
-                      value={durationChoices.indexOf(transitionDurationMs)}
-                      onChange={(e) => setTransitionDurationMs(durationChoices[Number(e.target.value)] ?? 300)}
-                      className="w-full accent-blue-400"
-                      disabled={transitionType === 'cut' || transitionActive}
-                    />
-                  </div>
 
-                  <button
-                    className="mt-4 w-full rounded-md border border-red-500 bg-red-600 px-6 py-3 text-base font-black tracking-[0.24em] text-white shadow-lg shadow-red-950/60 transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40"
-                    onClick={runTransitionTake}
-                    disabled={!previewReady || transitionActive}
-                  >
-                    {transitionActive ? 'TRANSITIONING' : 'TAKE'}
-                  </button>
+                    <div className="mt-4 rounded border border-slate-700 bg-slate-950 p-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <label htmlFor="transition-duration" className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Transition Duration</label>
+                        <span className="text-xs text-slate-300">{transitionDurationMs}ms</span>
+                      </div>
+                      <input
+                        id="transition-duration"
+                        type="range"
+                        min={0}
+                        max={durationChoices.length - 1}
+                        step={1}
+                        value={durationChoices.indexOf(transitionDurationMs)}
+                        onChange={(e) => setTransitionDurationMs(durationChoices[Number(e.target.value)] ?? 300)}
+                        className="w-full accent-blue-400"
+                        disabled={transitionType === 'cut' || transitionActive}
+                      />
+                    </div>
 
-                  <button
-                    className="mt-2 w-full rounded-md border border-amber-500/70 bg-amber-700/70 px-6 py-2 text-sm font-bold tracking-[0.2em] text-amber-100 transition hover:bg-amber-600/80 disabled:cursor-not-allowed disabled:opacity-40"
-                    onClick={clearProgram}
-                    disabled={transitionActive}
-                  >
-                    CLEAR
-                  </button>
+                    <button
+                      className="mt-4 w-full rounded-md border border-red-500 bg-red-600 px-6 py-3 text-base font-black tracking-[0.24em] text-white shadow-lg shadow-red-950/60 transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+                      onClick={runTransitionTake}
+                      disabled={!previewReady || transitionActive}
+                    >
+                      {transitionActive ? 'TRANSITIONING' : 'TAKE'}
+                    </button>
 
-                  <div className="mt-3 min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-950 p-3 text-sm text-slate-300">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Broadcast Notes</p>
-                    {fallbackMessage ? (
-                      <p className="mt-2 text-slate-300">{fallbackMessage}</p>
-                    ) : (
-                      <p className="mt-2 text-slate-300">Program and Preview states are isolated snapshots. Program only changes when TAKE is executed.</p>
-                    )}
-                    <div className="mt-3 flex justify-end">
+                    <button
+                      className="mt-2 w-full rounded-md border border-amber-500/70 bg-amber-700/70 px-6 py-2 text-sm font-bold tracking-[0.2em] text-amber-100 transition hover:bg-amber-600/80 disabled:cursor-not-allowed disabled:opacity-40"
+                      onClick={clearProgram}
+                      disabled={transitionActive}
+                    >
+                      CLEAR
+                    </button>
+
+                    <div className="mt-auto pt-2">
+                      <div className="grid grid-cols-2 gap-2">
                       <button
                         className="rounded border border-emerald-700 px-3 py-1 text-xs font-semibold text-emerald-300 disabled:opacity-50 hover:bg-emerald-900/30"
                         onClick={() => previewTemplate && copyTemplateUrl(previewTemplate.id)}
@@ -356,12 +343,13 @@ export function ControlRoomRoute() {
                         Copy Preview URL
                       </button>
                       <button
-                        className="ml-2 rounded border border-emerald-700 px-3 py-1 text-xs font-semibold text-emerald-300 disabled:opacity-50 hover:bg-emerald-900/30"
+                        className="rounded border border-emerald-700 px-3 py-1 text-xs font-semibold text-emerald-300 disabled:opacity-50 hover:bg-emerald-900/30"
                         onClick={copyAggregateOutputUrl}
                         disabled={!programTemplate}
                       >
                         Copy Output URL
                       </button>
+                      </div>
                     </div>
                   </div>
                 </div>
