@@ -274,10 +274,20 @@ export function ControlRoomRoute() {
             <div className="shrink-0 min-h-0">
               <div className="grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_minmax(220px,260px)_minmax(0,1fr)] gap-3 items-stretch">
                 <div className="flex items-start justify-center min-h-0 min-w-0">
-                  <div className="w-full min-h-0 min-w-0 flex items-center justify-center">
-                    <div className="w-full max-w-full aspect-video">
-                      <div className="h-full w-full">
-                        <TemplatePreview template={previewTemplate} label="PREVIEW" sponsor={previewSponsor} tone="preview" />
+                  <div className="h-full flex flex-col min-h-0">
+                    <div className="shrink-0 flex items-center justify-between px-3 pt-2 pb-2 relative z-20">
+                      <h4 className="text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-200">PREVIEW</h4>
+                      <div className={`rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] ${engineRunning ? 'border-emerald-600 bg-emerald-900/30 text-emerald-300' : 'border-amber-600 bg-amber-900/30 text-amber-300'}`}>
+                        Data Engine {engineRunning ? 'Live' : 'Paused'}
+                      </div>
+                    </div>
+                    <div className="flex-1 min-h-0 px-3 pb-3 relative z-0 overflow-hidden">
+                      <div className="w-full min-h-0 min-w-0 flex items-center justify-center">
+                        <div className="w-full max-w-full aspect-video">
+                          <div className="h-full w-full">
+                            <TemplatePreview template={previewTemplate} sponsor={previewSponsor} tone="preview" />
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -355,7 +365,14 @@ export function ControlRoomRoute() {
                 </div>
 
                 <div className="relative flex items-center justify-center min-h-0 min-w-0">
-                  <div className="relative h-full w-full min-h-0 min-w-0">
+                  <div className="h-full flex flex-col min-h-0">
+                    <div className="shrink-0 flex items-center justify-between px-3 pt-2 pb-2 relative z-20">
+                      <h4 className="text-[10px] font-semibold uppercase tracking-[0.18em] text-red-300">PROGRAM</h4>
+                      <div className={`rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] ${engineRunning ? 'border-emerald-600 bg-emerald-900/30 text-emerald-300' : 'border-amber-600 bg-amber-900/30 text-amber-300'}`}>
+                        Data Engine {engineRunning ? 'Live' : 'Paused'}
+                      </div>
+                    </div>
+                    <div className="flex-1 min-h-0 px-3 pb-3 relative z-0 overflow-hidden">
                       {blackoutActive && (
                         <div className="pointer-events-none absolute inset-0 z-10 rounded-md border border-slate-800 bg-black/95 text-center text-sm font-semibold uppercase tracking-[0.25em] text-white">
                           <div className="flex h-full items-center justify-center">Blackout</div>
@@ -364,11 +381,12 @@ export function ControlRoomRoute() {
                       <div className="w-full min-h-0 min-w-0 flex items-center justify-center">
                         <div className="w-full max-w-full aspect-video">
                           <div className="h-full w-full">
-                            <TemplatePreview template={programTemplate} label="PROGRAM" sponsor={programSponsor} tone="program" />
+                            <TemplatePreview template={programTemplate} sponsor={programSponsor} tone="program" />
                           </div>
                         </div>
                       </div>
                     </div>
+                  </div>
                 </div>
               </div>
             </div>
