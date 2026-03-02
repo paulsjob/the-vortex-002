@@ -14,8 +14,14 @@ return [
 
 export const mlsSimulator: SimulatorPlugin={key:'mls',label:'MLS',
 createInitialGame:()=>{const boxScore=initializeBoxScore('mls',home,away,['goals','assists','shots','shotsOnTarget','bigChancesMissed','keyPasses','passAtt','passComp','distanceCovered','tackles','interceptions','crosses','saves','highClaims','corners','yellowCards','redCards','xg']);
-const g:MlsGameState={sport:'mls',homeTeam:'MIA',awayTeam:'SEA',scoreHome:0,scoreAway:0,period:1,periodLabel:'1H',clockSeconds:HALF_SECONDS,possession:null,lastEvent:'Kickoff from the center circle.',keyStats:[],lastPlay:{type:'kickoff',description:'Kickoff from the center circle.'},matchClock:0,stoppageTime:0,possessionPctHome:50,shotsHome:0,shotsAway:0,shotsOnTargetHome:0,shotsOnTargetAway:0,xGHome:0,xGAway:0,cornersHome:0,cornersAway:0,passesCompletedPctHome:86,passesCompletedPctAway:85,foulsHome:0,foulsAway:0,yellowCardsHome:0,yellowCardsAway:0,redCardsHome:0,redCardsAway:0,bigChancesHome:0,bigChancesAway:0,goalkeeperSavesHome:0,goalkeeperSavesAway:0,boxScore,consistencyIssues:[]};
+const g:MlsGameState={sport:'mls',homeTeam:'MIA',awayTeam:'SEA',scoreHome:0,scoreAway:0,period:1,periodLabel:'1H',clockSeconds:HALF_SECONDS,possession:null,lastEvent:'Kickoff from the center circle.',keyStats:[],lastPlay:{type:'kickoff',description:'Kickoff from the center circle.',playId:0,progressivePasses:0,possessionPctHome:50,ppdaApprox:10,pressures:0,recoveries:0},matchClock:0,stoppageTime:0,possessionPctHome:50,shotsHome:0,shotsAway:0,shotsOnTargetHome:0,shotsOnTargetAway:0,xGHome:0,xGAway:0,cornersHome:0,cornersAway:0,passesCompletedPctHome:86,passesCompletedPctAway:85,foulsHome:0,foulsAway:0,yellowCardsHome:0,yellowCardsAway:0,redCardsHome:0,redCardsAway:0,bigChancesHome:0,bigChancesAway:0,goalkeeperSavesHome:0,goalkeeperSavesAway:0,boxScore,consistencyIssues:[]};
 const l=computeLeaders(boxScore,['goals','assists','shotsOnTarget']); g.teamLeaders=l.teamLeaders; g.gameLeaders=l.gameLeaders; g.keyStats=buildKeyStats(g); return g;},
+forceActions:['goal','red-card'],
+forcePlay:(game,ctx,history,action)=>{
+ if(action==='goal') return mlsSimulator.step(game,{...ctx,random:()=>0.6,randomInt:(a,b)=>b},history);
+ if(action==='red-card') return mlsSimulator.step(game,{...ctx,random:()=>0.4,randomInt:(a,b)=>a},history);
+ return mlsSimulator.step(game,ctx,history);
+},
 step:(previous,ctx)=>{const g=structuredClone(previous) as MlsGameState; const tick=ctx.randomInt(12,34); g.clockSeconds=Math.max(0,g.clockSeconds-tick); g.matchClock+=tick; const atkHome=ctx.random()<0.5; const team=atkHome?'home':'away'; const players=atkHome?home:away; const fwd=players[ctx.randomInt(0,1)], mid=players[2], def=players[3], gk=players[4];
 players.forEach((p)=>bumpPlayerStat(g.boxScore!,team,p,'distanceCovered',0.12)); bumpPlayerStat(g.boxScore!,team,mid,'passAtt',2); bumpPlayerStat(g.boxScore!,team,mid,'passComp',ctx.random()<0.88?2:1);
 let summary=''; let type='sequence'; const r=ctx.random();
@@ -37,7 +43,7 @@ g.passesCompletedPctAway=((g.boxScore!.teamTotals.away.passAtt??0)>0?((g.boxScor
 const l=computeLeaders(g.boxScore!,['goals','assists','shotsOnTarget']); g.teamLeaders=l.teamLeaders; g.gameLeaders=l.gameLeaders;
 const c=validateConsistency('mls',g.boxScore!,g.scoreHome,g.scoreAway); g.consistencyIssues=c.issues;
 if(g.clockSeconds<=0&&g.period<2){g.period=2;g.periodLabel='2H';g.clockSeconds=HALF_SECONDS;summary='Second half begins.';type='half-start';}
-g.lastEvent=summary; g.lastPlay={type,description:summary,player:fwd,assister:mid,xg:atkHome?g.xGHome:g.xGAway,isGoal:type==='goal'}; g.keyStats=buildKeyStats(g);
+g.lastEvent=summary; g.lastPlay={type,description:summary,playId:ctx.nextId(),player:fwd,assister:mid,xg:Number((0.03+ctx.random()*0.4).toFixed(2)),xa:Number((0.02+ctx.random()*0.2).toFixed(2)),shotType:ctx.random()<0.7?'open-play':'set-piece',keyPass:type==='goal'||type==='save'||type==='shot-miss',progressivePasses:ctx.randomInt(0,3),possessionPctHome:g.possessionPctHome,ppdaApprox:Number((8+ctx.random()*6).toFixed(1)),pressures:ctx.randomInt(0,2),recoveries:ctx.randomInt(0,2),isGoal:type==='goal'}; g.keyStats=buildKeyStats(g);
 return {game:g,event:{id:ctx.nextId(),summary,periodLabel:g.periodLabel,clockLabel:formatClock(g.clockSeconds),scoreHome:g.scoreHome,scoreAway:g.scoreAway}};
 }
 };

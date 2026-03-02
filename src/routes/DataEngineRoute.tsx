@@ -16,7 +16,7 @@ const clockLabel = (seconds: number) => {
 };
 
 export function DataEngineRoute() {
-  const { activeSport, game, history, consistency, running, speed, start, stop, reset, setSpeed, setSport, stepPitch } = useDataEngineStore();
+  const { activeSport, game, history, consistency, running, speed, start, stop, reset, setSpeed, setSport, stepPitch, forceActions } = useDataEngineStore();
 
   const feeds = [
     { id: 'live-game', name: 'Live Game Feed', status: running ? 'connected' : 'disconnected' },
@@ -107,12 +107,28 @@ export function DataEngineRoute() {
             </div>
             <button
               type="button"
-              onClick={stepPitch}
+              onClick={() => stepPitch()}
               disabled={running}
               className="rounded border border-indigo-700 bg-indigo-900/40 px-3 py-1.5 font-medium text-indigo-200 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Step
             </button>
+
+            {forceActions.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1">
+                {forceActions.map((action) => (
+                  <button
+                    key={action}
+                    type="button"
+                    onClick={() => stepPitch(action)}
+                    disabled={running}
+                    className="rounded border border-fuchsia-700 bg-fuchsia-900/30 px-2 py-1 text-xs font-medium text-fuchsia-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Force {action}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
@@ -153,6 +169,11 @@ export function DataEngineRoute() {
         <div className="rounded border border-slate-700 bg-slate-900 p-3">
           <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">Consistency</p>
           <p className={`text-sm ${consistencyCode === 'OK' ? 'text-emerald-300' : 'text-amber-200'}`}>{consistencyCode}</p>
+          {(consistency.issues ?? []).length > 0 && (
+            <ul className="mt-2 list-disc pl-5 text-xs text-amber-200">
+              {(consistency.issues ?? []).map((issue) => <li key={issue}>{issue}</li>)}
+            </ul>
+          )}
         </div>
 
 

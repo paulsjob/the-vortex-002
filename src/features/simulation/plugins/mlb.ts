@@ -48,6 +48,13 @@ export const mlbSimulator: SimulatorPlugin = {
     };
     const l = computeLeaders(box, ['h', 'rbi', 'hr', 'k']); seed.teamLeaders = l.teamLeaders; seed.gameLeaders = l.gameLeaders; seed.keyStats = buildKeyStats(seed); return seed;
   },
+  forceActions: ['HR', 'BB', 'K'],
+  forcePlay: (game, ctx, history, action) => {
+    if (action === 'HR') return mlbSimulator.step(game, { ...ctx, random: () => 0.8, randomInt: (a,b)=>b }, history);
+    if (action === 'BB') return mlbSimulator.step(game, { ...ctx, random: () => 0.86, randomInt: (a,b)=>a }, history);
+    if (action === 'K') return mlbSimulator.step(game, { ...ctx, random: () => 0.94, randomInt: (a,b)=>a }, history);
+    return mlbSimulator.step(game, ctx, history);
+  },
   step: (previous, ctx) => {
     const game = structuredClone(previous) as MlbGameState;
     const offense: 'home' | 'away' = game.half === 'top' ? 'away' : 'home';

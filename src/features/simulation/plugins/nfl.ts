@@ -30,10 +30,18 @@ export const nflSimulator: SimulatorPlugin = {
     const tracked = ['passAtt', 'passComp', 'passYds', 'passTd', 'int', 'rushAtt', 'rushYds', 'rushTd', 'targets', 'rec', 'recYds', 'recTd', 'topSec', 'turnovers', 'thirdAtt', 'thirdConv', 'rzAtt', 'rzTd', 'sacksAllowed', 'penYds'];
     const boxScore = initializeBoxScore('nfl', homePlayers, awayPlayers, tracked);
     const game: NflGameState = { sport: 'nfl', homeTeam: 'KC', awayTeam: 'BUF', scoreHome: 0, scoreAway: 0, period: 1, periodLabel: 'Q1', clockSeconds: QUARTER_SECONDS, possession: 'away',
-      lastEvent: 'Kickoff returned to BUF 23.', keyStats: [], lastPlay: { type: 'kickoff', description: 'Kickoff returned to BUF 23.', down: 1, distance: 10, yards: 0 }, down: 1, distance: 10, yardLine: 'BUF 23',
+      lastEvent: 'Kickoff returned to BUF 23.', keyStats: [], lastPlay: { type: 'kickoff', description: 'Kickoff returned to BUF 23.', playId: 0, driveId: 1, down: 1, distance: 10, yards: 0, fieldPosition: 23, playType: 'pass', epa: 0, success: false, pressure: false, redZone: false }, down: 1, distance: 10, yardLine: 'BUF 23',
       ballOn: 23, driveNumber: 1, playClock: 40, possessionTeam: 'BUF', yardsThisDrive: 0, playsThisDrive: 0, timeoutsHome: 3, timeoutsAway: 3, passerName: 'J. Allen', rusherName: 'J. Cook', receiverName: 'S. Diggs', playType: 'pass',
       yardsGained: 0, epa: 0, winProbabilityHome: 0.5, redZone: false, turnoverCount: 0, penaltiesYards: 0, boxScore, consistencyIssues: [] };
     const l = computeLeaders(boxScore, ['passYds', 'rushYds', 'recYds']); game.teamLeaders = l.teamLeaders; game.gameLeaders = l.gameLeaders; game.keyStats = buildKeyStats(game); return game;
+  },
+  forceActions: ['score', 'turnover', 'penalty', 'big-play'],
+  forcePlay: (game, ctx, history, action) => {
+    if (action === 'score') return nflSimulator.step(game, { ...ctx, random: () => 0.86, randomInt: (a,b)=>b }, history);
+    if (action === 'turnover') return nflSimulator.step(game, { ...ctx, random: () => 0.76, randomInt: (a,b)=>a }, history);
+    if (action === 'penalty') return nflSimulator.step(game, { ...ctx, random: () => 0.65, randomInt: (a,b)=>Math.round((a+b)/2) }, history);
+    if (action === 'big-play') return nflSimulator.step(game, { ...ctx, random: () => 0.3, randomInt: (a,b)=>b }, history);
+    return nflSimulator.step(game, ctx, history);
   },
   step: (previous, ctx) => {
     const game = structuredClone(previous) as NflGameState;
@@ -98,7 +106,7 @@ export const nflSimulator: SimulatorPlugin = {
     const consistency = validateConsistency('nfl', game.boxScore!, game.scoreHome, game.scoreAway); game.consistencyIssues = consistency.issues;
 
     game.lastEvent = summary;
-    game.lastPlay = { type, description: summary, down: game.down, distance: game.distance, yards: yds, passer: qb, rusher: rb, receiver: wr, isTurnover: type.includes('turnover') || type === 'interception' || type === 'fumble' };
+    game.lastPlay = { type, description: summary, playId: ctx.nextId(), driveId: game.driveNumber, down: game.down, distance: game.distance, yards: yds, fieldPosition: game.ballOn, playType: game.playType, passer: qb, rusher: rb, target: wr, tackler: (defense==='home'?homePlayers:awayPlayers)[ctx.randomInt(1,3)], epa: game.epa, success: yds >= Math.max(4, Math.floor(game.distance / 2)), pressure: type === 'sack' || (game.playType === 'pass' && ctx.random() < 0.3), redZone: game.redZone, isTurnover: type.includes('turnover') || type === 'interception' || type === 'fumble' };
     game.keyStats = buildKeyStats(game);
     return { game, event: { id: ctx.nextId(), summary, periodLabel: game.periodLabel, clockLabel: formatClock(game.clockSeconds), scoreHome: game.scoreHome, scoreAway: game.scoreAway } };
   },

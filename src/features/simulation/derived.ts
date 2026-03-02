@@ -90,7 +90,7 @@ export const buildTeamMetrics = (game: GameState): TeamMetricEntry[] => {
 };
 
 export const buildNormalizedPayload = (game: GameState, gameId = 'demo-001'): NormalizedSimulationPayload => {
-  const base: NormalizedSimulationPayload = {
+  const base = {
     sport: game.sport,
     gameId,
     homeTeam: game.homeTeam,
@@ -109,11 +109,9 @@ export const buildNormalizedPayload = (game: GameState, gameId = 'demo-001'): No
     consistencyIssues: game.consistencyIssues,
   };
 
-  if (game.sport === 'mlb') base.mlb = { inning: game.inning, half: game.half, balls: game.balls, strikes: game.strikes, outs: game.outs, pitcher: game.pitcher, batter: game.batter, lastPitch: game.lastPitch, lastPlay: game.lastPlay };
-  if (game.sport === 'nba') base.nba = { shotClock: game.shotClock, teamFoulsHome: game.teamFoulsHome, teamFoulsAway: game.teamFoulsAway, run: game.run, lastPlay: game.lastPlay };
-  if (game.sport === 'nfl') base.nfl = { down: game.down, distance: game.distance, yardLine: game.yardLine, playType: game.playType, lastPlay: game.lastPlay };
-  if (game.sport === 'nhl') base.nhl = { strengthState: game.strengthState, ppTimeRemaining: game.ppTimeRemaining, pulledGoalie: game.pulledGoalie, lastPlay: game.lastPlay };
-  if (game.sport === 'mls') base.mls = { matchClock: game.matchClock, stoppageTime: game.stoppageTime, possessionPctHome: game.possessionPctHome, lastPlay: game.lastPlay };
-
-  return base;
+  if (game.sport === 'mlb') return { ...base, sport: 'mlb', mlb: { inning: game.inning, half: game.half, balls: game.balls, strikes: game.strikes, outs: game.outs, pitcher: game.pitcher, batter: game.batter, lastPitch: game.lastPitch, lastPlay: game.lastPlay } };
+  if (game.sport === 'nba') return { ...base, sport: 'nba', nba: { shotClock: game.shotClock, teamFoulsHome: game.teamFoulsHome, teamFoulsAway: game.teamFoulsAway, run: game.run, lastPlay: game.lastPlay } };
+  if (game.sport === 'nfl') return { ...base, sport: 'nfl', nfl: { down: game.down, distance: game.distance, yardLine: game.yardLine, playType: game.playType, lastPlay: game.lastPlay } };
+  if (game.sport === 'nhl') return { ...base, sport: 'nhl', nhl: { strengthState: game.strengthState, ppTimeRemaining: game.ppTimeRemaining, pulledGoalie: game.pulledGoalie, lastPlay: game.lastPlay } };
+  return { ...base, sport: 'mls', mls: { matchClock: game.matchClock, stoppageTime: game.stoppageTime, possessionPctHome: game.possessionPctHome, lastPlay: game.lastPlay } };
 };
