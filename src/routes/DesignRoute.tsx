@@ -1205,7 +1205,7 @@ export function DesignRoute() {
             </div>
             <span className="text-slate-500">Ctrl + wheel to zoom canvas.</span>
           </div>
-          <div ref={stageViewportRef} className="grid flex-1 min-h-0 place-items-center overflow-hidden rounded-lg border border-slate-700 bg-slate-800 p-6">
+          <div ref={stageViewportRef} className="flex flex-1 min-h-0 items-center justify-center overflow-hidden rounded-lg border border-slate-700 bg-slate-800 p-[clamp(16px,2vh,28px)]">
             <div className="relative" style={{ width: `${canvasWidth * stageScale + rulerOffset}px`, height: `${canvasHeight * stageScale + rulerOffset}px` }}>
               {showRulers && (
                 <div className="pointer-events-none absolute inset-0 z-20 text-[10px] text-slate-300/90">
