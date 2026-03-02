@@ -44,30 +44,32 @@ export function TemplatePreview({ template, label, sponsor, tone = 'preview' }: 
           </div>
         )}
         <div className="flex min-h-0 flex-1 items-center justify-center">
-          <div
-            className={`relative aspect-video h-full w-auto max-h-full max-w-full overflow-hidden rounded-lg border bg-slate-950 ${isProgram ? 'border-red-600/70' : (sponsorStyle?.accentBorderClass ?? 'border-slate-700')}`}
-          >
-          <div className="absolute inset-0 bg-[linear-gradient(45deg,#0f172a_25%,#111827_25%,#111827_50%,#0f172a_50%,#0f172a_75%,#111827_75%,#111827_100%)] bg-[length:18px_18px] opacity-70" />
-          {!isProgram && sponsorStyle && <div className={`absolute inset-0 bg-gradient-to-br ${sponsorStyle.accentFillClass} opacity-55`} />}
-          <div className="relative z-10 flex h-full w-full items-center justify-center p-2">
-            <div className="relative h-full w-full max-h-full max-w-full">
-              {template ? (
-                <TemplateSceneSvg template={template} className="h-full w-full object-contain" />
-              ) : (
-                <div className={`grid h-full w-full place-items-center rounded border border-dashed border-slate-600/80 bg-slate-950/70 text-sm ${isProgram ? 'text-red-200' : 'text-slate-400'}`}>
-                  No template loaded.
+          <div className="relative w-full max-w-full">
+            <div
+              className={`relative aspect-video w-full max-h-full overflow-hidden rounded-lg border bg-slate-950 ${isProgram ? 'border-red-600/70' : (sponsorStyle?.accentBorderClass ?? 'border-slate-700')}`}
+            >
+              <div className="absolute inset-0 bg-[linear-gradient(45deg,#0f172a_25%,#111827_25%,#111827_50%,#0f172a_50%,#0f172a_75%,#111827_75%,#111827_100%)] bg-[length:18px_18px] opacity-70" />
+              {!isProgram && sponsorStyle && <div className={`absolute inset-0 bg-gradient-to-br ${sponsorStyle.accentFillClass} opacity-55`} />}
+              <div className="relative z-10 flex h-full w-full items-center justify-center p-2">
+                <div className="relative h-full w-full max-h-full max-w-full">
+                  {template ? (
+                    <TemplateSceneSvg template={template} className="h-full w-full object-contain" />
+                  ) : (
+                    <div className={`grid h-full w-full place-items-center rounded border border-dashed border-slate-600/80 bg-slate-950/70 text-sm ${isProgram ? 'text-red-200' : 'text-slate-400'}`}>
+                      No template loaded.
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
+              <div className={`absolute right-1.5 top-1.5 rounded border px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.12em] ${isProgram ? 'border-red-500 bg-red-900/60 text-red-100' : 'border-blue-500 bg-blue-900/45 text-blue-100'}`}>
+                {isProgram ? 'LOCKED' : 'EDITABLE'}
+              </div>
+              {sponsor ? (
+                <div className="absolute left-1.5 top-1.5 rounded border border-slate-200/35 bg-slate-900/70 px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.16em] text-slate-100">
+                  {sponsorStyle?.logo ?? 'SP'} · {sponsor}
+                </div>
+              ) : null}
             </div>
-          </div>
-          <div className={`absolute right-1.5 top-1.5 rounded border px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.12em] ${isProgram ? 'border-red-500 bg-red-900/60 text-red-100' : 'border-blue-500 bg-blue-900/45 text-blue-100'}`}>
-            {isProgram ? 'LOCKED' : 'EDITABLE'}
-          </div>
-          {sponsor ? (
-            <div className="absolute left-1.5 top-1.5 rounded border border-slate-200/35 bg-slate-900/70 px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.16em] text-slate-100">
-              {sponsorStyle?.logo ?? 'SP'} · {sponsor}
-            </div>
-          ) : null}
           </div>
         </div>
         <div className="mt-0.5 grid shrink-0 grid-cols-3 gap-2 text-[9px] text-slate-500">

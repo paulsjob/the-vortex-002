@@ -352,7 +352,7 @@ export function ControlRoomRoute() {
               </div>
             </div>
 
-            <div className="shrink-0 max-h-[220px] min-h-[160px] overflow-auto">
+            <div className="shrink-0 h-[210px] overflow-hidden">
               <div className="grid min-h-0 gap-3 pr-1" style={{ gridTemplateRows: 'auto auto minmax(0,1fr)' }}>
           <div className="min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-2">
             <div className="flex items-center justify-between gap-2">
@@ -365,7 +365,7 @@ export function ControlRoomRoute() {
                 {favoritesExpanded ? 'Show less' : 'Show more'}
               </button>
             </div>
-            <div className="mt-2 overflow-x-auto overflow-y-hidden pb-1" style={{ height: launcherPanelHeight(favoritesExpanded) }}>
+            <div className="mt-2 overflow-x-auto overflow-y-hidden pb-1 no-scrollbar" style={{ height: launcherPanelHeight(favoritesExpanded) }}>
               <div className="grid auto-cols-[180px] grid-flow-col gap-2" style={{ gridTemplateRows: launcherGridRows(favoritesExpanded) }}>
               {favoriteTemplates.length === 0 ? (
                 <p className="text-sm text-slate-500">Star templates in the library to pin your favorites.</p>
@@ -375,7 +375,9 @@ export function ControlRoomRoute() {
                   className="group min-w-[180px] rounded-md border border-slate-700 bg-slate-950 p-2 text-left transition hover:border-amber-400/60 hover:shadow-[0_0_24px_rgba(251,191,36,0.15)]"
                   onClick={() => setPreviewTemplate(template)}
                 >
-                  <div className="mb-1 grid h-12 place-items-center rounded border border-slate-700 bg-slate-900 text-[10px] uppercase tracking-[0.2em] text-slate-500">16:9</div>
+                  <div className="mb-1 aspect-video w-full overflow-hidden rounded border border-slate-700 bg-slate-900 grid place-items-center text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                    16:9
+                  </div>
                   <p className="truncate text-xs font-semibold text-slate-100">{template.name}</p>
                 </button>
               ))}
@@ -394,7 +396,7 @@ export function ControlRoomRoute() {
                 {quickLaunchExpanded ? 'Show less' : 'Show more'}
               </button>
             </div>
-            <div className="mt-2 overflow-x-auto overflow-y-hidden pb-1" style={{ height: launcherPanelHeight(quickLaunchExpanded) }}>
+            <div className="mt-2 overflow-x-auto overflow-y-hidden pb-1 no-scrollbar" style={{ height: launcherPanelHeight(quickLaunchExpanded) }}>
               <div className="grid auto-cols-[180px] grid-flow-col gap-2" style={{ gridTemplateRows: launcherGridRows(quickLaunchExpanded) }}>
               {quickLaunchTemplates.length === 0 ? (
                 <p className="text-sm text-slate-500">Add templates with 🚀 in the library for one-tap preloading.</p>
@@ -409,7 +411,9 @@ export function ControlRoomRoute() {
                     ✕
                   </button>
                   <button className="w-full text-left" onClick={() => setPreviewTemplate(template)}>
-                    <div className="mb-1 grid h-12 place-items-center rounded border border-slate-700 bg-slate-900 text-[10px] uppercase tracking-[0.2em] text-slate-500">Quick</div>
+                    <div className="mb-1 aspect-video w-full overflow-hidden rounded border border-slate-700 bg-slate-900 grid place-items-center text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                      Quick
+                    </div>
                     <p className="truncate text-xs font-semibold text-slate-100">{template.name}</p>
                   </button>
                 </div>
@@ -418,12 +422,12 @@ export function ControlRoomRoute() {
             </div>
           </div>
 
-          <div className="min-h-0 overflow-auto rounded-md border border-slate-700 bg-slate-900 p-2.5 text-sm text-slate-300">
+          <div className="min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-2.5 text-sm text-slate-300">
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Broadcast Notes</p>
             {fallbackMessage ? (
-              <p className="mt-2 text-slate-300">{fallbackMessage}</p>
+              <p className="mt-2 text-slate-300 line-clamp-3">{fallbackMessage}</p>
             ) : (
-              <p className="mt-2 text-slate-300">Program and Preview states are isolated snapshots. Program only changes when TAKE is executed.</p>
+              <p className="mt-2 text-slate-300 line-clamp-3">Program and Preview states are isolated snapshots. Program only changes when TAKE is executed.</p>
             )}
             <div className="mt-3 flex justify-end">
               <button className="rounded border border-emerald-700 px-3 py-1 text-xs font-semibold text-emerald-300 disabled:opacity-50 hover:bg-emerald-900/30" onClick={() => previewTemplate && copyTemplateUrl(previewTemplate.id)} disabled={!previewTemplate}>
