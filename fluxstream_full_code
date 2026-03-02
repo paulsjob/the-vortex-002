@@ -1,0 +1,2649 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
+import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { 
+  Trophy, Layout, Users, Zap, Monitor, XOctagon, CreditCard, Grid, Check, 
+  ArrowRight, Layers, Flame, Target, HandMetal, Activity, Eye, EyeOff, 
+  Image as ImageIcon, Plus, Trash2, FileImage, Folder, Upload, ChevronLeft, 
+  FolderPlus, Database, Play, Pause, RefreshCw, X, Save, User, Swords, 
+  BarChart2, PieChart, Edit3, Link as LinkIcon, ChevronRight, ChevronDown, 
+  Search, Terminal, ActivitySquare, AlertTriangle, Download, Type, Info, Undo2, Redo2
+} from 'lucide-react';
+
+// ============================================================================
+// LEVEL 0: INITIALIZATION & UTILITIES
+// ============================================================================
+
+let db = null;
+let auth = null;
+let appId = 'demo-app';
+
+try {
+  if (typeof __firebase_config !== 'undefined') {
+    const config = JSON.parse(__firebase_config);
+    const app = initializeApp(config);
+    auth = getAuth(app);
+    db = getFirestore(app);
+    appId = typeof __app_id !== 'undefined' ? __app_id : 'demo-app';
+  }
+} catch (e) {
+  console.warn("Running in Offline Demo Mode");
+}
+
+const sanitizeForFirestore = (obj) => {
+  if (obj === undefined) return null;
+  return JSON.parse(JSON.stringify(obj));
+};
+
+const safeString = (val, fallback = '') => {
+  if (val === null || val === undefined) return fallback;
+  if (typeof val === 'object') return fallback; 
+  return String(val);
+};
+
+const textAnchorFromAlign = (align) => {
+  const normalized = safeString(align, 'left').toLowerCase();
+  if (normalized === 'center' || normalized === 'middle') return 'middle';
+  if (normalized === 'right' || normalized === 'end') return 'end';
+  return 'start';
+};
+
+
+const DEFAULT_CONTROL_SLOT_OPTIONS = ['EMPTY', 'CAM 1', 'CAM 2', 'CAM 3', 'GFX 1', 'GFX 2', 'MEDIA 1', 'MEDIA 2', 'REPLAY', 'STATS'];
+const DEFAULT_CONTROL_SLOTS = {
+  mon1: 'CAM 1', mon2: 'CAM 2', mon3: 'CAM 3', mon4: 'GFX 1',
+  mon5: 'REPLAY', mon6: 'MEDIA 1', mon7: 'STATS', mon8: 'MEDIA 2',
+  cam1: 'Webcam Feed A', cam2: 'Webcam Feed B', cam3: 'Tight Iso Cam',
+  gfx1: 'Lower Third Queue', gfx2: 'Sponsor Bug Queue',
+  media1: 'Hype Reel', media2: 'Postgame Package'
+};
+
+const DUMMY_CONTENT_LIBRARY = [
+  { id: 'none', label: 'CLEAR', color: '#0b1220', text: 'No Signal' },
+  { id: 'camA', label: 'CAM A', color: '#1d4ed8', text: 'Camera A - Wide' },
+  { id: 'camB', label: 'CAM B', color: '#059669', text: 'Camera B - Tight' },
+  { id: 'gfxScore', label: 'GFX SCORE', color: '#7c3aed', text: 'Scorebug Package' },
+  { id: 'gfxPromo', label: 'GFX PROMO', color: '#db2777', text: 'Promo Graphic' },
+  { id: 'mediaReplay', label: 'REPLAY', color: '#ea580c', text: 'Replay Clip Ready' },
+  { id: 'mediaRoll', label: 'ROLL IN', color: '#0891b2', text: 'Roll-In Animation' }
+];
+const DUMMY_BY_ID = DUMMY_CONTENT_LIBRARY.reduce((acc, item) => ({ ...acc, [item.id]: item }), {});
+
+const INPUT_SLOT_ROWS = [
+  { name: 'Webcam 1', slotId: 'cam1', device: 'Blackmagic Design', status: 'Connected' },
+  { name: 'Webcam 2', slotId: 'cam2', device: 'Cam Link 4K', status: 'Connected' },
+  { name: 'GFX 1', slotId: 'gfx1', device: 'Graphics Bus', status: 'Ready' },
+  { name: 'GFX 2', slotId: 'gfx2', device: 'Graphics Bus', status: 'Ready' },
+  { name: 'Media 1', slotId: 'media1', device: 'Media Server A', status: 'Idle' },
+  { name: 'Media 2', slotId: 'media2', device: 'Media Server B', status: 'Idle' }
+];
+
+const GFX_TEMPLATE_BIN = [
+  { id: 'scorebug', label: 'Main Scorebug', icon: Trophy, sceneUpdate: { template: 'scorebug' } },
+  { id: 'lower3rd', label: 'Lower Third', icon: Type, sceneUpdate: { template: 'player_stats' } },
+  { id: 'matchup', label: 'Matchup', icon: Swords, sceneUpdate: { template: 'matchup', matchupTitle: 'KEY MATCHUP' } },
+  { id: 'teamstats', label: 'Team Stats', icon: PieChart, sceneUpdate: { template: 'team_stats' } },
+  { id: 'fullscreen', label: 'Full Screen Sponsor', icon: ImageIcon, sceneUpdate: { template: 'image' } }
+];
+
+
+const resolvePath = (obj, path) => {
+  if (!path || typeof path !== 'string') return null;
+  return path.split('.').reduce((acc, part) => acc && acc[part] !== undefined ? acc[part] : null, obj);
+};
+
+const getObjectPaths = (obj, prefix = '') => {
+  let paths = [];
+  if (!obj || typeof obj !== 'object') return paths;
+  for (const [key, value] of Object.entries(obj)) {
+    const newPath = prefix ? `${prefix}.${key}` : key;
+    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      paths = paths.concat(getObjectPaths(value, newPath));
+    } else {
+      paths.push(newPath);
+    }
+  }
+  return paths;
+};
+
+// ============================================================================
+// LEVEL 1: DATABASES
+// ============================================================================
+
+const ROSTER_DB = {
+  batters: [
+    { id: 'nyy_b1', name: 'Aaron Judge', team: 'NYY', img: 'https://ui-avatars.com/api/?name=Aaron+Judge&background=0c2340&color=fff&size=256', stats: { season: { label: '2025 SEASON', AVG: '.315', HR: '45', RBI: '112', OPS: '1.105' }, career: { label: 'CAREER', AVG: '.285', HR: '280', RBI: '650', OPS: '.980' }, last10: { label: 'LAST 10 GAMES', AVG: '.400', HR: '5', RBI: '12', OPS: '1.350' } } },
+    { id: 'nyy_b2', name: 'Juan Soto', team: 'NYY', img: 'https://ui-avatars.com/api/?name=Juan+Soto&background=0c2340&color=fff&size=256', stats: { season: { label: '2025 SEASON', AVG: '.295', HR: '32', RBI: '95', OPS: '.990' }, career: { label: 'CAREER', AVG: '.285', HR: '190', RBI: '550', OPS: '.950' }, last10: { label: 'LAST 10 GAMES', AVG: '.350', HR: '2', RBI: '8', OPS: '1.050' } } },
+    { id: 'nyy_b3', name: 'Giancarlo Stanton', team: 'NYY', img: 'https://ui-avatars.com/api/?name=Giancarlo+Stanton&background=0c2340&color=fff&size=256', stats: { season: { label: '2025 SEASON', AVG: '.245', HR: '28', RBI: '75', OPS: '.810' }, career: { label: 'CAREER', AVG: '.258', HR: '420', RBI: '1050', OPS: '.880' }, last10: { label: 'LAST 10 GAMES', AVG: '.210', HR: '3', RBI: '6', OPS: '.780' } } },
+    { id: 'bos_b1', name: 'Rafael Devers', team: 'BOS', img: 'https://ui-avatars.com/api/?name=Rafael+Devers&background=bd3039&color=fff&size=256', stats: { season: { label: '2025 SEASON', AVG: '.288', HR: '35', RBI: '105', OPS: '.915' }, career: { label: 'CAREER', AVG: '.280', HR: '195', RBI: '610', OPS: '.860' }, last10: { label: 'LAST 10 GAMES', AVG: '.320', HR: '4', RBI: '10', OPS: '1.020' } } },
+    { id: 'bos_b2', name: 'Jarren Duran', team: 'BOS', img: 'https://ui-avatars.com/api/?name=Jarren+Duran&background=bd3039&color=fff&size=256', stats: { season: { label: '2025 SEASON', AVG: '.290', HR: '15', RBI: '60', OPS: '.820' }, career: { label: 'CAREER', AVG: '.270', HR: '30', RBI: '120', OPS: '.780' }, last10: { label: 'LAST 10 GAMES', AVG: '.310', HR: '1', RBI: '5', OPS: '.850' } } },
+    { id: 'bos_b3', name: 'Triston Casas', team: 'BOS', img: 'https://ui-avatars.com/api/?name=Triston+Casas&background=bd3039&color=fff&size=256', stats: { season: { label: '2025 SEASON', AVG: '.265', HR: '30', RBI: '85', OPS: '.880' }, career: { label: 'CAREER', AVG: '.255', HR: '55', RBI: '150', OPS: '.840' }, last10: { label: 'LAST 10 GAMES', AVG: '.280', HR: '3', RBI: '8', OPS: '.940' } } },
+  ],
+  pitchers: [
+    { id: 'nyy_p1', name: 'Gerrit Cole', team: 'NYY', img: 'https://ui-avatars.com/api/?name=Gerrit+Cole&background=0c2340&color=fff&size=256', stats: { season: { label: '2025 SEASON', ERA: '2.85', W: '16', SO: '230', WHIP: '1.02' }, career: { label: 'CAREER', ERA: '3.15', W: '150', SO: '2150', WHIP: '1.09' }, last10: { label: 'LAST 5 STARTS', ERA: '2.10', W: '4', SO: '45', WHIP: '0.95' } } },
+    { id: 'nyy_p2', name: 'Clay Holmes', team: 'NYY', img: 'https://ui-avatars.com/api/?name=Clay+Holmes&background=0c2340&color=fff&size=256', stats: { season: { label: '2025 SEASON', ERA: '2.45', SV: '35', SO: '75', WHIP: '1.15' }, career: { label: 'CAREER', ERA: '3.60', SV: '85', SO: '320', WHIP: '1.25' }, last10: { label: 'LAST 10 APP', ERA: '1.20', SV: '7', SO: '14', WHIP: '1.00' } } },
+    { id: 'bos_p1', name: 'Brayan Bello', team: 'BOS', img: 'https://ui-avatars.com/api/?name=Brayan+Bello&background=bd3039&color=fff&size=256', stats: { season: { label: '2025 SEASON', ERA: '3.95', W: '12', SO: '155', WHIP: '1.30' }, career: { label: 'CAREER', ERA: '4.10', W: '25', SO: '310', WHIP: '1.35' }, last10: { label: 'LAST 5 STARTS', ERA: '3.50', W: '2', SO: '32', WHIP: '1.20' } } },
+    { id: 'bos_p2', name: 'Kenley Jansen', team: 'BOS', img: 'https://ui-avatars.com/api/?name=Kenley+Jansen&background=bd3039&color=fff&size=256', stats: { season: { label: '2025 SEASON', ERA: '3.15', SV: '28', SO: '60', WHIP: '1.18' }, career: { label: 'CAREER', ERA: '2.50', SV: '430', SO: '1200', WHIP: '0.95' }, last10: { label: 'LAST 10 APP', ERA: '2.80', SV: '5', SO: '12', WHIP: '1.10' } } },
+  ]
+};
+
+const TEAM_DB = {
+  'NYY': { name: 'New York Yankees', logo: 'https://ui-avatars.com/api/?name=NYY&background=0c2340&color=fff&size=256', splits: { season: { label: '2025 SEASON', W: '98', L: '64', AVG: '.265', ERA: '3.55' }, june: { label: 'IN JUNE', W: '18', L: '9', AVG: '.275', ERA: '3.40' }, since_apr: { label: 'SINCE APRIL 28', W: '75', L: '45', AVG: '.270', ERA: '3.50' } } },
+  'BOS': { name: 'Boston Red Sox', logo: 'https://ui-avatars.com/api/?name=BOS&background=bd3039&color=fff&size=256', splits: { season: { label: '2025 SEASON', W: '88', L: '74', AVG: '.260', ERA: '4.15' }, june: { label: 'IN JUNE', W: '16', L: '11', AVG: '.265', ERA: '4.00' }, since_apr: { label: 'SINCE APRIL 28', W: '65', L: '55', AVG: '.255', ERA: '4.20' } } }
+};
+
+// ============================================================================
+// LEVEL 2: ATOM COMPONENTS
+// ============================================================================
+
+const StatRow = ({ label, value }) => (
+  <div className="flex justify-between items-center py-1 border-b border-slate-800/50 last:border-0">
+    <span className="text-xs text-slate-400">{safeString(label)}</span>
+    <span className="text-sm font-bold text-white font-mono">{safeString(value)}</span>
+  </div>
+);
+
+const DataCard = ({ label, children }) => (
+  <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col">
+    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">{safeString(label)}</div>
+    <div className="flex-1">{children}</div>
+  </div>
+);
+
+const TemplateBtn = ({ label, icon: Icon, active, onClick, isCustom }) => (
+  <button onClick={onClick} className={`w-full text-left px-3 py-3 rounded-lg flex items-center space-x-3 transition-all mb-1 group ${active ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+    <Icon className={`w-4 h-4 ${active ? 'text-white' : 'text-slate-500 group-hover:text-white'}`} />
+    <span className="text-xs font-bold truncate flex-1">{safeString(label)}</span>
+    {isCustom && !active && <span className="text-[8px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-500">CUSTOM</span>}
+    {active && <Check className="w-3 h-3 ml-auto shrink-0" />}
+  </button>
+);
+
+const InspectorInput = ({ label, value, onChange, placeholder, align = 'left', type='text' }) => (
+  <div className="bg-slate-900 rounded-lg p-3 border border-slate-800 hover:border-slate-700 transition-colors">
+    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-2">{safeString(label)}</label>
+    <input 
+      type={type}
+      value={safeString(value)} 
+      onChange={onChange}
+      placeholder={placeholder}
+      className={`w-full bg-transparent text-white font-bold outline-none border-b border-transparent focus:border-indigo-500 transition-all ${align === 'right' ? 'text-right' : ''}`}
+    />
+  </div>
+);
+
+const SurfacePrimary = ({ className = '', children }) => (
+  <div className={`bg-zinc-900 border border-zinc-800 rounded-xl ${className}`}>{children}</div>
+);
+
+const SurfaceSecondary = ({ className = '', children }) => (
+  <div className={`bg-zinc-950 border border-zinc-800 rounded-xl ${className}`}>{children}</div>
+);
+
+const MonitorScreen = ({ label, children, active = true, bgImage }) => (
+  <div className={`relative w-full aspect-video bg-black overflow-hidden group border-2 ${active ? 'border-indigo-500/50' : 'border-slate-800'}`}>
+    <div className="absolute inset-0 bg-cover bg-center opacity-40 grayscale" style={{ backgroundImage: `url('${bgImage}')` }} />
+    <div className="absolute inset-0">{children}</div>
+    <div className={`absolute top-2 left-2 px-2 py-0.5 rounded text-[10px] font-bold border ${active ? 'bg-indigo-600 text-white border-indigo-400' : 'bg-black/60 text-slate-400 border-slate-600'}`}>
+      {safeString(label)}
+    </div>
+  </div>
+);
+
+
+const FixedAspectFrame = ({ className = '', children }) => {
+  const hostRef = useRef(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    if (!hostRef.current) return;
+
+    const update = () => {
+      if (!hostRef.current) return;
+      const rect = hostRef.current.getBoundingClientRect();
+      const maxWidth = Math.max(rect.width, 0);
+      const maxHeight = Math.max(rect.height, 0);
+      if (!maxWidth || !maxHeight) return;
+
+      const widthFromHeight = maxHeight * (16 / 9);
+      const frameWidth = Math.min(maxWidth, widthFromHeight);
+      const frameHeight = frameWidth * (9 / 16);
+      setSize({ width: frameWidth, height: frameHeight });
+    };
+
+    update();
+    const observer = new ResizeObserver(() => update());
+    observer.observe(hostRef.current);
+    window.addEventListener('resize', update);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+
+  return (
+    <div ref={hostRef} className="w-full h-full flex items-center justify-center min-h-0">
+      <div className={className} style={{ width: `${size.width}px`, height: `${size.height}px` }}>
+        {children}
+      </div>
+    </div>
+  );
+};
+
+const SceneThumb = ({ id, label, active, isLive, onClick, localTemplate, previewVisible, onTogglePreview, customTitle }) => {
+   const displayTitle = localTemplate === 'custom' ? customTitle : localTemplate;
+   return (
+     <div className={`relative w-32 h-20 rounded-xl border-2 flex flex-col transition-all overflow-hidden shrink-0 ${active ? 'border-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.3)]' : 'border-slate-800'}`}>
+       <div className={`flex-1 bg-slate-900 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-800 transition-colors relative px-2 text-center`} onClick={onClick}>
+          <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{safeString(label)}</span>
+          <span className={`text-[10px] font-bold uppercase tracking-tight mt-1 truncate w-full ${localTemplate ? 'text-white' : 'text-slate-600 italic'}`}>
+            {safeString(displayTitle || 'Empty')}
+          </span>
+          {isLive && <div className="absolute top-1 right-1 bg-red-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded shadow-sm animate-pulse">LIVE</div>}
+       </div>
+       <button onClick={(e) => { e.stopPropagation(); onTogglePreview(); }} className={`h-6 w-full text-[9px] font-black uppercase tracking-widest transition-colors flex items-center justify-center space-x-1 ${previewVisible ? 'bg-green-500 text-black hover:bg-green-400' : 'bg-slate-950 text-slate-600 hover:bg-slate-900 hover:text-slate-400'}`}>
+         {previewVisible && <Check className="w-3 h-3 mr-1" />}
+         <span>{previewVisible ? 'PST: ON' : 'PST: OFF'}</span>
+       </button>
+     </div>
+   );
+};
+
+// ============================================================================
+// LEVEL 3: GRAPHIC TEMPLATES & CUSTOM TEMPLATE ENGINE
+// ============================================================================
+
+const CustomTemplateRenderer = ({ data, globalData, assets = [] }) => {
+  const tmpl = data.customTemplateData;
+  if (!tmpl) return null;
+
+  let finalBgImage = tmpl.bgImage; 
+  if (tmpl.bgImageId && assets && assets.length > 0) {
+     const found = assets.find(a => a.id === tmpl.bgImageId);
+     if (found) finalBgImage = found.url;
+  }
+
+  return (
+    <div className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none">
+      <svg viewBox={`0 0 ${tmpl.width} ${tmpl.height}`} className="w-full h-full max-w-full max-h-full" preserveAspectRatio="xMidYMid meet">
+        {tmpl.bgColor && tmpl.bgColor !== 'transparent' && (
+           <rect width={tmpl.width} height={tmpl.height} fill={tmpl.bgColor} />
+        )}
+        {finalBgImage && <image href={finalBgImage} width={tmpl.width} height={tmpl.height} preserveAspectRatio={`xMidYMid ${tmpl.bgFit || 'slice'}`} />}
+        {tmpl.layers && tmpl.layers.map(l => {
+           if (l.type === 'image') {
+              let finalLayerUrl = l.url;
+              if (l.imageId && assets && assets.length > 0) {
+                 const layerFound = assets.find(a => a.id === l.imageId);
+                 if (layerFound) finalLayerUrl = layerFound.url;
+              }
+              if (!finalLayerUrl) return null;
+              return <image key={l.id} x={l.x} y={l.y} width={l.width} height={l.height} href={finalLayerUrl} preserveAspectRatio="none" />;
+           }
+
+           // Default to Text layer rendering
+           let textContent = l.text;
+           if (l.dataPath) {
+              const overrideVal = resolvePath(data?.customTemplateOverrides || {}, l.dataPath);
+              if (overrideVal !== null && overrideVal !== undefined && safeString(overrideVal) !== '') {
+                textContent = safeString(overrideVal);
+              } else if (globalData) {
+                const boundVal = resolvePath(globalData, l.dataPath);
+                if (boundVal !== null && boundVal !== undefined) textContent = safeString(boundVal);
+              }
+           }
+           return (
+             <text 
+               key={l.id} x={l.x} y={l.y} 
+               fontSize={l.fontSize} fill={l.color} fontWeight={l.fontWeight} 
+               textAnchor={l.textAlign === 'center' ? 'middle' : l.textAlign === 'right' ? 'end' : 'start'} 
+               dominantBaseline="hanging"
+               style={{ textShadow: '2px 2px 8px rgba(0,0,0,0.5)' }}
+             >
+                {safeString(textContent)}
+             </text>
+           );
+        })}
+      </svg>
+    </div>
+  );
+};
+
+const BaseballScorebug = ({ data }) => {
+  const Base = ({ active, className }) => (
+    <div className={`w-3 h-3 transform rotate-45 border border-black ${active ? 'bg-yellow-400' : 'bg-slate-700/50'} ${className}`} />
+  );
+  const runners = (data && data.runners && typeof data.runners === 'object') ? data.runners : { '1': false, '2': false, '3': false };
+
+  return (
+    <div className="flex h-28 shadow-2xl rounded-xl overflow-hidden border-4 border-slate-900 bg-slate-900 w-[1100px] max-w-full mx-auto mb-10">
+      <div className="flex-1 flex relative bg-slate-800 border-r-2 border-slate-900">
+          <div className="w-4 h-full bg-slate-400"/>
+          <div className="flex-1 flex flex-col justify-center px-5">
+            <div className="flex items-baseline space-x-3">
+              <span className="text-white font-black text-4xl uppercase tracking-wider truncate">{safeString(data.awayName, 'AWAY')}</span>
+              <span className="text-slate-400 text-xs font-bold uppercase">{safeString(data.awayPitcher)}</span>
+            </div>
+            <span className="text-slate-400 text-[10px] font-bold tracking-widest uppercase">AWAY</span>
+          </div>
+          <div className="w-24 bg-slate-950 flex items-center justify-center border-l border-slate-700">
+            <span className="text-6xl font-mono font-bold text-white">{safeString(data.awayScore, '0')}</span>
+          </div>
+      </div>
+      <div className="w-56 bg-slate-950 flex flex-col relative z-20 px-2">
+         <div className="flex-1 flex items-center justify-between border-b border-slate-800 pb-1">
+            <div className="relative w-12 h-12 mt-2 ml-2">
+               <Base active={runners['2']} className="absolute top-0 left-1/2 -translate-x-1/2" />
+               <Base active={runners['3']} className="absolute top-1/2 left-0 -translate-y-1/2" />
+               <Base active={runners['1']} className="absolute top-1/2 right-0 -translate-y-1/2" />
+            </div>
+            <div className="flex flex-col items-center mr-2">
+               <div className={`w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent ${data.inningTop ? 'border-b-[10px] border-b-yellow-400' : 'border-t-[10px] border-t-yellow-400'} mb-1`}></div>
+               <span className="text-2xl font-bold text-white leading-none">{safeString(data.inning, '1')}</span>
+            </div>
+         </div>
+         <div className="h-8 flex items-center justify-around text-xs font-bold text-slate-400 bg-slate-900/50 mt-1 rounded">
+            <span>B <span className="text-green-400 text-lg">{safeString(data.balls, '0')}</span></span>
+            <span>S <span className="text-yellow-400 text-lg">{safeString(data.strikes, '0')}</span></span>
+            <span>O <span className="text-red-500 text-lg">{safeString(data.outs, '0')}</span></span>
+         </div>
+      </div>
+      <div className="flex-1 flex flex-row-reverse relative bg-slate-800 border-l-2 border-slate-900">
+          <div className="w-4 h-full bg-blue-900"/>
+          <div className="flex-1 flex flex-col justify-center items-end px-5">
+             <div className="flex items-baseline space-x-3 flex-row-reverse">
+              <span className="text-white font-black text-4xl uppercase tracking-wider truncate">{safeString(data.homeName, 'HOME')}</span>
+              <span className="text-blue-400 text-xs font-bold uppercase ml-0 mr-3">{safeString(data.homePitcher)}</span>
+            </div>
+            <span className="text-slate-400 text-[10px] font-bold tracking-widest uppercase">HOME</span>
+          </div>
+          <div className="w-24 bg-slate-950 flex items-center justify-center border-r border-slate-700">
+            <span className="text-6xl font-mono font-bold text-white">{safeString(data.homeScore, '0')}</span>
+          </div>
+      </div>
+    </div>
+  );
+};
+
+const PlayerStats = ({ data }) => {
+  const renderStats = () => {
+    if (!data || !data.stats || typeof data.stats !== 'object') return null;
+    return Object.entries(data.stats).map(([key, val]) => {
+      if (key === 'label' || typeof val === 'object') return null;
+      return (
+        <div key={key} className="bg-slate-950 p-6 rounded-xl border border-slate-800 flex justify-between items-center shadow-lg">
+           <span className="text-2xl font-bold text-slate-500">{safeString(key)}</span>
+           <span className="text-5xl font-black text-white">{safeString(val)}</span>
+        </div>
+      );
+    });
+  };
+
+  return (
+    <div className="absolute inset-0 flex items-center justify-center bg-slate-950/90 p-20">
+      <div className="w-full max-w-6xl h-full flex bg-slate-900 rounded-3xl overflow-hidden border-4 border-slate-800 shadow-2xl relative animate-in zoom-in duration-500">
+         <div className="w-1/3 bg-slate-800 relative overflow-hidden">
+            {data.pImage && <img src={data.pImage} className="absolute bottom-0 left-0 w-full h-[110%] object-cover object-top" />}
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent"></div>
+         </div>
+         <div className="flex-1 p-10 flex flex-col text-left">
+            <div className="border-b-2 border-slate-700 pb-6 mb-6">
+               <h3 className="text-2xl font-bold text-indigo-500 uppercase tracking-widest mb-2">{safeString(data.team, 'TEAM')}</h3>
+               <h1 className="text-7xl font-black text-white uppercase italic tracking-tighter">{safeString(data.pName, 'PLAYER NAME')}</h1>
+            </div>
+            <div className="flex items-center space-x-4 mb-8">
+               <span className="bg-white text-slate-900 px-4 py-1 rounded font-black uppercase text-sm">STATS</span>
+               <span className="text-slate-400 font-bold uppercase tracking-wider">{safeString(data.durationLabel, 'SEASON STATS')}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-6">
+               {renderStats()}
+            </div>
+         </div>
+      </div>
+    </div>
+  );
+};
+
+const TeamStats = ({ data }) => {
+  const renderStats = () => {
+    if (!data || !data.stats || typeof data.stats !== 'object') return null;
+    return Object.entries(data.stats).map(([key, val]) => {
+      if (key === 'label' || typeof val === 'object') return null;
+      return (
+        <div key={key} className="bg-slate-800 p-6 rounded-xl border border-slate-700 flex flex-col items-center justify-center shadow-lg">
+           <span className="text-7xl font-black text-white mb-2">{safeString(val)}</span>
+           <span className="text-lg font-bold text-slate-400 uppercase tracking-widest">{safeString(key)}</span>
+        </div>
+      );
+    });
+  };
+
+  return (
+    <div className="absolute inset-0 flex items-center justify-center bg-slate-950/90 p-20">
+      <div className="w-full max-w-5xl bg-slate-900 rounded-3xl overflow-hidden border-4 border-slate-800 shadow-2xl flex flex-col">
+         <div className="bg-slate-950 p-8 border-b border-slate-800 flex justify-between items-center text-left">
+            <div className="flex items-center space-x-6">
+               <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center font-black text-3xl text-slate-900 border-4 border-indigo-500">
+                  {data.teamName ? safeString(data.teamName).substring(0,3).toUpperCase() : 'TM'}
+               </div>
+               <div>
+                  <h1 className="text-6xl font-black text-white uppercase italic tracking-tighter">{safeString(data.teamName, 'TEAM NAME')}</h1>
+                  <h3 className="text-xl font-bold text-indigo-500 uppercase tracking-widest">{safeString(data.splitLabel, 'SEASON STATS')}</h3>
+               </div>
+            </div>
+         </div>
+         <div className="flex-1 p-10 grid grid-cols-4 gap-6">
+            {renderStats()}
+         </div>
+      </div>
+    </div>
+  );
+};
+
+const PlayerMatchup = ({ data }) => (
+  <div className="absolute inset-0 flex flex-col bg-slate-950/90">
+    <div className="h-32 bg-slate-900 flex items-center justify-center border-b-4 border-indigo-600 shadow-xl relative z-10">
+       <h1 className="text-6xl font-black text-white italic tracking-tighter uppercase">{safeString(data.matchupTitle, 'KEY MATCHUP')}</h1>
+    </div>
+    <div className="flex-1 flex relative">
+       <div className="flex-1 relative overflow-hidden bg-gradient-to-br from-slate-900 to-slate-800 border-r-2 border-slate-700">
+          {data.p1Image && <img src={data.p1Image} className="absolute bottom-0 left-0 h-[80%] object-contain" />}
+          <div className="absolute top-10 left-10 z-20 text-left">
+             <h2 className="text-5xl font-black text-white uppercase drop-shadow-md leading-none mb-2">{safeString(data.p1Name, 'PLAYER 1')}</h2>
+             <div className="bg-slate-600 text-white px-4 py-1 inline-block font-bold uppercase tracking-wider text-xl rounded shadow-lg">Away Team</div>
+          </div>
+          <div className="absolute bottom-20 right-10 z-20 text-right space-y-6">
+             <div className="bg-slate-900/80 p-4 rounded-lg border border-slate-700 shadow-xl">
+                <div className="text-6xl font-black text-white">{safeString(data.p1Stat1, '0.00')}</div>
+                <div className="text-xl font-bold text-slate-400 uppercase tracking-widest">{safeString(data.p1StatLabel1, 'STAT')}</div>
+             </div>
+             <div className="bg-slate-900/80 p-4 rounded-lg border border-slate-700 shadow-xl">
+                <div className="text-6xl font-black text-white">{safeString(data.p1Stat2, '0')}</div>
+                <div className="text-xl font-bold text-slate-400 uppercase tracking-widest">{safeString(data.p1StatLabel2, 'STAT')}</div>
+             </div>
+          </div>
+       </div>
+       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-white rounded-full flex items-center justify-center z-30 shadow-2xl border-8 border-slate-900">
+          <span className="text-4xl font-black text-slate-900 italic">VS</span>
+       </div>
+       <div className="flex-1 relative overflow-hidden bg-gradient-to-bl from-slate-900 to-blue-900/20 border-l-2 border-slate-700">
+          {data.p2Image && <img src={data.p2Image} className="absolute bottom-0 right-0 h-[80%] object-contain z-10" />}
+          <div className="absolute top-10 right-10 z-20 text-right">
+             <h2 className="text-5xl font-black text-white uppercase drop-shadow-md leading-none mb-2">{safeString(data.p2Name, 'PLAYER 2')}</h2>
+             <div className="bg-blue-600 text-white px-4 py-1 inline-block font-bold uppercase tracking-wider text-xl rounded shadow-lg">Home Team</div>
+          </div>
+          <div className="absolute bottom-20 left-10 z-20 text-left space-y-6">
+             <div className="bg-slate-900/80 p-4 rounded-lg border border-slate-700 shadow-xl">
+                <div className="text-6xl font-black text-white">{safeString(data.p2Stat1, '0.00')}</div>
+                <div className="text-xl font-bold text-blue-400 uppercase tracking-widest">{safeString(data.p2StatLabel1, 'STAT')}</div>
+             </div>
+             <div className="bg-slate-900/80 p-4 rounded-lg border border-slate-700 shadow-xl">
+                <div className="text-6xl font-black text-white">{safeString(data.p2Stat2, '0')}</div>
+                <div className="text-xl font-bold text-blue-400 uppercase tracking-widest">{safeString(data.p2StatLabel2, 'STAT')}</div>
+             </div>
+          </div>
+       </div>
+    </div>
+  </div>
+);
+
+const ImageTemplate = ({ data }) => {
+  if (!data.imageUrl) return null;
+  const objectFit = data.imageScale === 'fill' ? 'object-cover' : data.imageScale === 'stretch' ? 'object-fill' : 'object-contain';
+  return (
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+      <img src={safeString(data.imageUrl)} alt="Asset" className={`w-full h-full ${objectFit}`} />
+    </div>
+  );
+};
+
+const LowerThird = ({ data }) => (
+  <div className="absolute bottom-16 left-16">
+    <div className="flex items-end">
+      <div className="bg-indigo-600 h-24 w-4 rounded-l-md"></div>
+      <div className="bg-slate-900 h-24 px-8 flex flex-col justify-center border-y border-r border-slate-800 rounded-r-xl shadow-2xl min-w-[600px]">
+        <h1 className="text-white font-black text-4xl uppercase tracking-tight">{safeString(data.l3Title, 'HEADLINE')}</h1>
+        <p className="text-indigo-400 font-bold text-xl uppercase tracking-widest">{safeString(data.l3Subtitle)}</p>
+      </div>
+    </div>
+  </div>
+);
+
+const Lineup = ({ data }) => {
+  const homePlayers = (data && Array.isArray(data.lineupHome)) ? data.lineupHome : ['','','','',''];
+  const awayPlayers = (data && Array.isArray(data.lineupAway)) ? data.lineupAway : ['','','','',''];
+  return (
+    <div className="absolute left-0 right-0 top-20 bottom-20 flex items-center justify-center gap-10 px-20">
+      <div className="w-1/3 bg-slate-900/95 border-l-4 border-slate-500 shadow-2xl flex flex-col animate-in slide-in-from-left duration-500">
+        <div className="p-4 border-b border-slate-800 bg-slate-800/50">
+          <h2 className="text-2xl font-black text-white uppercase italic">{safeString(data.awayName, 'AWAY')}</h2>
+        </div>
+        <div className="flex-1 p-6 space-y-4">
+          {awayPlayers.map((p, i) => (
+            <div key={i} className="flex items-center space-x-4 border-b border-slate-800 pb-2">
+              <span className="font-mono text-slate-500 font-bold text-xl">0{i+1}</span>
+              <span className="text-white font-bold text-xl truncate">{safeString(p)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center font-black text-3xl italic shadow-xl z-10 border-4 border-slate-900 text-slate-900">VS</div>
+      <div className="w-1/3 bg-slate-900/95 border-r-4 border-blue-600 shadow-2xl flex flex-col animate-in slide-in-from-right duration-500">
+        <div className="p-4 border-b border-slate-800 bg-blue-900/20 text-right">
+          <h2 className="text-2xl font-black text-white uppercase italic">{safeString(data.homeName, 'HOME')}</h2>
+        </div>
+        <div className="flex-1 p-6 space-y-4">
+          {homePlayers.map((p, i) => (
+            <div key={i} className="flex items-center flex-row-reverse space-x-reverse space-x-4 border-b border-slate-800 pb-2">
+              <span className="font-mono text-blue-500 font-bold text-xl">0{i+1}</span>
+              <span className="text-white font-bold text-xl truncate">{safeString(p)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============================================================================
+// LEVEL 4: ENGINE & PREVIEW WRAPPERS
+// ============================================================================
+
+const OverlayContent = ({ type, message }) => {
+  if (!type || ['cut', 'fade', 'swipe', 'fade_black'].includes(type)) return null;
+  const defaultLabel = type === 'stinger1' ? 'STINGER 1' : type === 'stinger2' ? 'STINGER 2' : 'LIVE UPDATE';
+  return (
+    <div className={`px-20 py-10 border-y-8 border-black shadow-2xl transform -skew-x-12 animate-in zoom-in duration-300 ${type === 'stinger2' ? 'bg-emerald-600' : 'bg-indigo-600'}`}>
+       <span className="text-white font-black text-8xl italic uppercase">{safeString(message, defaultLabel)}</span>
+    </div>
+  );
+};
+
+const GraphicsEngine = ({ scenes, overlay, globalData, assets = [] }) => {
+  const [activeOverlay, setActiveOverlay] = useState(null);
+
+  useEffect(() => {
+    if (overlay?.trigger) {
+      setActiveOverlay(overlay);
+      const timer = setTimeout(() => setActiveOverlay(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [overlay]);
+
+  const renderTemplate = (data) => {
+    if (!data || typeof data !== 'object') return null;
+    switch(data.template) {
+      case 'custom': return <CustomTemplateRenderer data={data} globalData={globalData} assets={assets} />;
+      case 'image': return <ImageTemplate data={data} />;
+      case 'matchup': return <PlayerMatchup data={data} />;
+      case 'player_stats': return <PlayerStats data={data} />;
+      case 'team_stats': return <TeamStats data={data} />;
+      case 'scorebug': return <BaseballScorebug data={data} />;
+      case 'lower3': return <LowerThird data={data} />;
+      case 'lineup': return <Lineup data={data} />;
+      default: return null;
+    }
+  };
+
+  return (
+    <div className="w-[1920px] h-[1080px] relative flex flex-col justify-end overflow-hidden pointer-events-none">
+       {activeOverlay && (
+          <div className="absolute inset-0 flex items-center justify-center z-50">
+             <OverlayContent type={activeOverlay.type} message={activeOverlay.message} />
+          </div>
+       )}
+       {Object.keys(scenes || {}).sort((a, b) => Number(safeString(a).replace('scene', '')) - Number(safeString(b).replace('scene', ''))).map((key, index) => (
+          scenes?.[key]?.visible && (
+            <div key={key} className={`absolute inset-0 z-${(index + 1) * 10} ${['image','matchup','player_stats','team_stats','custom'].includes(scenes[key].template) ? '' : 'p-10 flex flex-col justify-end'}`}>
+               {renderTemplate(scenes[key])}
+            </div>
+          )
+       ))}
+    </div>
+  );
+};
+
+const ScaledPreview = ({ scenes, overlay, visible = true, mode = 'composite', activeSceneId = null, globalData = {}, assets = [] }) => {
+  if (!visible) return <div className="w-full h-full bg-transparent" />;
+  
+  let renderScenes = scenes;
+  if (mode === 'single' && activeSceneId && scenes[activeSceneId]) {
+    renderScenes = { [activeSceneId]: { ...scenes[activeSceneId], visible: true } };
+  } else if (mode === 'pst') {
+    const pstScenes = {};
+    Object.keys(scenes || {}).forEach(key => {
+      pstScenes[key] = { ...scenes[key], visible: scenes[key]?.previewVisible };
+    });
+    renderScenes = pstScenes;
+  }
+  
+  return (
+    <div className="w-full h-full flex items-center justify-center bg-transparent">
+      <svg viewBox="0 0 1920 1080" className="w-full h-full" preserveAspectRatio="xMidYMid meet">
+        <foreignObject width="1920" height="1080">
+            <div xmlns="http://www.w3.org/1999/xhtml" className="w-full h-full">
+              <GraphicsEngine scenes={renderScenes} overlay={overlay} globalData={globalData} assets={assets} />
+            </div>
+        </foreignObject>
+      </svg>
+    </div>
+  );
+};
+
+// ============================================================================
+// LEVEL 5: NETWORK OPS CENTER (Data Engine View)
+// ============================================================================
+
+const TelemetryNode = ({ label, value }) => {
+  const isObject = typeof value === 'object' && value !== null;
+  return (
+    <div className="pl-4 border-l border-slate-800/50 my-1.5 font-mono text-[10px]">
+      <div className="flex items-center justify-between">
+        <span className={isObject ? "text-indigo-400 font-black uppercase tracking-widest" : "text-slate-500 uppercase"}>
+          {isObject ? `▼ ${label}:` : `${label}:`}
+        </span>
+        {!isObject && (
+          <div className="flex items-center space-x-3">
+             <span className="text-white font-bold">{String(value)}</span>
+             <span className="bg-green-500/10 text-green-400 px-1.5 py-0.5 rounded text-[8px] font-black border border-green-500/20">LIVE 0S</span>
+          </div>
+        )}
+      </div>
+      {isObject && Object.entries(value).map(([k, v]) => <TelemetryNode key={k} label={k} value={v} />)}
+    </div>
+  );
+};
+
+const NetworkOpsCenter = ({ isRunning, onToggle, data, logs }) => {
+  return (
+    <div className="w-full h-full bg-slate-950 flex flex-col font-sans overflow-hidden">
+       <div className="h-16 border-b border-slate-800 flex items-center justify-between px-6 shrink-0 bg-slate-900 shadow-md z-10">
+          <div className="flex items-center space-x-3">
+             <ActivitySquare className="w-5 h-5 text-indigo-500" />
+             <h2 className="text-lg font-black text-white italic tracking-tighter uppercase">Network Ops Center</h2>
+          </div>
+          <div className="flex items-center space-x-4">
+             <button onClick={onToggle} className={`px-6 py-2 rounded font-black text-xs uppercase tracking-widest transition-all ${isRunning ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' : 'bg-slate-800 text-slate-400 border border-slate-700 hover:text-white'}`}>
+                {isRunning ? 'AUTOPILOT: ON' : 'AUTOPILOT: OFF'}
+             </button>
+             <button className="px-6 py-2 rounded font-black text-xs uppercase tracking-widest bg-red-900/20 text-red-500 border border-red-900/50 hover:bg-red-900/40 transition-colors">
+                DISCONNECT FEED
+             </button>
+          </div>
+       </div>
+
+       <div className="flex-1 flex overflow-hidden">
+          <div className="w-64 border-r border-slate-800 bg-slate-950 flex flex-col p-4 shrink-0 overflow-y-auto space-y-6">
+             <div>
+                <div className="text-[10px] font-black text-slate-600 uppercase tracking-widest mb-3">Temporal Source</div>
+                <div className="space-y-2">
+                   <div className="p-3 bg-indigo-900/20 border border-indigo-500/50 rounded-lg relative cursor-pointer group">
+                      <div className="absolute top-1/2 right-3 -translate-y-1/2 w-2 h-2 bg-indigo-500 rounded-full animate-pulse" />
+                      <h4 className="font-bold text-indigo-400 text-xs">MLB DATASET</h4>
+                      <p className="text-[9px] text-slate-500 uppercase tracking-wider mt-0.5">Multi-Layer Feed</p>
+                   </div>
+                </div>
+             </div>
+
+             <div className="border-t border-slate-800 pt-6">
+                <div className="flex items-center justify-between mb-4">
+                   <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Egress Integrity</span>
+                   <div className="w-2 h-2 bg-green-500 rounded-full" />
+                </div>
+                <div className="space-y-3">
+                   <div className="flex justify-between items-center text-xs font-bold border-b border-slate-800 pb-3">
+                      <span className="text-slate-400">PULSE</span>
+                      <span className="text-indigo-400">{safeString(data?.system?.pulse, '---')}</span>
+                   </div>
+                </div>
+             </div>
+          </div>
+
+          <div className="flex-[1.5] border-r border-slate-800 flex flex-col min-w-0 bg-slate-950">
+             <div className="h-10 border-b border-slate-800 flex items-center justify-between px-4 bg-slate-900/50">
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Telemetric Hierarchy</span>
+                <div className="flex space-x-2">
+                   <span className="px-2 py-0.5 bg-slate-800 rounded text-[9px] font-bold text-slate-400">LIVE</span>
+                </div>
+             </div>
+             <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                {data && Object.entries(data).map(([key, val]) => (
+                   <TelemetryNode key={key} label={key} value={val} />
+                ))}
+             </div>
+          </div>
+
+          <div className="flex-1 flex flex-col min-w-0 bg-[#0a0a0a]">
+             <div className="h-10 border-b border-slate-800 flex items-center justify-between px-4 bg-slate-900/50">
+                <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest italic">Egress Inspector</span>
+             </div>
+             <div className="flex-1 overflow-y-auto p-4 space-y-1 font-mono text-[10px] flex flex-col-reverse">
+                {logs && logs.map((log, i) => (
+                   <div key={i} className={`${i === 0 ? 'text-indigo-300 font-bold' : 'text-slate-500'}`}>
+                      {log}
+                   </div>
+                ))}
+             </div>
+          </div>
+       </div>
+    </div>
+  );
+};
+
+
+// ============================================================================
+// LEVEL 6: INSPECTOR & LIBRARY CONTROLS
+// ============================================================================
+
+const AssetPicker = ({ assets, onSelect }) => (
+  <div className="grid grid-cols-2 gap-3 mt-2 max-h-40 overflow-y-auto pr-1">
+    {assets && assets.map(asset => (
+      <div key={asset.id} onClick={() => onSelect(asset)} className="relative group aspect-video bg-slate-800 rounded-lg border border-slate-700 hover:border-indigo-500 cursor-pointer overflow-hidden transition-all shadow-md">
+        <img src={asset.url} alt={asset.name} className="w-full h-full object-cover" />
+      </div>
+    ))}
+  </div>
+);
+
+const LibraryPanel = ({ 
+  folders, assets, currentFolderId, setCurrentFolderId, 
+  createFolderAction, deleteFolderAction, saveLibrary, 
+  setFolders, setAssets, isAddingFolder, setIsAddingFolder, 
+  newFolderName, setNewFolderName, onSetBackground, onAddImageLayer 
+}) => {
+  const currentFolder = folders.find(f => f.id === currentFolderId) || folders[0];
+  const filteredAssets = assets.filter(a => a.parentId === currentFolderId);
+  const subFolders = folders.filter(f => f.parentId === currentFolderId);
+  const [designSearch, setDesignSearch] = useState('');
+  const [designTypeFilter, setDesignTypeFilter] = useState('all');
+  const [designViewMode, setDesignViewMode] = useState('grid');
+  const designAssetTypeOf = (asset) => {
+    const n = safeString(asset?.name).toLowerCase();
+    if (n.endsWith('.png')) return 'png';
+    if (n.endsWith('.jpg') || n.endsWith('.jpeg')) return 'jpg';
+    return 'other';
+  };
+  const designVisibleAssets = filteredAssets.filter(a => {
+    const searchOk = !designSearch || safeString(a.name).toLowerCase().includes(safeString(designSearch).toLowerCase());
+    const type = designAssetTypeOf(a);
+    const typeOk = designTypeFilter === 'all' ? true : type === designTypeFilter;
+    return searchOk && typeOk;
+  });
+
+  const handleUpload = (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+
+    let processedAssets = [];
+    let completedCount = 0;
+
+    files.forEach((file) => {
+      const r = new FileReader();
+      r.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+          const newAsset = {
+            id: 'a_' + Date.now() + Math.random().toString(36).substr(2, 5),
+            url: ev.target.result,
+            name: file.name,
+            parentId: currentFolderId,
+            width: img.width,
+            height: img.height,
+            size: (file.size / 1024).toFixed(1) + ' KB'
+          };
+          processedAssets.push(newAsset);
+          completedCount++;
+          
+          if (completedCount === files.length) {
+            const updatedAssets = [...assets, ...processedAssets];
+            setAssets(updatedAssets);
+            saveLibrary(folders, updatedAssets);
+          }
+        };
+        img.src = ev.target.result;
+      };
+      r.readAsDataURL(file);
+    });
+  };
+
+  return (
+    <div className="space-y-4 animate-in fade-in flex flex-col h-full">
+       <div className="flex items-center text-[10px] font-black text-slate-500 mb-2 tracking-widest uppercase">
+          {currentFolderId !== 'root' && (
+            <button onClick={() => setCurrentFolderId(currentFolder?.parentId || 'root')} className="mr-2 hover:text-indigo-400 flex items-center bg-slate-800 px-1.5 py-0.5 rounded transition-colors"><ChevronLeft className="w-3 h-3"/> BACK</button>
+          )}
+          <span className="text-indigo-400">{currentFolder?.name || 'HOME'}</span>
+       </div>
+
+       <div className="mb-2 p-2 rounded-xl border border-slate-800 bg-slate-950/60">
+          <div className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2">Explorer Tree</div>
+          <div className="space-y-1">
+             <button onClick={() => setCurrentFolderId('root')} className={`w-full flex items-center space-x-2 px-2 py-1.5 rounded text-xs font-bold transition-colors ${currentFolderId === 'root' ? 'bg-indigo-600/20 text-indigo-400' : 'text-slate-400 hover:bg-slate-900 hover:text-white'}`}><Database className="w-3.5 h-3.5"/><span>Home</span></button>
+             {folders.filter(f => f.parentId === 'root').map(f => (
+               <button key={f.id} onClick={() => setCurrentFolderId(f.id)} className={`w-full flex items-center space-x-2 px-2 py-1.5 rounded text-xs font-bold transition-colors ${currentFolderId === f.id ? 'bg-indigo-600/20 text-indigo-400' : 'text-slate-400 hover:bg-slate-900 hover:text-white'}`}><Folder className="w-3.5 h-3.5"/><span className="truncate">{safeString(f.name)}</span></button>
+             ))}
+          </div>
+       </div>
+
+       <div className="grid grid-cols-1 gap-1">
+          {subFolders.map(f => (
+             <div key={f.id} onClick={() => setCurrentFolderId(f.id)} className="flex items-center space-x-2 p-2.5 rounded bg-slate-800/80 hover:bg-slate-700 cursor-pointer border border-slate-700 transition-all group">
+                <Folder className="w-4 h-4 text-indigo-400 fill-indigo-400/10" />
+                <span className="text-xs font-bold truncate text-slate-200">{f.name}</span>
+                <button onClick={(e) => { e.stopPropagation(); deleteFolderAction(f.id); }} className="ml-auto opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500 rounded transition-all"><Trash2 className="w-3 h-3 text-white" /></button>
+             </div>
+          ))}
+          
+          {isAddingFolder ? (
+            <div className="flex items-center space-x-2 p-1 rounded bg-slate-800 border border-indigo-500 animate-in slide-in-from-top duration-200">
+               <input autoFocus className="flex-1 bg-transparent text-xs text-white px-2 outline-none" placeholder="Folder name..." value={newFolderName} onChange={e => setNewFolderName(e.target.value)} onKeyDown={e => e.key === 'Enter' && createFolderAction()}/>
+               <button onClick={createFolderAction} className="p-1 bg-indigo-600 rounded text-white"><Check className="w-3 h-3"/></button>
+               <button onClick={() => setIsAddingFolder(false)} className="p-1 hover:bg-slate-700 rounded text-slate-400"><X className="w-3 h-3"/></button>
+            </div>
+          ) : (
+            <button onClick={() => setIsAddingFolder(true)} className="flex items-center justify-center space-x-2 p-2.5 rounded bg-slate-800/30 border border-dashed border-slate-700 hover:bg-slate-800 transition-colors text-slate-500 mt-2">
+                <FolderPlus className="w-4 h-4" />
+                <span className="text-[10px] font-black uppercase tracking-widest">New Folder</span>
+            </button>
+          )}
+       </div>
+
+       <div className="my-2 border-t border-slate-800/50" />
+
+       <div className="flex-1 overflow-y-auto pr-1">
+          <label className="block p-6 bg-indigo-600/5 border-2 border-dashed border-indigo-500/20 rounded-xl text-center cursor-pointer hover:bg-indigo-600/10 transition-all group mb-4">
+              <Upload className="mx-auto mb-2 text-indigo-400 group-hover:scale-110 transition-transform" />
+              <span className="text-[10px] font-black text-indigo-300 uppercase tracking-widest block">Upload Image</span>
+              <input type="file" className="hidden" accept="image/png, image/jpeg" onChange={handleUpload} multiple />
+          </label>
+
+          <div className="mb-3 space-y-2">
+            <input value={designSearch} onChange={e => setDesignSearch(e.target.value)} placeholder="Search assets..." className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white outline-none focus:border-indigo-500" />
+            <div className="grid grid-cols-3 gap-2">
+              <select value={designTypeFilter} onChange={e => setDesignTypeFilter(e.target.value)} className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[10px] font-bold text-white outline-none">
+                <option value="all">ALL TYPES</option><option value="png">PNG</option><option value="jpg">JPG</option>
+              </select>
+              <button onClick={() => setDesignViewMode('grid')} className={`rounded px-2 py-1.5 text-[10px] font-black ${designViewMode === 'grid' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-700'}`}>GRID</button>
+              <button onClick={() => setDesignViewMode('list')} className={`rounded px-2 py-1.5 text-[10px] font-black ${designViewMode === 'list' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-700'}`}>LIST</button>
+            </div>
+          </div>
+          {designViewMode === 'grid' ? (
+            <div className="grid grid-cols-2 gap-2">
+              {designVisibleAssets.map(asset => (
+                <div key={asset.id} className="relative group aspect-square rounded-lg overflow-hidden border border-slate-700 hover:border-indigo-500 transition-all shadow-xl bg-slate-900 cursor-pointer">
+                    <img src={asset.url} className="w-full h-full object-cover" alt={asset.name} />
+                    <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center space-y-2">
+                      {onSetBackground && onAddImageLayer && (
+                        <div className="flex flex-col space-y-1 w-full px-2">
+                           <button onClick={(e) => { e.stopPropagation(); onSetBackground(asset); }} className="w-full text-[8px] font-black uppercase text-white tracking-widest bg-indigo-600 hover:bg-indigo-500 px-2 py-1.5 rounded text-center">Set BG</button>
+                           <button onClick={(e) => { e.stopPropagation(); onAddImageLayer(asset); }} className="w-full text-[8px] font-black uppercase text-white tracking-widest bg-slate-700 hover:bg-slate-600 px-2 py-1.5 rounded text-center">Add Layer</button>
+                        </div>
+                      )}
+                      <button onClick={(e) => { e.stopPropagation(); const na = assets.filter(a => a.id !== asset.id); setAssets(na); saveLibrary(folders, na); }} className="p-1.5 bg-red-600 text-white rounded-full hover:bg-red-500 transition-all mt-1"><Trash2 className="w-3 h-3"/></button>
+                    </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {designVisibleAssets.map(asset => (
+                <div key={asset.id} className="flex items-center gap-2 p-2 rounded border border-slate-700 bg-slate-900">
+                  <img src={asset.url} alt={asset.name} className="w-12 h-12 rounded object-cover border border-slate-700" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-bold text-white truncate">{safeString(asset.name)}</div>
+                    <div className="text-[10px] font-mono text-slate-400">{safeString(asset.width, '?')}x{safeString(asset.height, '?')} • {safeString(asset.size, '')}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+       </div>
+    </div>
+  );
+};
+
+const InspectorPanel = ({ localData, setLocalData, assets }) => {
+  const update = (fields) => setLocalData(prev => ({ ...prev, ...fields }));
+  const [matchupType, setMatchupType] = useState('batters'); 
+
+  if (!localData || typeof localData !== 'object') return null;
+  if (localData.template === 'custom') return <div className="text-[10px] text-slate-500 uppercase tracking-widest font-black text-center py-10">Custom Templates are immutable. Use Design Tab to edit.</div>
+
+  if (localData.template === 'player_stats') {
+     const players = [...ROSTER_DB.batters, ...ROSTER_DB.pitchers];
+     return (
+       <div className="space-y-6 animate-in fade-in">
+          <div className="bg-slate-900 rounded p-3 border border-slate-800 text-left">
+             <label className="text-[9px] text-slate-500 block mb-1 uppercase font-black tracking-widest">Select Player</label>
+             <select className="w-full bg-slate-900 text-white text-sm font-bold outline-none border border-slate-700 rounded p-1" onChange={(e) => {
+                const p = players.find(p => p.id === e.target.value);
+                if(p) update({ pName: p.name, team: p.team, pImage: p.img, stats: p.stats.season, durationLabel: '2025 SEASON' });
+             }}>
+                <option value="">-- Choose --</option>
+                {players.map(p => <option key={p.id} value={p.id}>{p.name} ({p.team})</option>)}
+             </select>
+          </div>
+          {localData.pName && (
+             <div className="bg-slate-900 rounded p-3 border border-slate-800 animate-in slide-in-from-top duration-300 text-left">
+                <label className="text-[9px] text-slate-500 block mb-1 uppercase font-black tracking-widest">Stats Duration</label>
+                <select className="w-full bg-slate-900 text-white text-sm font-bold outline-none border border-slate-700 rounded p-1" onChange={(e) => {
+                   const p = players.find(player => player.name === localData.pName);
+                   if(p && p.stats[e.target.value]) update({ stats: p.stats[e.target.value], durationLabel: p.stats[e.target.value].label });
+                }}>
+                   <option value="season">Season</option>
+                   <option value="career">Career</option>
+                   <option value="last10">Last 10 Games</option>
+                </select>
+             </div>
+          )}
+          <InspectorInput label="Name Override" value={localData.pName} onChange={e => update({pName: e.target.value})} />
+       </div>
+     );
+  }
+
+  if (localData.template === 'team_stats') {
+    return (
+       <div className="space-y-6 animate-in fade-in text-left">
+          <div className="bg-slate-900 rounded p-3 border border-slate-800">
+             <label className="text-[9px] text-slate-500 block mb-1 uppercase font-black tracking-widest">Select Team</label>
+             <select className="w-full bg-slate-900 text-white text-sm font-bold outline-none border border-slate-700 rounded p-1" onChange={(e) => {
+                const t = TEAM_DB[e.target.value];
+                if(t) update({ teamName: t.name, stats: t.splits.season, splitLabel: '2025 SEASON' });
+             }}>
+                <option value="">-- Choose --</option>
+                <option value="NYY">Yankees</option>
+                <option value="BOS">Red Sox</option>
+             </select>
+          </div>
+          {localData.teamName && (
+             <div className="bg-slate-900 rounded p-3 border border-slate-800 animate-in slide-in-from-top">
+                <label className="text-[9px] text-slate-500 block mb-1 uppercase font-black tracking-widest">Split Filter</label>
+                <select className="w-full bg-slate-900 text-white text-sm font-bold outline-none border border-slate-700 rounded p-1" onChange={(e) => {
+                   const teamKey = safeString(localData.teamName).includes('Yankees') ? 'NYY' : 'BOS';
+                   const t = TEAM_DB[teamKey];
+                   if(t && t.splits[e.target.value]) update({ stats: t.splits[e.target.value], splitLabel: t.splits[e.target.value].label });
+                }}>
+                   <option value="season">Full Season</option>
+                   <option value="june">In June</option>
+                   <option value="since_apr">Since April 28</option>
+                </select>
+             </div>
+          )}
+          <InspectorInput label="Team Label Override" value={localData.teamName} onChange={e => update({teamName: e.target.value})} />
+       </div>
+    );
+  }
+
+  if (localData.template === 'matchup') {
+    const players = matchupType === 'batters' ? ROSTER_DB.batters : ROSTER_DB.pitchers;
+    const statKeys = matchupType === 'batters' ? ['AVG', 'HR', 'RBI', 'OPS'] : ['ERA', 'W', 'SO', 'WHIP'];
+    return (
+      <div className="space-y-6 animate-in fade-in text-left">
+        <InspectorInput label="Matchup Title" value={localData.matchupTitle} onChange={e => update({matchupTitle: e.target.value})} />
+        <div className="flex bg-slate-900 rounded p-1 border border-slate-800">
+           <button onClick={() => setMatchupType('batters')} className={`flex-1 py-1 text-xs font-bold rounded ${matchupType === 'batters' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-white'}`}>BATTERS</button>
+           <button onClick={() => setMatchupType('pitchers')} className={`flex-1 py-1 text-xs font-bold rounded ${matchupType === 'pitchers' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-white'}`}>PITCHERS</button>
+        </div>
+        {['p1', 'p2'].map(slot => (
+           <div key={slot} className="p-4 bg-slate-900/50 rounded-xl border border-slate-800">
+              <label className="text-[10px] font-bold text-indigo-500 uppercase mb-3 block tracking-widest">{slot.toUpperCase()}</label>
+              <select className="w-full bg-slate-900 text-white text-sm font-bold mb-3 border border-slate-700 rounded p-1" onChange={(e) => {
+                 const p = players.find(p => p.id === e.target.value);
+                 if(p) update({ [`${slot}Name`]: p.name, [`${slot}Image`]: p.img });
+              }}>
+                 <option value="">-- Select Player --</option>
+                 {players.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <div className="grid grid-cols-2 gap-2">
+                 {[1, 2].map(statSlot => (
+                    <select key={statSlot} className="w-full bg-slate-900 text-white text-[10px] border border-slate-700 rounded p-1" onChange={(e) => {
+                       const p = players.find(p => p.name === localData[`${slot}Name`]);
+                       if(p && p.stats.season[e.target.value]) update({ [`${slot}Stat${statSlot}`]: p.stats.season[e.target.value], [`${slot}StatLabel${statSlot}`]: e.target.value });
+                    }}>
+                       <option value="">Stat</option>
+                       {statKeys.map(k => <option key={k} value={k}>{k}</option>)}
+                    </select>
+                 ))}
+              </div>
+           </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (localData.template === 'image') {
+    return (
+       <div className="space-y-6 animate-in fade-in text-left">
+          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-2 tracking-widest font-black">Select Image Source</label>
+          <AssetPicker assets={assets} onSelect={(asset) => update({ imageUrl: asset.url })} />
+       </div>
+    );
+  }
+
+  if (localData.template === 'scorebug') {
+    return <div className="grid grid-cols-2 gap-4 text-left"><InspectorInput label="Away Team" value={localData.awayName} onChange={e => update({awayName: e.target.value})} /><InspectorInput label="Home Team" value={localData.homeName} onChange={e => update({homeName: e.target.value})} /></div>;
+  }
+  return <div className="text-center text-slate-500 py-10 italic">Select a Template from the sidebar to begin.</div>;
+};
+
+// ============================================================================
+// LEVEL 7: MAIN APP COMPONENT
+// ============================================================================
+
+export default function App() {
+  const [tab, setTab] = useState('dashboard'); 
+  const [sidebarTab, setSidebarTab] = useState('templates'); 
+  const [user, setUser] = useState(null);
+  const [activeSceneId, setActiveSceneId] = useState('scene1');
+  const [exportFormat, setExportFormat] = useState('png_transparent');
+  
+  // NOC / Data Engine State
+  const [simRunning, setSimRunning] = useState(false);
+  const [simLogs, setSimLogs] = useState([]);
+  const [liveData, setLiveData] = useState({
+    system: { status: "IDLE", mode: "MLB", pulse: Date.now() },
+    mlb: {
+       game: { away: "Red Sox", home: "Yankees" },
+       scoreboard: { awayScore: 0, homeScore: 0, inning: "1st", state: "Top" },
+       live_telemetry: {
+          pitch: { speed: "--", type: "--" },
+          count: { balls: 0, strikes: 0, outs: 0 },
+          bases: { first: false, second: false, third: false }
+       },
+       session_summary: {
+          play: { pitcher: "G. Cole", batter: "R. Devers" },
+          stats: { away_hits: 0, home_hits: 0 }
+       }
+    }
+  });
+
+  const pushLog = (msg) => {
+    const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+    setSimLogs(prev => {
+       const newLogs = [`[${time}] UPDATE >> ${msg}`, ...prev];
+       if(newLogs.length > 50) newLogs.pop();
+       return newLogs;
+    });
+  };
+  
+  // Library State
+  const [folders, setFolders] = useState([{ id: 'root', name: 'Home', parentId: null }]);
+  const [currentFolderId, setCurrentFolderId] = useState('root');
+  const [assets, setAssets] = useState([]);
+  const [customTemplates, setCustomTemplates] = useState([]);
+  const [isAddingFolder, setIsAddingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  
+  // Asset Explorer State
+  const [selectedAssetId, setSelectedAssetId] = useState(null);
+  const [assetSearch, setAssetSearch] = useState('');
+  const [assetTypeFilter, setAssetTypeFilter] = useState('all');
+  const [assetViewMode, setAssetViewMode] = useState('grid');
+  
+  // Local Asset Persistance
+  const saveAssetsLocally = (newAssets) => {
+    setAssets(newAssets);
+    try {
+      localStorage.setItem('fluxstream_assets', JSON.stringify(newAssets));
+    } catch(e) {
+      console.warn("Local storage full. Asset saved to session memory only.");
+    }
+  };
+
+  // Design Workspace State
+  const [designerState, setDesignerState] = useState({
+    name: 'New Custom Template', 
+    bgImage: null, 
+    bgImageId: null, 
+    width: 1920, 
+    height: 1080, 
+    bgFit: 'slice',
+    bgColor: '#000000',
+    layers: []
+  });
+  const [selectedLayerId, setSelectedLayerId] = useState(null);
+  const [draggingId, setDraggingId] = useState(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [designSidebarTab, setDesignSidebarTab] = useState('layers');
+  const [designInteractionMode, setDesignInteractionMode] = useState('select');
+  const [viewportZoom, setViewportZoom] = useState(1);
+  const [viewportPan, setViewportPan] = useState({ x: 0, y: 0 });
+  const [isViewportPanning, setIsViewportPanning] = useState(false);
+  const [viewportPanOrigin, setViewportPanOrigin] = useState({ x: 0, y: 0 });
+  const [dragAssetId, setDragAssetId] = useState(null);
+  const [dragLayerOrderId, setDragLayerOrderId] = useState(null);
+  const [designAssetsFolderId, setDesignAssetsFolderId] = useState('root');
+  
+  // Broadcast State
+  const [liveState, setLiveState] = useState({
+    scenes: { scene1: { visible: false, template: 'scorebug' }, scene2: { visible: false }, scene3: { visible: false }, scene4: { visible: false }, scene5: { visible: false } },
+    overlay: { trigger: 0, type: '3pt' }
+  });
+  const liveStateRef = useRef(liveState);
+
+  const [localScenes, setLocalScenes] = useState({
+    scene1: { previewVisible: true, template: 'scorebug', awayName: 'BOS', homeName: 'NYY', awayScore: 0, homeScore: 0, inning: 1, inningTop: true, balls: 0, strikes: 0, outs: 0, runners: { '1': false, '2': false, '3': false }},
+    scene2: { previewVisible: false }, scene3: { previewVisible: false }, scene4: { previewVisible: false }, scene5: { previewVisible: false }
+  });
+  const [transitionType, setTransitionType] = useState('cut');
+  const [tBarPosition, setTBarPosition] = useState(100);
+  const [quickSceneBanks, setQuickSceneBanks] = useState([
+    { id: 'q1', name: 'OPEN', message: '', sceneData: null, thumbnail: null },
+    { id: 'q2', name: 'SCOREBUG', message: '', sceneData: null, thumbnail: null },
+    { id: 'q3', name: 'MATCHUP', message: '', sceneData: null, thumbnail: null },
+    { id: 'q4', name: 'STATS', message: '', sceneData: null, thumbnail: null },
+    { id: 'q5', name: 'LOWER 3RD', message: '', sceneData: null, thumbnail: null },
+    { id: 'q6', name: 'BREAK', message: '', sceneData: null, thumbnail: null },
+    { id: 'q7', name: 'PROMO', message: '', sceneData: null, thumbnail: null },
+    { id: 'q8', name: 'CLOSE', message: '', sceneData: null, thumbnail: null }
+  ]);
+  const [operatorMessage, setOperatorMessage] = useState('BIG PLAY');
+  const [stingerLibrary, setStingerLibrary] = useState([
+    { id: 's1', name: 'Big Play', message: 'BIG PLAY', type: 'stinger1' },
+    { id: 's2', name: 'Breaking', message: 'BREAKING NEWS', type: 'stinger2' },
+    { id: 's3', name: 'Final', message: 'FINAL SCORE', type: 'stinger1' }
+  ]);
+  const [activeStingerId, setActiveStingerId] = useState('s1');
+  const [newStingerName, setNewStingerName] = useState('');
+  const [transitionFx, setTransitionFx] = useState(null);
+  const [leftOpsTab, setLeftOpsTab] = useState('INPUTS');
+  const [rightOpsTab, setRightOpsTab] = useState('STREAM');
+
+  const leftColumnWidth = 300;
+  const topSectionRatio = 0.6;
+  const bottomSplitRatio = 0.5;
+  const controlsWorkspaceRef = useRef(null);
+  const [controlSlots, setControlSlots] = useState(DEFAULT_CONTROL_SLOTS);
+  const monitorStripRatio = 0.72;
+  const [selectedControlSlot, setSelectedControlSlot] = useState('cam1');
+  const [selectedDummyId, setSelectedDummyId] = useState('camA');
+  const [selectedInputTargetSlot, setSelectedInputTargetSlot] = useState('cam1');
+  const [assetTreeOpen, setAssetTreeOpen] = useState({ templates: true, custom: true, stingers: true, dummy: true, inputs: true });
+  const [gfxRundown, setGfxRundown] = useState(['scorebug', 'lower3rd', 'fullscreen']);
+  const [dragTemplateId, setDragTemplateId] = useState(null);
+  const [slotContentMap, setSlotContentMap] = useState({
+    mon1: 'camA', mon2: 'camB', mon3: 'gfxScore', mon4: 'gfxPromo',
+    mon5: 'mediaReplay', mon6: 'mediaRoll', mon7: 'gfxScore', mon8: 'camB',
+    cam1: 'camA', cam2: 'camB', cam3: 'camA', gfx1: 'gfxScore', gfx2: 'gfxPromo', media1: 'mediaReplay', media2: 'mediaRoll'
+  });
+  const [pstSlot, setPstSlot] = useState('cam1');
+  const [programSlot, setProgramSlot] = useState('program');
+
+  // DB Sync & Initialization
+  useEffect(() => {
+    try {
+       const storedAssets = localStorage.getItem('fluxstream_assets');
+       if (storedAssets) setAssets(JSON.parse(storedAssets));
+    } catch(e) {}
+
+    if (!db) return;
+    const init = async () => {
+      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token);
+      else await signInAnonymously(auth);
+    };
+    init();
+    return onAuthStateChanged(auth, (u) => setUser(u));
+  }, []);
+
+  useEffect(() => {
+    try {
+      const storedControlSlots = localStorage.getItem('fluxstream_control_slots');
+      if (storedControlSlots) {
+        const parsed = JSON.parse(storedControlSlots);
+        if (parsed && typeof parsed === 'object') setControlSlots(prev => ({ ...prev, ...parsed }));
+      }
+    } catch (e) {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('fluxstream_control_slots', JSON.stringify(controlSlots));
+    } catch (e) {}
+  }, [controlSlots]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('fluxstream_slot_content_map');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') setSlotContentMap(prev => ({ ...prev, ...parsed }));
+      }
+      const pst = localStorage.getItem('fluxstream_pst_slot');
+      const pgm = localStorage.getItem('fluxstream_program_slot');
+      const selectedSlot = localStorage.getItem('fluxstream_selected_control_slot');
+      const selectedDummy = localStorage.getItem('fluxstream_selected_dummy_id');
+      if (pst) setPstSlot(pst);
+      if (pgm) setProgramSlot(pgm);
+      if (selectedSlot) setSelectedControlSlot(selectedSlot);
+      if (selectedDummy) setSelectedDummyId(selectedDummy);
+    } catch (e) {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('fluxstream_slot_content_map', JSON.stringify(slotContentMap));
+      localStorage.setItem('fluxstream_pst_slot', pstSlot);
+      localStorage.setItem('fluxstream_program_slot', programSlot);
+      localStorage.setItem('fluxstream_selected_control_slot', selectedControlSlot);
+      localStorage.setItem('fluxstream_selected_dummy_id', selectedDummyId);
+    } catch (e) {}
+  }, [slotContentMap, pstSlot, programSlot, selectedControlSlot, selectedDummyId]);
+
+  useEffect(() => {
+    if (!user || !db) return;
+    const unsubLib = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'assets', 'library'), (snap) => {
+      if (snap.exists()) {
+        const d = snap.data();
+        if (d.folders) setFolders(d.folders);
+        if (d.customTemplates) setCustomTemplates(d.customTemplates);
+      }
+    });
+    const unsubLive = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'scoreboards', 'match_v4_scenes'), (snap) => {
+      if (snap.exists()) {
+        const d = snap.data();
+        setLiveState(prev => {
+          const next = { ...prev, ...d };
+          liveStateRef.current = next; 
+          return next;
+        });
+      }
+    });
+    return () => { unsubLib(); unsubLive(); };
+  }, [user]);
+
+  useEffect(() => {
+    try {
+      const storedQuickBanks = localStorage.getItem('fluxstream_quick_scene_banks');
+      if (storedQuickBanks) {
+        const parsed = JSON.parse(storedQuickBanks);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setQuickSceneBanks(parsed.map((slot, idx) => ({
+            id: safeString(slot.id, `q${idx + 1}`),
+            name: safeString(slot.name, `SCENE ${idx + 1}`),
+            message: safeString(slot.message, ''),
+            sceneData: slot.sceneData && typeof slot.sceneData === 'object' ? slot.sceneData : null,
+            thumbnail: safeString(slot.thumbnail, '') || null
+          })));
+        }
+      }
+    } catch (e) {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('fluxstream_quick_scene_banks', JSON.stringify(quickSceneBanks));
+    } catch (e) {}
+  }, [quickSceneBanks]);
+
+  useEffect(() => {
+    try {
+      const storedStingers = localStorage.getItem('fluxstream_stinger_library');
+      if (storedStingers) {
+        const parsed = JSON.parse(storedStingers);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const normalized = parsed.map((item, idx) => ({
+            id: safeString(item.id, `s_${idx + 1}`),
+            name: safeString(item.name, `Stinger ${idx + 1}`),
+            message: safeString(item.message, 'BIG PLAY'),
+            type: safeString(item.type, 'stinger1') === 'stinger2' ? 'stinger2' : 'stinger1'
+          }));
+          setStingerLibrary(normalized);
+          setActiveStingerId(normalized[0]?.id || '');
+        }
+      }
+    } catch (e) {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('fluxstream_stinger_library', JSON.stringify(stingerLibrary));
+    } catch (e) {}
+  }, [stingerLibrary]);
+
+  // Simulation Engine
+  useEffect(() => {
+    if (!simRunning) {
+       setLiveData(prev => { const n = JSON.parse(JSON.stringify(prev)); n.system.status = "IDLE"; return n; });
+       return;
+    }
+    pushLog('system.status -> "LIVE"');
+    
+    const interval = setInterval(() => {
+      setLiveData(prev => {
+        let next = JSON.parse(JSON.stringify(prev)); 
+        next.system.pulse = Date.now();
+        next.system.status = "LIVE";
+
+        const isTop = next.mlb.scoreboard.state === "Top";
+        const pitcher = isTop ? 'G. Cole' : 'B. Bello';
+        const batter = isTop ? 'R. Devers' : 'A. Judge';
+        
+        if (next.mlb.session_summary.play.pitcher !== pitcher) {
+           next.mlb.session_summary.play.pitcher = pitcher;
+           pushLog(`play.pitcher -> "${pitcher}"`);
+        }
+        if (next.mlb.session_summary.play.batter !== batter) {
+           next.mlb.session_summary.play.batter = batter;
+           pushLog(`play.batter -> "${batter}"`);
+        }
+
+        const types = ['4-Seam Fastball', 'Slider', 'Curveball', 'Changeup'];
+        const type = types[Math.floor(Math.random()*types.length)];
+        const speed = (90 + Math.random() * 10).toFixed(1) + " MPH";
+        next.mlb.live_telemetry.pitch.type = type;
+        next.mlb.live_telemetry.pitch.speed = speed;
+        pushLog(`pitch.type -> "${type}"`);
+        pushLog(`pitch.speed -> "${speed}"`);
+
+        const roll = Math.random();
+
+        if (roll < 0.4) { 
+           next.mlb.live_telemetry.count.balls++; 
+           pushLog(`count.balls -> ${next.mlb.live_telemetry.count.balls}`);
+           if (next.mlb.live_telemetry.count.balls > 3) { 
+             next.mlb.live_telemetry.count.balls = 0; 
+             next.mlb.live_telemetry.count.strikes = 0; 
+             next.mlb.live_telemetry.bases.first = true; 
+             pushLog('game.message -> "WALK"');
+           }
+        } 
+        else if (roll < 0.7) { 
+           next.mlb.live_telemetry.count.strikes++; 
+           pushLog(`count.strikes -> ${next.mlb.live_telemetry.count.strikes}`);
+           if (next.mlb.live_telemetry.count.strikes > 2) { 
+             next.mlb.live_telemetry.count.balls = 0; 
+             next.mlb.live_telemetry.count.strikes = 0; 
+             next.mlb.live_telemetry.count.outs++; 
+             pushLog('game.message -> "STRIKEOUT"');
+           }
+        }
+        else { 
+           next.mlb.live_telemetry.count.balls = 0; 
+           next.mlb.live_telemetry.count.strikes = 0; 
+           if (Math.random() < 0.3) { 
+              if (isTop) next.mlb.scoreboard.awayScore++; else next.mlb.scoreboard.homeScore++; 
+              pushLog('game.message -> "HOME RUN"');
+           } else { 
+              next.mlb.live_telemetry.count.outs++; 
+              pushLog('game.message -> "FLY OUT"');
+           }
+        }
+
+        if (next.mlb.live_telemetry.count.outs > 2) { 
+           next.mlb.live_telemetry.count.outs = 0; 
+           next.mlb.live_telemetry.bases = { first: false, second: false, third: false }; 
+           if(isTop) { next.mlb.scoreboard.state = "Bot"; pushLog('scoreboard.state -> "Bot"'); }
+           else { 
+              next.mlb.scoreboard.state = "Top"; 
+              let numInning = parseInt(next.mlb.scoreboard.inning);
+              numInning++;
+              next.mlb.scoreboard.inning = numInning + "th";
+              pushLog(`scoreboard.inning -> "${numInning}th"`); 
+           }
+        }
+        return next;
+      });
+    }, 2500); 
+    return () => clearInterval(interval);
+  }, [simRunning]);
+
+  // Bridge Data Engine to Flat Templates
+  useEffect(() => {
+    if (!simRunning) return;
+    
+    const updates = { 
+      homeScore: liveData.mlb.scoreboard.homeScore, 
+      awayScore: liveData.mlb.scoreboard.awayScore, 
+      inning: parseInt(liveData.mlb.scoreboard.inning) || 1, 
+      inningTop: liveData.mlb.scoreboard.state === "Top", 
+      balls: liveData.mlb.live_telemetry.count.balls, 
+      strikes: liveData.mlb.live_telemetry.count.strikes, 
+      outs: liveData.mlb.live_telemetry.count.outs, 
+      runners: { '1': liveData.mlb.live_telemetry.bases.first, '2': liveData.mlb.live_telemetry.bases.second, '3': liveData.mlb.live_telemetry.bases.third }, 
+      homePitcher: liveData.mlb.scoreboard.state === "Top" ? liveData.mlb.session_summary.play.pitcher : '',
+      awayPitcher: liveData.mlb.scoreboard.state === "Bot" ? liveData.mlb.session_summary.play.pitcher : ''
+    };
+
+    setLocalScenes(prev => {
+      const next = { ...prev };
+      Object.keys(next).forEach(k => { if(next[k].template === 'scorebug') next[k] = { ...next[k], ...updates }; });
+      return next;
+    });
+
+    const currentLive = liveStateRef.current;
+    if (db && user && currentLive) {
+       const scenesToUpdate = {};
+       let hasUpdates = false;
+       Object.keys(currentLive.scenes).forEach(k => { if (currentLive.scenes[k].visible && currentLive.scenes[k].template === 'scorebug') { scenesToUpdate[k] = { ...currentLive.scenes[k], ...updates }; hasUpdates = true; }});
+       if (hasUpdates) setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'scoreboards', 'match_v4_scenes'), sanitizeForFirestore({ scenes: { ...currentLive.scenes, ...scenesToUpdate } }), { merge: true });
+    }
+  }, [liveData]);
+
+
+  const sceneKeys = Object.keys(localScenes).sort((a, b) => Number(safeString(a).replace('scene', '')) - Number(safeString(b).replace('scene', '')));
+
+  const addScene = () => {
+    const maxScene = sceneKeys.reduce((mx, key) => Math.max(mx, Number(safeString(key).replace('scene', '')) || 0), 0);
+    const nextKey = `scene${maxScene + 1}`;
+    setLocalScenes(prev => ({ ...prev, [nextKey]: { previewVisible: false } }));
+    setLiveState(prev => {
+      const next = { ...prev, scenes: { ...prev.scenes, [nextKey]: { visible: false } } };
+      liveStateRef.current = next;
+      return next;
+    });
+    setActiveSceneId(nextKey);
+  };
+
+  const cycleControlSlot = (slotId) => {
+    setControlSlots(prev => {
+      const current = safeString(prev[slotId], DEFAULT_CONTROL_SLOT_OPTIONS[0]);
+      const idx = DEFAULT_CONTROL_SLOT_OPTIONS.indexOf(current);
+      const next = DEFAULT_CONTROL_SLOT_OPTIONS[(idx + 1) % DEFAULT_CONTROL_SLOT_OPTIONS.length] || DEFAULT_CONTROL_SLOT_OPTIONS[0];
+      return { ...prev, [slotId]: next };
+    });
+  };
+
+  const loadDummyToSlot = (slotId, dummyId = selectedDummyId) => {
+    setSlotContentMap(prev => ({ ...prev, [slotId]: dummyId }));
+  };
+
+  const clearSlotContent = (slotId) => {
+    setSlotContentMap(prev => ({ ...prev, [slotId]: 'none' }));
+  };
+
+  const cutToProgram = () => {
+    setProgramSlot(pstSlot);
+    runTransition('cut');
+  };
+
+  const autoToProgram = () => {
+    runTransition(transitionType === 'cut' ? 'fade' : transitionType);
+    setTimeout(() => setProgramSlot(pstSlot), 180);
+  };
+
+  const createQuickThumb = (sceneData, slotName, slotMessage) => {
+    try {
+      const c = document.createElement('canvas');
+      c.width = 320;
+      c.height = 180;
+      const ctx = c.getContext('2d');
+      if (!ctx) return null;
+      const grad = ctx.createLinearGradient(0, 0, c.width, c.height);
+      grad.addColorStop(0, '#0f172a');
+      grad.addColorStop(1, '#1e293b');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, c.width, c.height);
+      ctx.strokeStyle = '#3b82f6';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(2, 2, c.width - 4, c.height - 4);
+      ctx.fillStyle = '#93c5fd';
+      ctx.font = '700 18px sans-serif';
+      ctx.fillText(safeString(slotName, 'SCENE'), 14, 28);
+      ctx.fillStyle = '#e2e8f0';
+      ctx.font = '700 24px sans-serif';
+      ctx.fillText(safeString(sceneData?.template, 'TEMPLATE').toUpperCase(), 14, 72);
+      if (slotMessage) {
+        ctx.fillStyle = '#22d3ee';
+        ctx.font = '800 22px sans-serif';
+        ctx.fillText(safeString(slotMessage).slice(0, 18).toUpperCase(), 14, 118);
+      }
+      ctx.fillStyle = '#64748b';
+      ctx.font = '600 12px monospace';
+      ctx.fillText('FLUXSTREAM QUICK SCENE', 14, 162);
+      return c.toDataURL('image/png');
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const storeCurrentToActiveStinger = () => {
+    if (!activeStingerId) return;
+    setStingerLibrary(prev => prev.map(item => item.id === activeStingerId ? { ...item, message: safeString(operatorMessage, 'BIG PLAY') } : item));
+  };
+
+  const addStingerPreset = () => {
+    const label = safeString(newStingerName, '').trim();
+    if (!label) return;
+    const id = `s_${Date.now()}`;
+    const created = { id, name: label, message: safeString(operatorMessage, 'BIG PLAY'), type: 'stinger1' };
+    setStingerLibrary(prev => [...prev, created]);
+    setActiveStingerId(id);
+    setNewStingerName('');
+  };
+
+  const applyStingerPreset = (preset) => {
+    if (!preset) return;
+    setActiveStingerId(preset.id);
+    setOperatorMessage(safeString(preset.message, 'BIG PLAY'));
+    setTransitionType(safeString(preset.type, 'stinger1') === 'stinger2' ? 'stinger2' : 'stinger1');
+  };
+
+  // Actions
+  const handleTake = async () => {
+    const newLive = {};
+    Object.keys(localScenes).forEach(k => newLive[k] = { ...localScenes[k], visible: localScenes[k].previewVisible === true });
+
+    if (db && user) {
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'scoreboards', 'match_v4_scenes'), sanitizeForFirestore({ scenes: newLive }), { merge: true });
+    } else {
+      setLiveState(prev => {
+        const next = { ...prev, scenes: newLive };
+        liveStateRef.current = next;
+        return next;
+      });
+    }
+  };
+
+  const handleOut = async () => {
+    const newLive = JSON.parse(JSON.stringify(liveState.scenes));
+    Object.keys(newLive).forEach(k => newLive[k].visible = false);
+
+    if (db && user) {
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'scoreboards', 'match_v4_scenes'), sanitizeForFirestore({ scenes: newLive }), { merge: true });
+    } else {
+      setLiveState(prev => {
+        const next = { ...prev, scenes: newLive };
+        liveStateRef.current = next;
+        return next;
+      });
+    }
+  };
+
+  const runTransition = async (type) => {
+    setTransitionType(type);
+    setTransitionFx(type);
+
+    if (type === 'fade_black') {
+      await handleOut();
+      setTimeout(() => setTransitionFx(null), 450);
+      return;
+    }
+
+    if (type === 'cut') {
+      await handleTake();
+      setTimeout(() => setTransitionFx(null), 180);
+      return;
+    }
+
+    setLiveState(prev => ({ ...prev, overlay: { ...prev.overlay, type, message: type.includes('stinger') ? operatorMessage : '', trigger: Date.now() } }));
+
+    const delay = type === 'swipe' ? 420 : type.includes('stinger') ? 650 : 320;
+    setTimeout(async () => {
+      await handleTake();
+      setTransitionFx(null);
+    }, delay);
+  };
+
+  const setLocalActiveScene = (updater) => {
+    setLocalScenes(prev => {
+      const current = prev[activeSceneId];
+      const updated = typeof updater === 'function' ? updater(current) : updater;
+      return { ...prev, [activeSceneId]: { ...current, ...updated } };
+    });
+  };
+
+  const loadGfxTemplate = (templateId) => {
+    const selected = controllerTemplateBin.find(item => item.id === templateId);
+    if (!selected) return;
+    setLocalActiveScene(prev => ({
+      ...selected.sceneUpdate,
+      customTemplateOverrides: prev?.customTemplateOverrides || {}
+    }));
+  };
+
+  const openTemplateInDesign = (templateId) => {
+    const selected = controllerTemplateBin.find(item => item.id === templateId);
+    if (!selected) return;
+    loadGfxTemplate(templateId);
+    if (selected.customTemplate) {
+      setDesignerState(prev => ({
+        ...prev,
+        ...selected.customTemplate,
+        name: safeString(selected.customTemplate.name, prev.name),
+        layers: Array.isArray(selected.customTemplate.layers) ? selected.customTemplate.layers : prev.layers
+      }));
+      setSelectedLayerId(null);
+    }
+    setTab('design');
+  };
+
+  const addTemplateToRundown = (templateId) => {
+    setGfxRundown(prev => prev.includes(templateId) ? prev : [...prev, templateId]);
+  };
+
+  const saveLibrary = async (newFolders, newAssets, newCustomTemplates = customTemplates) => {
+    if (db && user) {
+       // Save only necessary metadata, keep assets in local browser storage to prevent DB limits
+       const ref = doc(db, 'artifacts', appId, 'public', 'data', 'assets', 'library');
+       await setDoc(ref, sanitizeForFirestore({ folders: newFolders, customTemplates: newCustomTemplates }), { merge: true }).catch(console.error);
+    }
+  };
+
+  const createFolderAction = () => {
+    if (newFolderName.trim()) {
+      const newFolders = [...folders, { id: 'f_' + Date.now(), name: newFolderName, parentId: currentFolderId }];
+      setFolders(newFolders);
+      saveLibrary(newFolders, assets);
+      setNewFolderName('');
+      setIsAddingFolder(false);
+    }
+  };
+
+  const deleteFolderAction = (id) => {
+    if (id === 'root') return;
+    const newFolders = folders.filter(f => f.id !== id);
+    const newAssets = assets.map(a => a.parentId === id ? { ...a, parentId: 'root' } : a);
+    setFolders(newFolders);
+    saveAssetsLocally(newAssets);
+    saveLibrary(newFolders, newAssets);
+    if (currentFolderId === id) setCurrentFolderId('root');
+  };
+
+  // --- DESIGNER LOGIC ---
+  const handleSetBackground = (asset) => {
+     setDesignerState(prev => ({
+        ...prev,
+        name: prev.name === 'New Custom Template' ? (asset.name || 'Custom').split('.')[0] + ' Template' : prev.name,
+        bgImage: asset.url,
+        bgImageId: asset.id 
+     }));
+     setSelectedLayerId(null);
+  };
+
+  const handleAddImageLayer = (asset) => {
+     const img = new Image();
+     img.onload = () => {
+         const newLayer = {
+             id: 'l_' + Date.now(),
+             type: 'image',
+             url: asset.url,
+             imageId: asset.id,
+             x: designerState.width / 2 - (img.width / 2),
+             y: designerState.height / 2 - (img.height / 2),
+             width: img.width,
+             height: img.height
+         };
+         setDesignerState(prev => ({ ...prev, layers: [...prev.layers, newLayer] }));
+         setSelectedLayerId(newLayer.id);
+     };
+     img.src = asset.url;
+  };
+
+  const handleAddTextLayer = () => {
+     const newLayer = {
+        id: 'l_' + Date.now(),
+        type: 'text',
+        text: 'NEW TEXT',
+        x: designerState.width / 2,
+        y: designerState.height / 2,
+        fontSize: Math.floor(designerState.height * 0.05) || 50,
+        color: '#ffffff',
+        fontWeight: 'bold',
+        textAlign: 'center',
+        dataPath: ''
+     };
+     setDesignerState(prev => ({ ...prev, layers: [...prev.layers, newLayer] }));
+     setSelectedLayerId(newLayer.id);
+  };
+
+  const updateSelectedLayer = (fields) => {
+     if (!selectedLayerId) return;
+     setDesignerState(prev => ({
+        ...prev,
+        layers: prev.layers.map(l => l.id === selectedLayerId ? { ...l, ...fields } : l)
+     }));
+  };
+
+  const handleAssetFileUpload = (filesList) => {
+     const files = Array.from(filesList || []);
+     if (!files.length) return;
+     let processedAssets = [];
+     let completedCount = 0;
+     files.forEach((file) => {
+       const r = new FileReader();
+       r.onload = (ev) => {
+         const img = new Image();
+         img.onload = () => {
+           processedAssets.push({
+             id: 'a_' + Date.now() + Math.random().toString(36).substr(2, 5),
+             url: ev.target.result,
+             name: file.name,
+             parentId: currentFolderId,
+             width: img.width,
+             height: img.height,
+             size: (file.size / 1024).toFixed(1) + ' KB'
+           });
+           completedCount++;
+           if (completedCount === files.length) {
+             const nextAssets = [...assets, ...processedAssets];
+             saveAssetsLocally(nextAssets);
+             saveLibrary(folders, nextAssets, customTemplates);
+             const mostRecent = processedAssets[processedAssets.length - 1];
+             if (mostRecent && mostRecent.id) setSelectedAssetId(mostRecent.id);
+           }
+         };
+         img.src = ev.target.result;
+       };
+       r.readAsDataURL(file);
+     });
+  };
+
+  const reorderLayers = (fromId, toId) => {
+     if (!fromId || !toId || fromId === toId) return;
+     setDesignerState(prev => {
+       const list = [...prev.layers];
+       const fromIdx = list.findIndex(l => l.id === fromId);
+       const toIdx = list.findIndex(l => l.id === toId);
+       if (fromIdx < 0 || toIdx < 0) return prev;
+       const [moved] = list.splice(fromIdx, 1);
+       list.splice(toIdx, 0, moved);
+       return { ...prev, layers: list };
+     });
+  };
+
+  const selectedLayer = designerState.layers.find(ly => ly.id === selectedLayerId);
+  const selectedLayerBounds = (() => {
+     if (!selectedLayer) return null;
+     if (selectedLayer.type === 'image') {
+       return { x: selectedLayer.x, y: selectedLayer.y, width: selectedLayer.width, height: selectedLayer.height };
+     }
+     const text = selectedLayer.dataPath ? safeString(resolvePath(liveData, selectedLayer.dataPath), selectedLayer.text) : safeString(selectedLayer.text);
+     const width = Math.max((safeString(text).length || 1) * (Number(selectedLayer.fontSize) || 20) * 0.6, 40);
+     const height = Math.max((Number(selectedLayer.fontSize) || 20) * 1.3, 24);
+     const anchor = textAnchorFromAlign(selectedLayer.textAlign);
+     const left = anchor === 'middle' ? selectedLayer.x - width / 2 : anchor === 'end' ? selectedLayer.x - width : selectedLayer.x;
+     return { x: left, y: selectedLayer.y, width, height };
+  })();
+
+  // Drag and Drop Logic
+  const handleTextMouseDown = (e, layer) => {
+     e.stopPropagation();
+     setSelectedLayerId(layer.id);
+     const svg = e.currentTarget.ownerSVGElement || e.currentTarget.viewportElement;
+     if (!svg) return;
+     const pt = svg.createSVGPoint();
+     pt.x = e.clientX;
+     pt.y = e.clientY;
+     const svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
+     setDragOffset({ x: svgP.x - layer.x, y: svgP.y - layer.y });
+     setDraggingId(layer.id);
+  };
+
+  const handleSvgMouseMove = (e) => {
+     if (!draggingId) return;
+     const svg = e.currentTarget;
+     const pt = svg.createSVGPoint();
+     pt.x = e.clientX;
+     pt.y = e.clientY;
+     const svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
+     setDesignerState(prev => ({
+        ...prev,
+        layers: prev.layers.map(l => 
+           l.id === draggingId 
+              ? { ...l, x: Math.round(svgP.x - dragOffset.x), y: Math.round(svgP.y - dragOffset.y) } 
+              : l
+        )
+     }));
+  };
+
+  const handleSvgMouseUp = () => {
+     setDraggingId(null);
+  };
+
+  const handleSvgClick = (e) => {
+     if (['svg', 'image', 'rect'].includes(e.target.tagName)) {
+        setSelectedLayerId(null);
+     }
+  };
+
+  const handleViewportWheel = (e) => {
+     e.preventDefault();
+     const delta = e.deltaY > 0 ? -0.08 : 0.08;
+     setViewportZoom(prev => Math.min(2.5, Math.max(0.35, Number((prev + delta).toFixed(2)))));
+  };
+
+  const handleViewportMouseDown = (e) => {
+     if (designInteractionMode !== 'pan') return;
+     setIsViewportPanning(true);
+     setViewportPanOrigin({ x: e.clientX - viewportPan.x, y: e.clientY - viewportPan.y });
+  };
+
+  const handleViewportMouseMove = (e) => {
+     if (!isViewportPanning || designInteractionMode !== 'pan') return;
+     setViewportPan({ x: e.clientX - viewportPanOrigin.x, y: e.clientY - viewportPanOrigin.y });
+  };
+
+  const handleViewportMouseUp = () => {
+     setIsViewportPanning(false);
+  };
+
+  const handleStageDrop = (e) => {
+     e.preventDefault();
+     if (!dragAssetId) return;
+     const asset = assets.find(a => a.id === dragAssetId);
+     if (asset) handleAddImageLayer(asset);
+     setDragAssetId(null);
+     setDesignSidebarTab('layers');
+  };
+
+  const handleExportImage = async () => {
+     const canvas = document.createElement('canvas');
+     canvas.width = designerState.width;
+     canvas.height = designerState.height;
+     const ctx = canvas.getContext('2d');
+     
+     if (exportFormat === 'png_chroma') {
+        ctx.fillStyle = '#00B140';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+     } else if (exportFormat === 'jpg') {
+        ctx.fillStyle = designerState.bgColor && designerState.bgColor !== 'transparent' ? designerState.bgColor : '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+     } else {
+        if (designerState.bgColor && designerState.bgColor !== 'transparent') {
+           ctx.fillStyle = designerState.bgColor;
+           ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } else {
+           ctx.clearRect(0, 0, canvas.width, canvas.height); 
+        }
+     }
+
+     const drawLayersAndExport = async () => {
+        for (const layer of designerState.layers) {
+            if (layer.type === 'image') {
+               const imgLayer = new Image();
+               imgLayer.crossOrigin = "anonymous";
+               await new Promise((resolve) => {
+                   imgLayer.onload = resolve;
+                   imgLayer.onerror = resolve; 
+                   imgLayer.src = layer.url;
+               });
+               ctx.drawImage(imgLayer, layer.x, layer.y, layer.width, layer.height);
+            } else {
+               ctx.font = `${layer.fontWeight || 'bold'} ${layer.fontSize}px sans-serif`;
+               ctx.fillStyle = layer.color || '#ffffff';
+               ctx.textAlign = layer.textAlign || 'left';
+               ctx.textBaseline = 'hanging';
+               ctx.shadowColor = "rgba(0,0,0,0.5)";
+               ctx.shadowBlur = 8;
+               ctx.shadowOffsetX = 2;
+               ctx.shadowOffsetY = 2;
+               const text = layer.dataPath ? safeString(resolvePath(liveData, layer.dataPath), layer.text) : layer.text;
+               ctx.fillText(text, layer.x, layer.y);
+            }
+        }
+        
+        const link = document.createElement('a');
+        const mimeType = exportFormat === 'jpg' ? 'image/jpeg' : 'image/png';
+        const ext = exportFormat === 'jpg' ? 'jpg' : 'png';
+        const safeName = (designerState.name || 'custom_graphic').replace(/\s+/g, '_').toLowerCase();
+        
+        link.download = `fluxstream_${safeName}.${ext}`;
+        link.href = canvas.toDataURL(mimeType, exportFormat === 'jpg' ? 0.92 : undefined);
+        link.click();
+     };
+
+     if (designerState.bgImage) {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+            const imgRatio = img.width / img.height;
+            const canvasRatio = canvas.width / canvas.height;
+            let drawX = 0, drawY = 0, drawW = canvas.width, drawH = canvas.height;
+
+            if (designerState.bgFit === 'meet') {
+                if (imgRatio > canvasRatio) {
+                    drawW = canvas.width;
+                    drawH = canvas.width / imgRatio;
+                    drawY = (canvas.height - drawH) / 2;
+                } else {
+                    drawH = canvas.height;
+                    drawW = canvas.height * imgRatio;
+                    drawX = (canvas.width - drawW) / 2;
+                }
+            } else { 
+                if (imgRatio > canvasRatio) {
+                    drawH = canvas.height;
+                    drawW = canvas.height * imgRatio;
+                    drawX = (canvas.width - drawW) / 2;
+                } else {
+                    drawW = canvas.width;
+                    drawH = canvas.width / imgRatio;
+                    drawY = (canvas.height - drawH) / 2;
+                }
+            }
+            ctx.drawImage(img, drawX, drawY, drawW, drawH);
+            drawLayersAndExport();
+        };
+        img.src = designerState.bgImage;
+     } else {
+        drawLayersAndExport();
+     }
+  };
+
+  const handleSaveTemplate = () => {
+     if (!designerState.bgImage && !designerState.bgColor && designerState.layers.length === 0) return;
+     const name = designerState.name || "Custom Graphic";
+     const existingIndex = customTemplates.findIndex(t => t.name.toLowerCase() === name.toLowerCase());
+     
+     const templateToSave = {
+         ...designerState,
+         id: existingIndex >= 0 ? customTemplates[existingIndex].id : 't_' + Date.now(),
+         name,
+         bgImage: null, 
+         layers: designerState.layers.map(l => l.type === 'image' ? { ...l, url: null } : l)
+     };
+
+     let newCustomTemplates;
+     if (existingIndex >= 0) {
+        newCustomTemplates = [...customTemplates];
+        newCustomTemplates[existingIndex] = templateToSave;
+        pushLog(`Updated Template: ${name}`);
+     } else {
+        newCustomTemplates = [...customTemplates, templateToSave];
+        pushLog(`Saved New Template: ${name}`);
+     }
+     
+     setCustomTemplates(newCustomTemplates);
+     saveLibrary(folders, assets, newCustomTemplates);
+  };
+
+  const currentFolderAssets = assets.filter(a => a.parentId === currentFolderId);
+  const currentSubFolders = folders.filter(f => f.parentId === currentFolderId);
+  const assetTypeOf = (asset) => {
+    const n = safeString(asset?.name).toLowerCase();
+    if (n.endsWith('.png')) return 'png';
+    if (n.endsWith('.jpg') || n.endsWith('.jpeg')) return 'jpg';
+    return 'other';
+  };
+  const visibleAssetRows = currentFolderAssets.filter(a => {
+    const searchOk = !assetSearch || safeString(a.name).toLowerCase().includes(safeString(assetSearch).toLowerCase());
+    const type = assetTypeOf(a);
+    const typeOk = assetTypeFilter === 'all' ? true : type === assetTypeFilter;
+    return searchOk && typeOk;
+  });
+  const selectedAsset = assets.find(a => a.id === selectedAssetId);
+  const controllerTemplateBin = [
+    ...GFX_TEMPLATE_BIN,
+    ...customTemplates.map(tmpl => ({
+      id: `custom:${tmpl.id}`,
+      label: safeString(tmpl.name, 'Custom Template'),
+      icon: Layers,
+      sceneUpdate: { template: 'custom', customTemplateData: tmpl },
+      customTemplate: tmpl
+    }))
+  ];
+  const selectedTemplateBindings = safeString(localScenes[activeSceneId]?.template) === 'custom'
+    ? (localScenes[activeSceneId]?.customTemplateData?.layers || []).filter(l => l.type === 'text' && safeString(l.dataPath) !== '')
+    : [];
+
+  const designFolderExists = folders.some(f => f.id === designAssetsFolderId);
+  const effectiveDesignFolderId = designFolderExists ? designAssetsFolderId : 'root';
+  const designTreeFolders = folders.filter(f => f.parentId === 'root');
+  const designFolderChildren = folders.filter(f => f.parentId === effectiveDesignFolderId);
+  const designFolderAssets = assets.filter(a => a.parentId === effectiveDesignFolderId);
+
+  return (
+    <div className="h-screen bg-[#050505] text-slate-200 font-sans flex flex-col overflow-hidden">
+      <header className="h-14 bg-[#0a0a0a] border-b border-slate-800 flex items-center justify-between px-6 z-50 shrink-0 shadow-lg">
+         <div className="flex items-center space-x-6">
+            <h1 className="font-black italic tracking-tighter text-white uppercase"><span className="text-indigo-500">FLUX</span>STREAM</h1>
+            <div className="flex bg-black rounded-lg p-1 border border-slate-800 shadow-inner">
+               <button onClick={() => setTab('dashboard')} className={`px-5 py-1.5 rounded-md text-[10px] font-black tracking-widest transition-all ${tab === 'dashboard' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>DASHBOARD</button>
+               <button onClick={() => setTab('assets')} className={`px-5 py-1.5 rounded-md text-[10px] font-black tracking-widest transition-all ${tab === 'assets' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>ASSETS</button>
+               <button onClick={() => setTab('design')} className={`px-5 py-1.5 rounded-md text-[10px] font-black tracking-widest transition-all ${tab === 'design' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>DESIGN</button>
+               <button onClick={() => setTab('data')} className={`px-5 py-1.5 rounded-md text-[10px] font-black tracking-widest transition-all ${tab === 'data' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>DATA ENGINE</button>
+               <button onClick={() => setTab('controls')} className={`px-5 py-1.5 rounded-md text-[10px] font-black tracking-widest transition-all ${tab === 'controls' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>CONTROLLER</button>
+               <button onClick={() => setTab('output')} className={`px-5 py-1.5 rounded-md text-[10px] font-black tracking-widest transition-all ${tab === 'output' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>OUTPUT</button>
+            </div>
+         </div>
+         <div className={`flex items-center text-[9px] font-black tracking-widest px-4 py-2 rounded border transition-all ${user ? 'border-green-500/30 text-green-500 bg-green-500/5' : 'border-red-500/30 text-red-400 bg-red-500/5 animate-pulse'}`}>
+            <div className={`w-2 h-2 rounded-full mr-2 ${user ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.6)]' : 'bg-red-500'}`} />
+            {user ? 'LIVE SYNC' : 'OFFLINE'}
+         </div>
+      </header>
+
+      <div className="flex-1 flex overflow-hidden relative">
+        
+        {/* DASHBOARD TAB */}
+        {tab === 'dashboard' && (
+          <div className="absolute inset-0 z-35 bg-[#050505] p-6">
+            <div className="h-full rounded-2xl border border-zinc-800 bg-zinc-900 p-6 grid grid-cols-3 gap-4">
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
+                <div className="text-xs font-black tracking-[0.2em] text-zinc-500 uppercase mb-3">Welcome</div>
+                <div className="text-2xl font-black text-white">RenderLess Dashboard</div>
+                <div className="mt-2 text-sm text-zinc-400">Home surface for operators. Quick links to Assets, Design, Data Engine, Controller, and Output.</div>
+              </div>
+              <button onClick={() => setTab('controls')} className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 text-left hover:border-blue-500/40">
+                <div className="text-xs uppercase tracking-[0.2em] text-zinc-500 font-black">Controller</div>
+                <div className="text-lg font-black text-white mt-1">Open GFX Operator Dashboard</div>
+              </button>
+              <button onClick={() => setTab('design')} className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 text-left hover:border-indigo-500/40">
+                <div className="text-xs uppercase tracking-[0.2em] text-zinc-500 font-black">Design</div>
+                <div className="text-lg font-black text-white mt-1">Create / edit templates</div>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ASSETS TAB (NEW DEDICATED VIEW) */}
+        {tab === 'assets' && (
+           <div className="absolute inset-0 z-35 bg-[#050505] flex animate-in slide-in-from-bottom duration-500">
+              
+              {/* Left Sidebar Tree */}
+              <div className="w-64 bg-slate-950 border-r border-slate-800 flex flex-col shrink-0">
+                 <div className="p-5 border-b border-slate-800/50">
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Explorer Tree</span>
+                 </div>
+                 <div className="flex-1 overflow-y-auto p-3 space-y-1">
+                     <button onClick={() => setCurrentFolderId('root')} className={`w-full flex items-center space-x-3 p-2 rounded-lg transition-colors ${currentFolderId === 'root' ? 'bg-indigo-600/20 text-indigo-400' : 'text-slate-400 hover:bg-slate-900 hover:text-white'}`}>
+                         <Database className="w-4 h-4" />
+                         <span className="text-xs font-bold">Home</span>
+                     </button>
+                     {folders.filter(f => f.parentId === 'root').map(f => (
+                         <button key={f.id} onClick={() => setCurrentFolderId(f.id)} className={`w-full flex items-center space-x-3 p-2 rounded-lg transition-colors ${currentFolderId === f.id ? 'bg-indigo-600/20 text-indigo-400' : 'text-slate-400 hover:bg-slate-900 hover:text-white'}`}>
+                             <Folder className={`w-4 h-4 ${currentFolderId === f.id ? 'fill-indigo-400/20' : ''}`} />
+                             <span className="text-xs font-bold">{f.name}</span>
+                         </button>
+                     ))}
+                 </div>
+              </div>
+
+              {/* Main Finder Area */}
+              <div className="flex-[2] flex flex-col min-w-0 bg-[#0a0a0a]">
+                 <div className="h-16 border-b border-slate-800 flex items-center justify-between px-6 shrink-0 bg-slate-900/50">
+                    <div className="flex items-center space-x-3">
+                       <button onClick={() => setCurrentFolderId(folders.find(f => f.id === currentFolderId)?.parentId || 'root')} disabled={currentFolderId === 'root'} className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 disabled:opacity-30 transition-colors"><ChevronLeft className="w-4 h-4"/></button>
+                       <div className="h-4 w-px bg-slate-700 mx-1"></div>
+                       <span className="text-[11px] font-black text-white tracking-widest uppercase">{folders.find(f => f.id === currentFolderId)?.name || 'Home'}</span>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                       <button onClick={() => setIsAddingFolder(true)} className="flex items-center space-x-2 bg-slate-950 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors border border-slate-800"><FolderPlus className="w-3 h-3"/><span>New Folder</span></button>
+                       <label className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors shadow-lg shadow-indigo-900/50 cursor-pointer">
+                          <Upload className="w-3 h-3"/><span>Upload</span>
+                          <input type="file" className="hidden" accept="image/png, image/jpeg" multiple onChange={(e) => {
+                               const files = Array.from(e.target.files);
+                               if (!files.length) return;
+                               let processedAssets = [];
+                               let completedCount = 0;
+                               files.forEach((file) => {
+                                 const r = new FileReader();
+                                 r.onload = (ev) => {
+                                   const img = new Image();
+                                   img.onload = () => {
+                                     processedAssets.push({
+                                       id: 'a_' + Date.now() + Math.random().toString(36).substr(2, 5),
+                                       url: ev.target.result,
+                                       name: file.name,
+                                       parentId: currentFolderId,
+                                       width: img.width,
+                                       height: img.height,
+                                       size: (file.size / 1024).toFixed(1) + ' KB'
+                                     });
+                                     completedCount++;
+                                     if (completedCount === files.length) {
+                                       setAssets(prev => {
+                                          const newArr = [...prev, ...processedAssets];
+                                          saveAssetsLocally(newArr);
+                                          return newArr; 
+                                       });
+                                       saveLibrary(folders, [...assets, ...processedAssets], customTemplates); 
+                                     }
+                                   };
+                                   img.src = ev.target.result;
+                                 };
+                                 r.readAsDataURL(file);
+                               });
+                           }}/>
+                       </label>
+                    </div>
+                 </div>
+
+                 <div className="px-6 py-3 border-b border-slate-800/60 bg-slate-900/20">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                       <input value={assetSearch} onChange={e => setAssetSearch(e.target.value)} placeholder="Search assets in this folder..." className="md:col-span-2 bg-slate-950 border border-slate-700 rounded px-3 py-2 text-xs font-bold text-white outline-none focus:border-indigo-500" />
+                       <select value={assetTypeFilter} onChange={e => setAssetTypeFilter(e.target.value)} className="bg-slate-950 border border-slate-700 rounded px-2 py-2 text-[10px] font-black text-white outline-none">
+                          <option value="all">ALL TYPES</option>
+                          <option value="png">PNG</option>
+                          <option value="jpg">JPG</option>
+                       </select>
+                       <div className="grid grid-cols-2 gap-2">
+                          <button onClick={() => setAssetViewMode('grid')} className={`rounded py-2 text-[10px] font-black tracking-wider ${assetViewMode === 'grid' ? 'bg-indigo-600 text-white' : 'bg-slate-950 border border-slate-700 text-slate-400'}`}>GRID</button>
+                          <button onClick={() => setAssetViewMode('list')} className={`rounded py-2 text-[10px] font-black tracking-wider ${assetViewMode === 'list' ? 'bg-indigo-600 text-white' : 'bg-slate-950 border border-slate-700 text-slate-400'}`}>LIST</button>
+                       </div>
+                    </div>
+                 </div>
+
+                 <div className="flex-1 overflow-y-auto p-6 relative">
+                     {isAddingFolder && (
+                         <div className="mb-6 p-4 bg-slate-900 border border-indigo-500 rounded-xl flex items-center space-x-3 w-max shadow-2xl">
+                             <Folder className="w-6 h-6 text-indigo-400" />
+                             <input autoFocus className="bg-transparent text-sm text-white outline-none w-48 font-bold placeholder-slate-600" placeholder="Folder Name" value={newFolderName} onChange={e => setNewFolderName(e.target.value)} onKeyDown={e => e.key === 'Enter' && createFolderAction()}/>
+                             <button onClick={createFolderAction} className="p-1.5 bg-indigo-600 rounded-lg text-white hover:bg-indigo-500"><Check className="w-4 h-4"/></button>
+                             <button onClick={() => setIsAddingFolder(false)} className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400"><X className="w-4 h-4"/></button>
+                         </div>
+                     )}
+
+                     <div className={assetViewMode === 'grid' ? 'grid grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6' : 'space-y-2'}>
+                         {currentSubFolders.map(f => (
+                             assetViewMode === 'grid' ? (
+                               <div key={f.id} onClick={() => setCurrentFolderId(f.id)} className="group flex flex-col items-center justify-center p-4 rounded-2xl border border-transparent hover:border-slate-800 hover:bg-slate-900 cursor-pointer transition-all">
+                                   <div className="relative">
+                                       <Folder className="w-16 h-16 text-indigo-400 fill-indigo-400/20 mb-3" />
+                                       <button onClick={(e) => { e.stopPropagation(); deleteFolderAction(f.id); }} className="absolute -top-2 -right-2 p-1.5 bg-slate-950 border border-slate-700 text-red-500 rounded-full opacity-0 group-hover:opacity-100 hover:bg-red-500 hover:border-red-500 hover:text-white transition-all shadow-xl"><Trash2 className="w-3 h-3"/></button>
+                                   </div>
+                                   <span className="text-xs font-bold text-slate-300 text-center truncate w-full px-2">{safeString(f.name)}</span>
+                                   <span className="text-[9px] text-slate-600 font-bold uppercase mt-1">Folder</span>
+                               </div>
+                             ) : (
+                               <div key={f.id} onClick={() => setCurrentFolderId(f.id)} className="group flex items-center gap-3 p-3 rounded-xl border border-slate-800 hover:border-slate-700 hover:bg-slate-900 cursor-pointer transition-all">
+                                  <Folder className="w-8 h-8 text-indigo-400 fill-indigo-400/20" />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="text-xs font-bold text-slate-200 truncate">{safeString(f.name)}</div>
+                                    <div className="text-[10px] font-black text-slate-500 uppercase">Folder</div>
+                                  </div>
+                                  <button onClick={(e) => { e.stopPropagation(); deleteFolderAction(f.id); }} className="p-1.5 bg-slate-950 border border-slate-700 text-red-500 rounded-full hover:bg-red-500 hover:border-red-500 hover:text-white transition-all"><Trash2 className="w-3 h-3"/></button>
+                               </div>
+                             )
+                         ))}
+
+                         {visibleAssetRows.map(asset => (
+                             assetViewMode === 'grid' ? (
+                               <div key={asset.id} className={`group flex flex-col items-center justify-center p-4 rounded-2xl border cursor-pointer transition-all ${selectedAssetId === asset.id ? 'border-indigo-500 bg-slate-900' : 'border-transparent hover:border-slate-800 hover:bg-slate-900'}`} onClick={() => setSelectedAssetId(asset.id)}>
+                                   <div className="relative w-full aspect-square bg-black/50 rounded-xl overflow-hidden mb-3 border border-slate-800 group-hover:border-slate-700 flex items-center justify-center p-2">
+                                       <img src={asset.url} alt={asset.name} className="max-w-full max-h-full object-contain drop-shadow-lg" />
+                                   </div>
+                                   <span className="text-xs font-bold text-slate-300 text-center truncate w-full px-2">{safeString(asset.name)}</span>
+                                   <span className="text-[9px] text-slate-600 font-bold uppercase mt-1">{assetTypeOf(asset) === 'jpg' ? 'JPG Image' : assetTypeOf(asset) === 'png' ? 'PNG Image' : 'Image'}</span>
+                               </div>
+                             ) : (
+                               <div key={asset.id} className={`group flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${selectedAssetId === asset.id ? 'border-indigo-500 bg-slate-900' : 'border-slate-800 hover:border-slate-700 hover:bg-slate-900'}`} onClick={() => setSelectedAssetId(asset.id)}>
+                                 <img src={asset.url} alt={asset.name} className="w-16 h-16 rounded-lg object-cover border border-slate-700" />
+                                 <div className="min-w-0 flex-1">
+                                   <div className="text-xs font-bold text-slate-200 truncate">{safeString(asset.name)}</div>
+                                   <div className="text-[10px] font-mono text-slate-500">{safeString(asset.width, '?')}x{safeString(asset.height, '?')} • {safeString(asset.size, 'Unknown')}</div>
+                                 </div>
+                                 <div className="text-[10px] font-black text-slate-500 uppercase">{safeString(assetTypeOf(asset))}</div>
+                               </div>
+                             )
+                         ))}
+                     </div>
+
+                     {currentSubFolders.length === 0 && visibleAssetRows.length === 0 && !isAddingFolder && (
+                         <div className="flex flex-col items-center justify-center h-full text-slate-500 absolute inset-0">
+                             <div className="w-20 h-20 bg-slate-900 rounded-full flex items-center justify-center mb-4 ring-1 ring-slate-800 shadow-xl">
+                                <Upload className="w-8 h-8 text-slate-600" />
+                             </div>
+                             <p className="text-sm font-bold uppercase tracking-widest text-slate-400">Folder is empty</p>
+                             <p className="text-[10px] uppercase tracking-widest mt-2">Use top right to upload files</p>
+                         </div>
+                     )}
+                 </div>
+              </div>
+
+              {/* Right Sidebar: Asset Inspector */}
+              <div className="w-80 bg-slate-900 border-l border-slate-800 flex flex-col shrink-0">
+                 <div className="p-5 border-b border-slate-800/50">
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Asset Details</span>
+                 </div>
+                 {selectedAsset ? (
+                    <div className="flex-1 overflow-y-auto p-5 space-y-6">
+                       <div className="w-full aspect-square bg-black rounded-xl border border-slate-700 flex items-center justify-center p-4 relative overflow-hidden bg-checkerboard">
+                          <img src={selectedAsset.url} className="max-w-full max-h-full object-contain" />
+                       </div>
+                       
+                       <div className="space-y-4">
+                          <div>
+                             <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest block mb-1">File Name</label>
+                             <div className="text-sm font-bold text-white break-words">{selectedAsset.name}</div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4 border-t border-slate-800 pt-4">
+                             <div>
+                                <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest block mb-1">Dimensions</label>
+                                <div className="text-xs font-mono text-indigo-400 font-bold">{selectedAsset.width || '??'} x {selectedAsset.height || '??'}</div>
+                             </div>
+                             <div>
+                                <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest block mb-1">File Size</label>
+                                <div className="text-xs font-mono text-slate-300 font-bold">{selectedAsset.size || 'Unknown'}</div>
+                             </div>
+                          </div>
+                          <div>
+                             <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest block mb-1">Internal Ref ID</label>
+                             <div className="text-[10px] font-mono text-slate-600 truncate">{selectedAsset.id}</div>
+                          </div>
+                       </div>
+
+                       <div className="pt-6 border-t border-slate-800">
+                          <button onClick={() => { 
+                             const na = assets.filter(a => a.id !== selectedAsset.id); 
+                             saveAssetsLocally(na); 
+                             saveLibrary(folders, na, customTemplates);
+                             setSelectedAssetId(null);
+                          }} className="w-full py-3 bg-red-900/20 text-red-500 border border-red-900/50 rounded-lg text-xs font-black uppercase tracking-widest hover:bg-red-900/40 transition-colors flex items-center justify-center">
+                             <Trash2 className="w-3 h-3 mr-2" /> Delete Asset
+                          </button>
+                       </div>
+                    </div>
+                 ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center text-slate-600 p-6 text-center">
+                       <Info className="w-12 h-12 mb-4 opacity-20" />
+                       <span className="text-[10px] font-black uppercase tracking-widest">Select an asset to view details</span>
+                    </div>
+                 )}
+              </div>
+           </div>
+        )}
+
+        {/* DATA ENGINE TAB */}
+        {tab === 'data' && (
+          <div className="absolute inset-0 z-50 bg-[#050505]">
+             <NetworkOpsCenter isRunning={simRunning} onToggle={() => setSimRunning(!simRunning)} data={liveData} logs={simLogs} />
+          </div>
+        )}
+        
+        {/* OUTPUT TAB */}
+        <div className={`absolute inset-0 z-40 bg-black transition-transform duration-500 ease-in-out ${tab === 'output' ? 'translate-x-0' : 'translate-x-full'}`}>
+           <ScaledPreview scenes={liveState.scenes} visible={true} globalData={liveData} assets={assets} />
+           <button onClick={() => setTab('controls')} className="absolute top-6 right-6 bg-slate-800/80 backdrop-blur-md hover:bg-slate-700 text-white px-5 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest border border-slate-600 shadow-2xl transition-all active:scale-95">Close Output Feed</button>
+        </div>
+
+        {/* DESIGN TAB */}
+        {tab === 'design' && (
+           <div className="absolute inset-0 z-30 bg-zinc-950 flex overflow-hidden">
+              <div className="w-80 bg-zinc-900 border-r border-zinc-800 flex flex-col p-3 gap-3 shrink-0">
+                 <SurfacePrimary className="p-3 transition-all duration-200 ease-in-out">
+                    <div className="flex items-start justify-between">
+                       <div>
+                         <h2 className="text-white text-xl font-black tracking-tight">STAGE PRO</h2>
+                         <p className="text-[10px] text-zinc-500 font-semibold tracking-[0.2em]">STUDIO EDITOR</p>
+                       </div>
+                       <div className="flex items-center gap-1">
+                          <button className="w-8 h-8 rounded-lg border border-zinc-700 bg-zinc-950 text-zinc-400 hover:text-white hover:border-blue-500/40 hover:shadow-[0_0_18px_rgba(59,130,246,0.25)] transition-all duration-200 ease-in-out flex items-center justify-center"><Undo2 className="w-4 h-4"/></button>
+                          <button className="w-8 h-8 rounded-lg border border-zinc-700 bg-zinc-950 text-zinc-400 hover:text-white hover:border-blue-500/40 hover:shadow-[0_0_18px_rgba(59,130,246,0.25)] transition-all duration-200 ease-in-out flex items-center justify-center"><Redo2 className="w-4 h-4"/></button>
+                       </div>
+                    </div>
+                 </SurfacePrimary>
+
+                 <SurfaceSecondary className="p-2 transition-all duration-200 ease-in-out">
+                    <div className="grid grid-cols-4 gap-1">
+                      {[
+                        { label: 'TEXT', icon: 'T', onClick: handleAddTextLayer },
+                        { label: 'SHAPE', icon: '☆', onClick: () => {} },
+                        { label: 'FIGMA', icon: '∞', onClick: () => {} },
+                        { label: 'RIVE', icon: '▶', onClick: () => {} }
+                      ].map(btn => (
+                        <button key={btn.label} onClick={btn.onClick} className="aspect-square rounded-lg border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 hover:border-blue-500/40 text-zinc-300 hover:text-white transition-all duration-200 ease-in-out flex flex-col items-center justify-center text-[9px] font-bold tracking-wide">
+                          <span className="text-sm">{safeString(btn.icon)}</span>
+                          <span>{safeString(btn.label)}</span>
+                        </button>
+                      ))}
+                    </div>
+                 </SurfaceSecondary>
+
+                 <SurfaceSecondary className="p-1 transition-all duration-200 ease-in-out rounded-full">
+                    <div className="grid grid-cols-2 gap-1 text-[10px] font-black tracking-widest">
+                      <button onClick={() => setDesignInteractionMode('select')} className={`h-8 rounded-full transition-all duration-200 ease-in-out ${designInteractionMode === 'select' ? 'bg-blue-600 text-white shadow-[0_0_18px_rgba(59,130,246,0.35)]' : 'text-zinc-400 hover:text-white'}`}>SELECT</button>
+                      <button onClick={() => setDesignInteractionMode('pan')} className={`h-8 rounded-full transition-all duration-200 ease-in-out ${designInteractionMode === 'pan' ? 'bg-blue-600 text-white shadow-[0_0_18px_rgba(59,130,246,0.35)]' : 'text-zinc-400 hover:text-white'}`}>PAN</button>
+                    </div>
+                 </SurfaceSecondary>
+
+                 <SurfacePrimary className="p-1 transition-all duration-200 ease-in-out">
+                    <div className="grid grid-cols-2 gap-1 text-[10px] font-black tracking-widest">
+                      <button onClick={() => setDesignSidebarTab('layers')} className={`h-9 rounded-lg transition-all duration-200 ease-in-out ${designSidebarTab === 'layers' ? 'bg-blue-600 text-white shadow-[0_0_18px_rgba(59,130,246,0.35)]' : 'text-zinc-400 hover:text-white'}`}>LAYERS</button>
+                      <button onClick={() => setDesignSidebarTab('assets')} className={`h-9 rounded-lg transition-all duration-200 ease-in-out ${designSidebarTab === 'assets' ? 'bg-blue-600 text-white shadow-[0_0_18px_rgba(59,130,246,0.35)]' : 'text-zinc-400 hover:text-white'}`}>ASSETS</button>
+                    </div>
+                 </SurfacePrimary>
+
+                 <div className="flex-1 min-h-0">
+                    {designSidebarTab === 'layers' ? (
+                      <SurfaceSecondary className="h-full p-2 overflow-y-auto">
+                         <div className="space-y-1">
+                           {designerState.layers.map(layer => (
+                             <div key={layer.id} draggable onDragStart={() => setDragLayerOrderId(layer.id)} onDragOver={(e) => e.preventDefault()} onDrop={() => reorderLayers(dragLayerOrderId, layer.id)} onClick={() => setSelectedLayerId(layer.id)} className={`group p-2 rounded-lg border transition-all duration-200 ease-in-out cursor-pointer ${selectedLayerId === layer.id ? 'border-blue-500 bg-blue-500/10' : 'border-zinc-800 bg-zinc-900 hover:border-zinc-600'}`}>
+                               <div className="flex items-center justify-between gap-2">
+                                 <span className="text-xs font-bold tracking-wider text-zinc-200 truncate">{safeString(layer.name || (layer.type === 'image' ? 'Image Layer' : layer.text), 'Layer')}</span>
+                                 <span className="text-[10px] font-mono text-zinc-500">{safeString(layer.id)}</span>
+                               </div>
+                             </div>
+                           ))}
+                           {designerState.layers.length === 0 && <div className="text-[11px] text-zinc-500 p-4 text-center">No layers yet.</div>}
+                         </div>
+                      </SurfaceSecondary>
+                    ) : (
+                      <SurfaceSecondary className="h-full p-2 overflow-y-auto">
+                        <div className="text-[10px] font-black tracking-[0.2em] text-zinc-500 uppercase mb-2">Explorer Tree</div>
+                        <div className="space-y-1 mb-3">
+                          <button onClick={() => setDesignAssetsFolderId('root')} className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs font-bold transition-all ${effectiveDesignFolderId === 'root' ? 'bg-blue-600/20 text-blue-300' : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'}`}><Database className="w-3.5 h-3.5"/><span>Home</span></button>
+                          {designTreeFolders.map(f => (
+                            <div key={f.id} className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs font-bold transition-all group ${effectiveDesignFolderId === f.id ? 'bg-blue-600/20 text-blue-300' : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'}`}>
+                              <button onClick={() => setDesignAssetsFolderId(f.id)} className="flex-1 min-w-0 flex items-center gap-2 text-left"><Folder className="w-3.5 h-3.5"/><span className="truncate">{safeString(f.name)}</span></button>
+                              <button onClick={(e) => { e.stopPropagation(); deleteFolderAction(f.id); }} className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-600/20 text-red-400 transition-all"><Trash2 className="w-3 h-3"/></button>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="border-t border-zinc-800 pt-2">
+                          <div className="text-[10px] font-black tracking-[0.2em] text-zinc-500 uppercase mb-2">Folder Contents</div>
+                          {designFolderChildren.length === 0 && designFolderAssets.length === 0 ? (
+                            <div className="text-[10px] text-zinc-500 text-center py-6 uppercase tracking-widest">Empty Folder</div>
+                          ) : (
+                            <div className="space-y-2">
+                              {designFolderChildren.map(f => (
+                                <div key={f.id} className="w-full flex items-center gap-2 p-2 rounded border border-zinc-800 bg-zinc-900 hover:border-zinc-700 transition-all group">
+                                  <button onClick={() => setDesignAssetsFolderId(f.id)} className="flex-1 min-w-0 flex items-center gap-2 text-left">
+                                    <Folder className="w-4 h-4 text-blue-300"/><span className="text-xs font-bold text-zinc-200 truncate">{safeString(f.name)}</span>
+                                  </button>
+                                  <button onClick={(e) => { e.stopPropagation(); deleteFolderAction(f.id); }} className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-600/20 text-red-400 transition-all"><Trash2 className="w-3 h-3"/></button>
+                                </div>
+                              ))}
+                              <div className="grid grid-cols-3 gap-2">
+                                {designFolderAssets.map(asset => (
+                                  <button key={asset.id} draggable onDragStart={() => setDragAssetId(asset.id)} onClick={() => setSelectedAssetId(asset.id)} className="aspect-square rounded-lg overflow-hidden border border-zinc-700 hover:border-blue-500/40 transition-all duration-200 ease-in-out bg-zinc-900">
+                                     <img src={asset.url} alt={safeString(asset.name, 'asset')} className="w-full h-full object-cover"/>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </SurfaceSecondary>
+                    )}
+                 </div>
+              </div>
+
+              <div className="flex-1 flex items-center justify-center bg-zinc-950/80 min-w-0 overflow-hidden" onWheel={handleViewportWheel} onMouseMove={handleViewportMouseMove} onMouseUp={handleViewportMouseUp} onMouseLeave={handleViewportMouseUp}>
+                 <div className={`absolute top-4 right-4 z-10 text-[11px] font-mono text-zinc-300 bg-zinc-900/80 border border-zinc-700 px-3 py-1.5 rounded-lg transition-all duration-200 ease-in-out`}>{safeString(designerState.width)}×{safeString(designerState.height)} | {safeString(Math.round(viewportZoom * 100))}%</div>
+                 <div className={`transition-all duration-200 ease-in-out ${designInteractionMode === 'pan' ? 'cursor-grab' : 'cursor-default'} ${isViewportPanning ? 'cursor-grabbing' : ''}`} style={{ transform: `translate(${viewportPan.x}px, ${viewportPan.y}px) scale(${viewportZoom})` }} onMouseDown={handleViewportMouseDown} onDragOver={(e) => e.preventDefault()} onDrop={handleStageDrop}>
+                    <div className="relative shadow-[0_30px_80px_rgba(0,0,0,0.6)] border border-zinc-700 bg-black/70 flex items-center justify-center overflow-hidden" style={{ aspectRatio: `${designerState.width} / ${designerState.height}`, width: designerState.width >= designerState.height ? 'min(72vw, 1100px)' : 'min(48vw, 700px)' }}>
+                      <svg viewBox={`0 0 ${designerState.width} ${designerState.height}`} className="w-full h-full max-w-full max-h-full" preserveAspectRatio="xMidYMid meet" onMouseMove={handleSvgMouseMove} onMouseUp={handleSvgMouseUp} onMouseLeave={handleSvgMouseUp} onClick={handleSvgClick}>
+                        {designerState.bgColor && designerState.bgColor !== 'transparent' && (<rect width={designerState.width} height={designerState.height} fill={designerState.bgColor} />)}
+                        {designerState.bgImage && <image href={designerState.bgImage} width={designerState.width} height={designerState.height} preserveAspectRatio={`xMidYMid ${designerState.bgFit || 'slice'}`} />}
+                        {designerState.layers.map(l => {
+                          const rotation = Number(l.rotation) || 0;
+                          if (l.type === 'image') {
+                            const cx = (Number(l.x) || 0) + (Number(l.width) || 0) / 2;
+                            const cy = (Number(l.y) || 0) + (Number(l.height) || 0) / 2;
+                            return (
+                              <image
+                                key={l.id}
+                                x={l.x}
+                                y={l.y}
+                                width={l.width}
+                                height={l.height}
+                                href={l.url}
+                                preserveAspectRatio="none"
+                                transform={rotation ? `rotate(${rotation} ${cx} ${cy})` : undefined}
+                                onMouseDown={(e) => designInteractionMode === 'select' && handleTextMouseDown(e, l)}
+                              />
+                            );
+                          }
+                          const text = l.dataPath ? safeString(resolvePath(liveData, l.dataPath), l.text) : safeString(l.text);
+                          return (
+                            <text key={l.id} x={l.x} y={l.y} fill={l.color} fontSize={l.fontSize} fontWeight={l.fontWeight || 'bold'} textAnchor={textAnchorFromAlign(l.textAlign)} dominantBaseline="hanging" transform={rotation ? `rotate(${rotation} ${Number(l.x) || 0} ${Number(l.y) || 0})` : undefined} onMouseDown={(e) => designInteractionMode === 'select' && handleTextMouseDown(e, l)} style={{ cursor: designInteractionMode === 'select' ? 'move' : 'default', textShadow: '2px 2px 8px rgba(0,0,0,0.5)' }}>{safeString(text)}</text>
+                          );
+                        })}
+                        {selectedLayerBounds && (
+                          <g pointerEvents="none">
+                            <rect x={selectedLayerBounds.x} y={selectedLayerBounds.y} width={selectedLayerBounds.width} height={selectedLayerBounds.height} fill="none" stroke="#3b82f6" strokeWidth="2" />
+                            {[
+                              [selectedLayerBounds.x, selectedLayerBounds.y],
+                              [selectedLayerBounds.x + selectedLayerBounds.width, selectedLayerBounds.y],
+                              [selectedLayerBounds.x, selectedLayerBounds.y + selectedLayerBounds.height],
+                              [selectedLayerBounds.x + selectedLayerBounds.width, selectedLayerBounds.y + selectedLayerBounds.height]
+                            ].map((pt, idx) => <rect key={idx} x={pt[0]-4} y={pt[1]-4} width="8" height="8" fill="#3b82f6" />)}
+                          </g>
+                        )}
+                      </svg>
+                    </div>
+                 </div>
+              </div>
+
+              <div className="w-80 bg-zinc-900 border-l border-zinc-800 p-3 shrink-0 overflow-y-auto transition-all duration-200 ease-in-out">
+                <SurfacePrimary className="p-4">
+                  <div className="text-white text-xs font-black tracking-[0.2em] mb-3">INSPECTOR</div>
+                  {!selectedLayerId ? (
+                    <div className="space-y-3">
+                      <InspectorInput label="Composition Name" value={designerState.name} onChange={e => setDesignerState(prev => ({...prev, name: e.target.value}))} />
+                      <div className="bg-zinc-950 rounded-lg p-3 border border-zinc-800">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-2">Canvas Size</label>
+                        <select className="w-full bg-zinc-900 text-white text-xs p-2 rounded border border-zinc-700 outline-none" value={`${designerState.width}x${designerState.height}`} onChange={e => { const [w, h] = e.target.value.split('x').map(Number); setDesignerState(prev => ({ ...prev, width: w, height: h })); }}>
+                          <option value="1920x1080">16:9 (1920x1080)</option>
+                          <option value="1080x1920">9:16 (1080x1920)</option>
+                          <option value="1080x1080">1:1 (1080x1080)</option>
+                          <option value="1080x1350">4:5 (1080x1350)</option>
+                        </select>
+                      </div>
+                      <div className="bg-zinc-950 rounded-lg p-3 border border-zinc-800">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-2">Background Fit</label>
+                        <select className="w-full bg-zinc-900 text-white text-xs p-2 rounded border border-zinc-700 outline-none" value={designerState.bgFit || 'slice'} onChange={e => setDesignerState(prev => ({...prev, bgFit: e.target.value}))}>
+                          <option value="slice">Fill Comp (Slice)</option>
+                          <option value="meet">Fit Comp (Meet)</option>
+                        </select>
+                      </div>
+                      <div className="bg-zinc-950 rounded-lg p-3 border border-zinc-800">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-2">Background Color</label>
+                        <input type="color" className="w-full h-8 bg-transparent cursor-pointer" value={designerState.bgColor || '#000000'} onChange={e => setDesignerState(prev => ({...prev, bgColor: e.target.value}))}/>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {(() => {
+                        const l = designerState.layers.find(ly => ly.id === selectedLayerId);
+                        if (!l) return null;
+                        const isText = !l.type || l.type === 'text';
+                        return (
+                          <>
+                            {isText ? (
+                              <>
+                                <InspectorInput label="Text" value={l.text} onChange={e => updateSelectedLayer({ text: e.target.value })} />
+                                <InspectorInput label="Font Size" type="number" value={l.fontSize} onChange={e => updateSelectedLayer({ fontSize: Number(e.target.value) })} />
+                                <InspectorInput label="Color" type="color" value={l.color} onChange={e => updateSelectedLayer({ color: e.target.value })} />
+                                <div className="bg-zinc-950 rounded-lg p-3 border border-zinc-800">
+                                  <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-2">Text Justify</label>
+                                  <div className="grid grid-cols-3 gap-2">
+                                    {[
+                                      { id: 'left', label: 'Left' },
+                                      { id: 'center', label: 'Center' },
+                                      { id: 'right', label: 'Right' }
+                                    ].map(opt => (
+                                      <button key={opt.id} onClick={() => updateSelectedLayer({ textAlign: opt.id })} className={`h-8 rounded border text-[10px] font-black tracking-wide ${safeString(l.textAlign, 'left') === opt.id ? 'bg-blue-600 border-blue-500 text-white' : 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white'}`}>{opt.label}</button>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div className="bg-zinc-950 rounded-lg p-3 border border-zinc-800">
+                                  <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-2">Data Bind</label>
+                                  <select className="w-full bg-zinc-900 text-white text-xs p-2 rounded border border-zinc-700 outline-none font-mono" value={l.dataPath || ''} onChange={e => updateSelectedLayer({ dataPath: e.target.value })}>
+                                    <option value="">-- UNBOUND --</option>
+                                    {getObjectPaths(liveData).map(path => <option key={path} value={path}>{path}</option>)}
+                                  </select>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <InspectorInput label="Width" type="number" value={l.width} onChange={e => updateSelectedLayer({ width: Number(e.target.value) })} />
+                                <InspectorInput label="Height" type="number" value={l.height} onChange={e => updateSelectedLayer({ height: Number(e.target.value) })} />
+                              </>
+                            )}
+                            <div className="grid grid-cols-2 gap-2">
+                              <InspectorInput label="X" type="number" value={l.x} onChange={e => updateSelectedLayer({ x: Number(e.target.value) })} />
+                              <InspectorInput label="Y" type="number" value={l.y} onChange={e => updateSelectedLayer({ y: Number(e.target.value) })} />
+                            </div>
+                            <InspectorInput label="Rotation" type="number" value={Number(l.rotation) || 0} onChange={e => updateSelectedLayer({ rotation: Number(e.target.value) || 0 })} />
+                            <button onClick={() => { setDesignerState(p => ({ ...p, layers: p.layers.filter(ly => ly.id !== l.id) })); setSelectedLayerId(null); }} className="w-full py-2 bg-red-900/20 text-red-500 border border-red-900/50 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-red-900/40 transition-all duration-200 ease-in-out">Delete Layer</button>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </SurfacePrimary>
+                <div className="grid grid-cols-2 gap-2 mt-3">
+                  <button onClick={handleSaveTemplate} className="h-10 rounded-lg bg-zinc-800 text-white text-[10px] font-black tracking-widest hover:bg-zinc-700 transition-all duration-200 ease-in-out">SAVE</button>
+                  <button onClick={handleExportImage} className="h-10 rounded-lg bg-blue-600 text-white text-[10px] font-black tracking-widest hover:bg-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)] transition-all duration-200 ease-in-out">EXPORT</button>
+                </div>
+              </div>
+           </div>
+        )}
+
+        {/* CONTROLS TAB (RenderLess GFX Operator Dashboard) */}
+        <div className={`w-full h-full ${tab === 'controls' ? '' : 'hidden'}`} ref={controlsWorkspaceRef}>
+          <div className="h-full p-3 bg-zinc-950 overflow-hidden">
+            <div className="h-full grid grid-cols-[25%_45%_30%] gap-3">
+              <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 flex flex-col min-h-0 overflow-hidden">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-[10px] tracking-[0.2em] uppercase text-zinc-500 font-black">Rundown + Template Bin</div>
+                  <span className="text-[10px] font-mono text-zinc-400">{gfxRundown.length.toString().padStart(2, '0')} ITEMS</span>
+                </div>
+
+                <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-black mb-2">Template Bin</div>
+                <div className="space-y-1.5 pb-3 border-b border-zinc-800 overflow-y-auto">
+                  {controllerTemplateBin.map(item => {
+                    const Icon = item.icon;
+                    return (
+                      <div
+                        key={item.id}
+                        draggable
+                        onDragStart={() => setDragTemplateId(item.id)}
+                        onClick={() => loadGfxTemplate(item.id)}
+                        className="w-full h-10 px-3 rounded-lg border border-zinc-700 bg-zinc-950 text-left flex items-center gap-2 hover:border-white/40 cursor-pointer"
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') loadGfxTemplate(item.id); }}
+                      >
+                        <Icon className="w-4 h-4 text-zinc-400" />
+                        <span className="text-sm font-semibold text-zinc-100 flex-1">{item.label}</span>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); openTemplateInDesign(item.id); }} className="text-zinc-400 hover:text-white" title="Open in Design"><Edit3 className="w-3.5 h-3.5" /></button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-3 mb-2 text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-black">Rundown</div>
+                <div
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => {
+                    if (!dragTemplateId) return;
+                    addTemplateToRundown(dragTemplateId);
+                    setDragTemplateId(null);
+                  }}
+                  className="flex-1 min-h-0 rounded-lg border border-dashed border-zinc-700 p-2 overflow-y-auto space-y-1"
+                >
+                  {gfxRundown.map((id, idx) => {
+                    const item = controllerTemplateBin.find(row => row.id === id);
+                    if (!item) return null;
+                    const Icon = item.icon;
+                    return (
+                      <div key={`${id}-${idx}`} className="h-10 px-2 rounded border border-zinc-700 bg-zinc-950 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[10px] font-mono text-zinc-500">{String(idx + 1).padStart(2, '0')}</span>
+                          <Icon className="w-3.5 h-3.5 text-zinc-400" />
+                          <button onClick={() => loadGfxTemplate(item.id)} className="text-sm font-semibold text-zinc-200 truncate hover:text-white">{item.label}</button>
+                          <button type="button" onClick={() => openTemplateInDesign(item.id)} className="text-zinc-500 hover:text-white" title="Edit in Design"><Edit3 className="w-3.5 h-3.5" /></button>
+                        </div>
+                        <button onClick={() => setGfxRundown(prev => prev.filter((_, i) => i !== idx))} className="text-zinc-500 hover:text-white"><X className="w-3.5 h-3.5" /></button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 flex flex-col min-h-0 overflow-hidden">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[11px] tracking-[0.2em] uppercase text-zinc-500 font-black">GFX Preview + Program</div>
+                  <div className={`px-3 h-7 rounded-full border text-[10px] font-black tracking-widest flex items-center ${simRunning ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-300' : 'bg-red-500/10 border-red-400/40 text-red-300'}`}>
+                    {simRunning ? '🟢 LIVE DATA CONNECTED' : '🔴 MANUAL OVERRIDE'}
+                  </div>
+                </div>
+
+                <div className="flex-1 min-h-0 flex flex-col gap-2">
+                  <div className="flex-1 min-h-0 rounded-xl border border-zinc-800 p-2 bg-zinc-950/60">
+                    <div className="text-[10px] font-black tracking-[0.2em] text-zinc-400 mb-1">PREVIEW</div>
+                    <FixedAspectFrame className="relative rounded-lg overflow-hidden border border-zinc-700 bg-[linear-gradient(45deg,#111827_25%,transparent_25%,transparent_75%,#111827_75%,#111827),linear-gradient(45deg,#111827_25%,transparent_25%,transparent_75%,#111827_75%,#111827)] bg-[size:24px_24px] bg-[position:0_0,12px_12px]">
+                      <div className="absolute inset-0"><ScaledPreview scenes={localScenes} mode="pst" globalData={liveData} assets={assets} overlay={liveState.overlay} /></div>
+                    </FixedAspectFrame>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 py-1">
+                    <button onClick={handleTake} className="h-14 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-lg font-black tracking-[0.2em] shadow-[0_0_24px_rgba(37,99,235,0.45)]">TAKE</button>
+                    <button onClick={handleOut} className="h-14 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-lg font-black tracking-[0.2em] border border-zinc-600">CLEAR</button>
+                  </div>
+
+                  <div className="flex-1 min-h-0 rounded-xl border border-zinc-800 p-2 bg-zinc-950/60">
+                    <div className="text-[10px] font-black tracking-[0.2em] text-zinc-400 mb-1">PROGRAM</div>
+                    <FixedAspectFrame className="relative rounded-lg overflow-hidden border border-zinc-700 bg-black">
+                      <div className="absolute inset-0"><ScaledPreview scenes={liveState.scenes} globalData={liveData} assets={assets} overlay={liveState.overlay} /></div>
+                    </FixedAspectFrame>
+                  </div>
+                </div>
+              </section>
+
+              <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 flex flex-col min-h-0 overflow-hidden">
+                <div className="text-[10px] tracking-[0.2em] uppercase text-zinc-500 font-black mb-2">Live Data + Story Control</div>
+                <div className="text-xs text-zinc-400 mb-3">Current template: <span className="font-mono text-zinc-200">{safeString(localScenes[activeSceneId]?.template, 'none')}</span></div>
+
+                <div className="space-y-2 overflow-y-auto">
+                  {safeString(localScenes[activeSceneId]?.template) === 'matchup' && (
+                    <>
+                      <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-black">Header</label>
+                      <input value={safeString(localScenes[activeSceneId]?.matchupTitle, '')} onChange={e => setLocalActiveScene({ matchupTitle: e.target.value })} className="w-full h-10 rounded-lg px-3 bg-zinc-950 border border-zinc-700 text-zinc-100" placeholder="KEY MATCHUP" />
+                      <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-black">Subheader</label>
+                      <input value={safeString(localScenes[activeSceneId]?.vsText, '')} onChange={e => setLocalActiveScene({ vsText: e.target.value })} className="w-full h-10 rounded-lg px-3 bg-zinc-950 border border-zinc-700 text-zinc-100" placeholder="Team vs Team" />
+                    </>
+                  )}
+
+                  {safeString(localScenes[activeSceneId]?.template) === 'player_stats' && (
+                    <>
+                      <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-black">Header</label>
+                      <input value={safeString(localScenes[activeSceneId]?.name, '')} onChange={e => setLocalActiveScene({ name: e.target.value })} className="w-full h-10 rounded-lg px-3 bg-zinc-950 border border-zinc-700 text-zinc-100" placeholder="Player Name" />
+                      <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-black">Subheader</label>
+                      <input value={safeString(localScenes[activeSceneId]?.team, '')} onChange={e => setLocalActiveScene({ team: e.target.value })} className="w-full h-10 rounded-lg px-3 bg-zinc-950 border border-zinc-700 text-zinc-100" placeholder="Team" />
+                    </>
+                  )}
+
+                  {selectedTemplateBindings.length > 0 && (
+                    <div className="pt-3 border-t border-zinc-800 mt-2 space-y-2">
+                      <div className="text-[10px] text-zinc-500 uppercase tracking-widest font-black">Bound Data Quick Overrides</div>
+                      {selectedTemplateBindings.map(layer => (
+                        <div key={layer.id}>
+                          <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-black">{safeString(layer.dataPath)}</label>
+                          <input
+                            value={safeString(resolvePath(localScenes[activeSceneId]?.customTemplateOverrides || {}, layer.dataPath), '')}
+                            onChange={e => setLocalActiveScene(prev => ({
+                              customTemplateOverrides: {
+                                ...(prev.customTemplateOverrides || {}),
+                                ...layer.dataPath.split('.').reverse().reduce((acc, key, idx, arr) => idx === 0 ? { [key]: e.target.value } : { [key]: acc }, {})
+                              }
+                            }))}
+                            className="w-full h-10 rounded-lg px-3 bg-zinc-950 border border-zinc-700 text-zinc-100"
+                            placeholder={`Override ${safeString(layer.dataPath)}`}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="pt-3 border-t border-zinc-800 mt-2">
+                    <div className="text-[10px] text-zinc-500 uppercase tracking-widest font-black mb-2">Game State Overrides</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button onClick={() => setLocalActiveScene(prev => ({ homeScore: (Number(prev.homeScore) || 0) + 1 }))} className="h-14 rounded-xl bg-zinc-800 border border-zinc-700 text-zinc-100 text-sm font-black">HOME +1</button>
+                      <button onClick={() => setLocalActiveScene(prev => ({ awayScore: (Number(prev.awayScore) || 0) + 1 }))} className="h-14 rounded-xl bg-zinc-800 border border-zinc-700 text-zinc-100 text-sm font-black">AWAY +1</button>
+                      <button onClick={() => setLocalActiveScene({ balls: 0, strikes: 0, outs: 0 })} className="h-14 rounded-xl bg-zinc-800 border border-zinc-700 text-zinc-100 text-sm font-black">RESET COUNT</button>
+                      <button onClick={() => setLocalActiveScene({ inning: 1, inningTop: true })} className="h-14 rounded-xl bg-zinc-800 border border-zinc-700 text-zinc-100 text-sm font-black">RESET INNING</button>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-zinc-800">
+                    <div className="text-[10px] text-zinc-500 uppercase tracking-widest font-black mb-2">Live Data Snapshot</div>
+                    <div className="rounded-lg border border-zinc-700 bg-zinc-950 p-3 font-mono text-xs text-zinc-300 space-y-1">
+                      <div>HOME: {safeString(liveData?.mlb?.scoreboard?.homeName, 'HOME')} {safeString(liveData?.mlb?.scoreboard?.homeScore, 0)}</div>
+                      <div>AWAY: {safeString(liveData?.mlb?.scoreboard?.awayName, 'AWAY')} {safeString(liveData?.mlb?.scoreboard?.awayScore, 0)}</div>
+                      <div>INNING: {safeString(liveData?.mlb?.scoreboard?.inning, '1st')} ({safeString(liveData?.mlb?.scoreboard?.state, 'Top')})</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
