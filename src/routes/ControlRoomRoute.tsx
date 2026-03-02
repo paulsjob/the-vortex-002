@@ -20,6 +20,7 @@ const durationChoices = [150, 300, 500, 1000];
 const QUICK_LAUNCH_DEFAULT_COUNT = 4;
 const COLLAPSED_LAUNCHER_GRID_ROWS = '1fr';
 const EXPANDED_LAUNCHER_GRID_ROWS = 'repeat(2, minmax(0, 1fr))';
+const PANEL_STATUS_BADGE_CLASS = 'rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em]';
 
 export function ControlRoomRoute() {
   const templateStore = useTemplateStore();
@@ -221,6 +222,42 @@ export function ControlRoomRoute() {
 
   const launcherGridRows = (expanded: boolean) => (expanded ? EXPANDED_LAUNCHER_GRID_ROWS : COLLAPSED_LAUNCHER_GRID_ROWS);
 
+  const renderViewportPanel = (options: {
+    title: 'PREVIEW' | 'PROGRAM';
+    titleClassName: string;
+    template: typeof previewTemplate;
+    sponsor: string | null;
+    tone: 'preview' | 'program';
+    lockLabel: 'EDITABLE' | 'LOCKED';
+    blackout?: boolean;
+  }) => (
+    <div className="min-h-0 min-w-0">
+      <div className="flex min-h-0 min-w-0 flex-col gap-2">
+        <div className="flex h-6 items-center justify-between gap-2 px-0.5">
+          <h4 className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${options.titleClassName}`}>{options.title}</h4>
+          <div className="flex min-w-0 items-center justify-end gap-1.5">
+            <div className={`${PANEL_STATUS_BADGE_CLASS} ${engineRunning ? 'border-emerald-600 bg-emerald-900/30 text-emerald-300' : 'border-amber-600 bg-amber-900/30 text-amber-300'}`}>
+              Data Engine {engineRunning ? 'Live' : 'Paused'}
+            </div>
+            <div className={`${PANEL_STATUS_BADGE_CLASS} ${options.tone === 'program' ? 'border-red-500 bg-red-900/60 text-red-100' : 'border-blue-500 bg-blue-900/45 text-blue-100'}`}>
+              {options.lockLabel}
+            </div>
+          </div>
+        </div>
+        <div className="relative w-full aspect-video overflow-hidden rounded-md border border-slate-700 bg-slate-900">
+          {options.blackout && (
+            <div className="pointer-events-none absolute inset-0 z-10 border border-slate-800 bg-black/95 text-center text-sm font-semibold uppercase tracking-[0.25em] text-white">
+              <div className="flex h-full items-center justify-center">Blackout</div>
+            </div>
+          )}
+          <div className="h-full w-full p-3">
+            <TemplatePreview template={options.template} sponsor={options.sponsor} tone={options.tone} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-4">
       <div>
@@ -270,19 +307,14 @@ export function ControlRoomRoute() {
             <div className="shrink-0">
               <div className="grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_minmax(220px,260px)_minmax(0,1fr)] gap-3 items-stretch">
                 <div className="min-h-0 min-w-0">
-                  <div className="relative w-full aspect-video overflow-hidden rounded-md border border-slate-700 bg-slate-900">
-                    <div className="pointer-events-none absolute left-3 right-3 top-2 z-20 flex items-center justify-between">
-                      <h4 className="text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-200">PREVIEW</h4>
-                      <div className={`rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] ${engineRunning ? 'border-emerald-600 bg-emerald-900/30 text-emerald-300' : 'border-amber-600 bg-amber-900/30 text-amber-300'}`}>
-                        Data Engine {engineRunning ? 'Live' : 'Paused'}
-                      </div>
-                    </div>
-                    <div className="absolute inset-0 z-0 p-3 pt-8">
-                      <div className="h-full w-full">
-                        <TemplatePreview template={previewTemplate} sponsor={previewSponsor} tone="preview" />
-                      </div>
-                    </div>
-                  </div>
+                  {renderViewportPanel({
+                    title: 'PREVIEW',
+                    titleClassName: 'text-blue-200',
+                    template: previewTemplate,
+                    sponsor: previewSponsor,
+                    tone: 'preview',
+                    lockLabel: 'EDITABLE',
+                  })}
                 </div>
 
                 <div className="flex min-h-0 min-w-0 flex-col rounded-md border border-slate-700 bg-slate-900 p-3">
@@ -357,24 +389,15 @@ export function ControlRoomRoute() {
                 </div>
 
                 <div className="min-h-0 min-w-0">
-                  <div className="relative w-full aspect-video overflow-hidden rounded-md border border-slate-700 bg-slate-900">
-                    <div className="pointer-events-none absolute left-3 right-3 top-2 z-20 flex items-center justify-between">
-                      <h4 className="text-[10px] font-semibold uppercase tracking-[0.18em] text-red-300">PROGRAM</h4>
-                      <div className={`rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] ${engineRunning ? 'border-emerald-600 bg-emerald-900/30 text-emerald-300' : 'border-amber-600 bg-amber-900/30 text-amber-300'}`}>
-                        Data Engine {engineRunning ? 'Live' : 'Paused'}
-                      </div>
-                    </div>
-                    <div className="absolute inset-0 z-0 overflow-hidden p-3 pt-8">
-                      {blackoutActive && (
-                        <div className="pointer-events-none absolute inset-0 z-10 rounded-md border border-slate-800 bg-black/95 text-center text-sm font-semibold uppercase tracking-[0.25em] text-white">
-                          <div className="flex h-full items-center justify-center">Blackout</div>
-                        </div>
-                      )}
-                      <div className="h-full w-full">
-                        <TemplatePreview template={programTemplate} sponsor={programSponsor} tone="program" />
-                      </div>
-                    </div>
-                  </div>
+                  {renderViewportPanel({
+                    title: 'PROGRAM',
+                    titleClassName: 'text-red-300',
+                    template: programTemplate,
+                    sponsor: programSponsor,
+                    tone: 'program',
+                    lockLabel: 'LOCKED',
+                    blackout: blackoutActive,
+                  })}
                 </div>
               </div>
             </div>

@@ -38,7 +38,7 @@ export function TemplatePreview({ template, sponsor, tone = 'preview' }: Props) 
         <div className="flex min-h-0 flex-1 items-start justify-start">
           <div className="relative w-full max-w-full">
             <div
-              className={`relative aspect-video h-auto w-full max-h-full max-w-full overflow-hidden rounded-lg border bg-slate-950 ${isProgram ? 'border-red-600/70' : (sponsorStyle?.accentBorderClass ?? 'border-slate-700')}`}
+              className={`relative aspect-video h-auto w-full max-h-full max-w-full rounded-lg border bg-slate-950 ${isProgram ? 'border-red-600/70' : (sponsorStyle?.accentBorderClass ?? 'border-slate-700')}`}
             >
               <div className="absolute inset-0 bg-[linear-gradient(45deg,#0f172a_25%,#111827_25%,#111827_50%,#0f172a_50%,#0f172a_75%,#111827_75%,#111827_100%)] bg-[length:18px_18px] opacity-70" />
               {!isProgram && sponsorStyle && <div className={`absolute inset-0 bg-gradient-to-br ${sponsorStyle.accentFillClass} opacity-55`} />}
@@ -52,9 +52,6 @@ export function TemplatePreview({ template, sponsor, tone = 'preview' }: Props) 
                     </div>
                   )}
                 </div>
-              </div>
-              <div className={`absolute right-1.5 top-1.5 rounded border px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.12em] ${isProgram ? 'border-red-500 bg-red-900/60 text-red-100' : 'border-blue-500 bg-blue-900/45 text-blue-100'}`}>
-                {isProgram ? 'LOCKED' : 'EDITABLE'}
               </div>
               {sponsor ? (
                 <div className="absolute left-1.5 top-1.5 rounded border border-slate-200/35 bg-slate-900/70 px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.16em] text-slate-100">
