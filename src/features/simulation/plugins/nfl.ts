@@ -43,10 +43,11 @@ export const nflSimulator: SimulatorPlugin = {
       possession: 'away',
       lastEvent: 'Kickoff returned to BUF 23.',
       keyStats: [],
-      lastPlay: { summary: 'Kickoff returned to BUF 23.', tags: ['special-teams'] },
+      lastPlay: { type: 'kickoff', description: 'Kickoff returned to BUF 23.', down: 1, distance: 10, yards: 0 },
       down: 1,
       distance: 10,
       yardLine: 'BUF 23',
+      ballOn: 23,
       driveNumber: 1,
       playClock: 40,
       possessionTeam: 'BUF',
@@ -68,11 +69,12 @@ export const nflSimulator: SimulatorPlugin = {
     game.keyStats = buildKeyStats(game);
     return game;
   },
-  step: (previous, ctx) => {
+  step: (previous, ctx, _history) => {
     const game = structuredClone(previous) as NflGameState;
     game.clockSeconds = Math.max(0, game.clockSeconds - ctx.randomInt(18, 38));
     game.playClock = ctx.randomInt(18, 40);
     const offense = game.possession ?? 'home';
+    const previousBallOn = game.ballOn;
 
     game.possessionTeam = offense === 'home' ? game.homeTeam : game.awayTeam;
     game.passerName = passers[ctx.randomInt(0, passers.length - 1)];
@@ -81,7 +83,7 @@ export const nflSimulator: SimulatorPlugin = {
 
     const roll = ctx.random();
     let summary = '';
-    let tags: string[] = [];
+    let playTypeLabel = "drive-continue";
     let yards = 0;
     let firstDown = false;
 
@@ -90,7 +92,7 @@ export const nflSimulator: SimulatorPlugin = {
       game.turnoverCount += 1;
       yards = -ctx.randomInt(2, 8);
       summary = `${game.passerName} picked off at ${game.yardLine}; return to ${game.homeTeam} ${ctx.randomInt(20, 45)}.`;
-      tags = ['turnover', 'interception'];
+      playTypeLabel = 'turnover';
       game.possession = offense === 'home' ? 'away' : 'home';
       game.down = 1;
       game.distance = 10;
@@ -101,7 +103,7 @@ export const nflSimulator: SimulatorPlugin = {
       game.playType = 'sack';
       yards = -ctx.randomInt(5, 11);
       summary = `Sack on ${game.passerName} for ${Math.abs(yards)} yards.`;
-      tags = ['pressure'];
+      playTypeLabel = 'sack';
       game.down = clamp((game.down + 1) as 1 | 2 | 3 | 4, 1, 4) as 1 | 2 | 3 | 4;
       game.distance += Math.abs(yards);
       game.yardsThisDrive += yards;
@@ -112,14 +114,14 @@ export const nflSimulator: SimulatorPlugin = {
       const py = ctx.randomInt(5, 15);
       game.penaltiesYards += py;
       summary = `Flag: ${penalty}, ${py} yards against ${game.possessionTeam}.`;
-      tags = ['flag'];
+      playTypeLabel = 'penalty';
       game.distance += py;
       game.playsThisDrive += 1;
     } else if (roll < 0.37) {
       game.playType = 'run';
       yards = ctx.randomInt(-2, 18);
       summary = `${game.rusherName} rushes for ${yards} yards.`;
-      tags = yards >= 12 ? ['explosive-run'] : ['run'];
+      playTypeLabel = 'run';
       game.yardsThisDrive += yards;
       game.playsThisDrive += 1;
       if (yards >= game.distance) firstDown = true;
@@ -132,12 +134,12 @@ export const nflSimulator: SimulatorPlugin = {
       if (ctx.random() < 0.28) {
         yards = 0;
         summary = `${game.passerName} incomplete for ${game.receiverName}.`;
-        tags = ['incomplete'];
+        playTypeLabel = 'pass-incomplete';
         game.down = clamp((game.down + 1) as 1 | 2 | 3 | 4, 1, 4) as 1 | 2 | 3 | 4;
       } else {
         yards = ctx.randomInt(4, 34);
         summary = `${game.passerName} to ${game.receiverName} for ${yards} yards.`;
-        tags = yards >= 20 ? ['chunk-play'] : ['completion'];
+        playTypeLabel = 'pass';
         game.yardsThisDrive += yards;
         game.playsThisDrive += 1;
         if (yards >= game.distance) firstDown = true;
@@ -151,7 +153,7 @@ export const nflSimulator: SimulatorPlugin = {
       const made = ctx.random() < 0.7;
       const kickDistance = ctx.randomInt(31, 57);
       summary = `${game.possessionTeam} ${made ? 'converts' : 'misses'} a ${kickDistance}-yard FG.`;
-      tags = ['special-teams'];
+      playTypeLabel = 'field-goal';
       if (made) {
         if (offense === 'home') game.scoreHome += 3;
         else game.scoreAway += 3;
@@ -166,7 +168,7 @@ export const nflSimulator: SimulatorPlugin = {
       game.playType = 'punt';
       const punt = ctx.randomInt(38, 56);
       summary = `${game.possessionTeam} punts ${punt} yards; fair catch at ${ctx.randomInt(9, 35)}.`;
-      tags = ['special-teams', 'punt'];
+      playTypeLabel = 'punt';
       game.possession = offense === 'home' ? 'away' : 'home';
       game.down = 1;
       game.distance = 10;
@@ -177,18 +179,21 @@ export const nflSimulator: SimulatorPlugin = {
 
     if (firstDown) {
       summary += ` First down ${game.possessionTeam}.`;
-      tags.push('first-down');
+
       game.down = 1;
       game.distance = 10;
     }
 
-    const yardApprox = clamp(ctx.randomInt(20, 80) + game.yardsThisDrive, 1, 99);
+    let yardApprox = clamp(previousBallOn + yards, 1, 99);
+    if (game.playType === 'punt' || game.playType === 'field_goal' || game.playType === 'turnover') {
+      yardApprox = clamp(ctx.randomInt(20, 80), 1, 99);
+    }
     game.redZone = yardApprox >= 80;
     if (game.redZone && game.playType === 'pass' && ctx.random() < 0.2) {
       if (offense === 'home') game.scoreHome += 7;
       else game.scoreAway += 7;
       summary = `${game.passerName} finds ${game.receiverName} for a touchdown.`;
-      tags = ['touchdown', 'red-zone'];
+      playTypeLabel = 'touchdown';
       game.down = 1;
       game.distance = 10;
       game.possession = offense === 'home' ? 'away' : 'home';
@@ -197,6 +202,7 @@ export const nflSimulator: SimulatorPlugin = {
       game.playsThisDrive = 0;
     }
 
+    game.ballOn = yardApprox;
     game.yardLine = yardLineLabel(yardApprox, game.possession ?? 'home', game);
     game.yardsGained = yards;
     game.epa = Number((ctx.random() * 1.8 - 0.9 + (firstDown ? 0.5 : 0)).toFixed(2));
@@ -205,7 +211,7 @@ export const nflSimulator: SimulatorPlugin = {
 
     if (game.down === 4 && game.playType !== 'punt' && game.playType !== 'field_goal') {
       summary += ` ${game.possessionTeam} faces 4th-and-${game.distance}.`;
-      tags.push('critical-down');
+
     }
 
     if (game.clockSeconds <= 0 && game.period < 4) {
@@ -217,11 +223,11 @@ export const nflSimulator: SimulatorPlugin = {
         game.timeoutsAway = 3;
       }
       summary = `${game.periodLabel} begins.`;
-      tags = ['quarter-start'];
+      playTypeLabel = 'quarter-start';
     }
 
     game.lastEvent = summary;
-    game.lastPlay = { summary, tags };
+    game.lastPlay = { type: playTypeLabel, description: summary, down: game.down, distance: game.distance, yards, passer: game.passerName, rusher: game.rusherName, receiver: game.receiverName, isTurnover: game.playType === 'turnover' };
     game.keyStats = buildKeyStats(game);
 
     return {

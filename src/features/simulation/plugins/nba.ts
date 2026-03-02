@@ -38,7 +38,7 @@ export const nbaSimulator: SimulatorPlugin = {
       possession: 'away',
       lastEvent: 'Tip-off controlled by BOS.',
       keyStats: [],
-      lastPlay: { summary: 'Tip-off controlled by BOS.', tags: ['tipoff'] },
+      lastPlay: { type: 'tipoff', description: 'Tip-off controlled by BOS.', points: 0, shooter: 'N/A' },
       shotClock: shotClockMax,
       teamFoulsHome: 0,
       teamFoulsAway: 0,
@@ -59,7 +59,7 @@ export const nbaSimulator: SimulatorPlugin = {
     game.keyStats = buildKeyStats(game);
     return game;
   },
-  step: (previous, ctx) => {
+  step: (previous, ctx, _history) => {
     const game = structuredClone(previous) as NbaGameState;
     const offense = game.possession ?? 'home';
     const offenseTeam = offense === 'home' ? game.homeTeam : game.awayTeam;
@@ -69,9 +69,14 @@ export const nbaSimulator: SimulatorPlugin = {
 
     const roll = ctx.random();
     let summary = '';
-    let tags: string[] = [];
     game.lastShot = 'NONE';
     game.shotResult = 'none';
+    let playType = 'possession';
+    let playPoints = 0;
+    const shooter = scorers[ctx.randomInt(0, scorers.length - 1)];
+    let assist: string | undefined;
+    let playIsThree = false;
+    let isFoul = false;
 
     if (roll < 0.12) {
       const foulOnHome = offense === 'away';
@@ -79,63 +84,68 @@ export const nbaSimulator: SimulatorPlugin = {
       else game.teamFoulsAway += 1;
       game.shotClock = shotClockMax;
       summary = `Shooting foul on ${foulOnHome ? game.homeTeam : game.awayTeam}; two free throws.`;
-      tags = ['foul'];
       game.lastShot = 'FT';
       game.shotResult = 'foul';
+      isFoul = true;
       if (ctx.random() < 0.76) {
         if (offense === 'home') game.scoreHome += 2;
         else game.scoreAway += 2;
         summary = `${offenseTeam} knocks down both free throws.`;
+        playType = 'free-throw';
+        playPoints = 2;
       }
     } else if (roll < 0.22) {
       game.shotClock = shotClockMax;
       summary = `${offenseTeam} timeout to settle the offense.`;
-      tags = ['timeout'];
+      playType = 'timeout';
     } else if (roll < 0.34) {
       const defense = offense === 'home' ? 'away' : 'home';
       if (offense === 'home') game.turnoversHome += 1;
       else game.turnoversAway += 1;
       game.shotClock = shotClockMax;
       summary = `Steal by ${defense === 'home' ? game.homeTeam : game.awayTeam}; transition chance.`;
-      tags = ['steal', 'turnover'];
       game.lastShot = 'NONE';
       game.shotResult = 'turnover';
+      playType = 'turnover';
     } else if (roll < 0.42) {
       summary = `${offenseTeam} push in transition for a fast-break layup.`;
-      tags = ['fast-break'];
       if (offense === 'home') game.scoreHome += 2;
       else game.scoreAway += 2;
       game.lastShot = '2PT';
       game.shotResult = 'made';
+      playType = 'made-shot';
+      playPoints = 2;
       game.shotClock = shotClockMax;
     } else if (roll < 0.76) {
       const isThree = ctx.random() < 0.42;
       const made = ctx.random() < (isThree ? 0.37 : 0.51);
       const points = isThree ? 3 : 2;
+      playIsThree = isThree;
       game.lastShot = isThree ? '3PT' : '2PT';
       game.shotResult = made ? 'made' : 'missed';
       game.shotClock = shotClockMax;
       if (made) {
         if (offense === 'home') game.scoreHome += points;
         else game.scoreAway += points;
+        playType = 'made-shot';
+        playPoints = points;
+        assist = distributors[ctx.randomInt(0, distributors.length - 1)];
         summary = `${offenseTeam} ${isThree ? 'drills a three' : 'scores at the rim'}.`;
-        tags = isThree ? ['made-3'] : ['made-2'];
         if (ctx.random() < 0.08) {
           if (offense === 'home') game.scoreHome += 1;
           else game.scoreAway += 1;
+          playPoints += 1;
           summary = `${offenseTeam} converts the and-1.`;
-          tags.push('and-1');
         }
       } else {
         summary = `${offenseTeam} ${isThree ? 'misses from deep' : 'misses the pull-up jumper'}.`;
-        tags = ['miss'];
       }
     } else {
       summary = `Chase-down block at the rim; ${offenseTeam} reset.`;
-      tags = ['block'];
       game.shotClock = 14;
       game.lastShot = '2PT';
       game.shotResult = 'missed';
+      playType = 'block';
     }
 
     game.bonusHome = game.teamFoulsAway >= 5;
@@ -143,8 +153,6 @@ export const nbaSimulator: SimulatorPlugin = {
     game.pointsLeader = `${scorers[ctx.randomInt(0, scorers.length - 1)]} ${ctx.randomInt(14, 38)}`;
     game.assistsLeader = `${distributors[ctx.randomInt(0, distributors.length - 1)]} ${ctx.randomInt(4, 13)}`;
     game.reboundsLeader = `${rebounders[ctx.randomInt(0, rebounders.length - 1)]} ${ctx.randomInt(5, 17)}`;
-    const runFor = ctx.random() < 0.5 ? game.homeTeam : game.awayTeam;
-    game.run = `${runFor} ${ctx.randomInt(6, 14)}-${ctx.randomInt(0, 6)} run`;
     const possessions = (game.scoreHome + game.scoreAway) / 2;
     game.paceEstimate = clamp(Math.round(95 + possessions / Math.max(1, game.period) + ctx.randomInt(-3, 3)), 90, 110);
     game.offensiveRatingEstimate = clamp(Math.round(102 + (game.scoreHome + game.scoreAway) / Math.max(1, game.period) + ctx.randomInt(-4, 5)), 96, 132);
@@ -159,17 +167,17 @@ export const nbaSimulator: SimulatorPlugin = {
       game.bonusHome = false;
       game.bonusAway = false;
       summary = `${game.periodLabel} begins.`;
-      tags = ['quarter-start'];
+      playType = 'quarter-start';
     } else if (game.clockSeconds <= 0 && game.period >= 4) {
       game.period += 1;
       game.periodLabel = 'OT';
       game.clockSeconds = 5 * 60;
       summary = 'Overtime starts.';
-      tags = ['overtime'];
+      playType = 'overtime';
     }
 
     game.lastEvent = summary;
-    game.lastPlay = { summary, tags };
+    game.lastPlay = { type: playType, description: summary, points: playPoints, shooter, assist, isThree: playIsThree, isFoul };
     game.keyStats = buildKeyStats(game);
     game.possession = offense === 'home' ? 'away' : 'home';
 

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
-import { createSimulatorContext, resetSimulationCore } from '../features/simulation/core';
+import { applyConsistencyLayer, createSimulatorContext, resetSimulationCore } from '../features/simulation/core';
 import { simulatorRegistry } from '../features/simulation/registry';
-import type { GameState, SimulationEvent, SportKey } from '../features/simulation/types';
+import type { ConsistencyStatus, GameState, SimulationEvent, SportKey } from '../features/simulation/types';
 
 export type { GameState, SportKey };
 export type Speed = 'slow' | 'normal' | 'fast';
@@ -12,6 +12,7 @@ interface DataEngineStore {
   running: boolean;
   speed: Speed;
   history: SimulationEvent[];
+  consistency: ConsistencyStatus;
   start: () => void;
   stop: () => void;
   reset: () => void;
@@ -37,6 +38,7 @@ export const useDataEngineStore = create<DataEngineStore>((set, get) => ({
   running: false,
   speed: 'normal',
   history: [],
+  consistency: { corrected: false, corrections: 0 },
   start: () => {
     if (timer) return;
     set({ running: true });
@@ -57,19 +59,20 @@ export const useDataEngineStore = create<DataEngineStore>((set, get) => ({
     if (timer) clearInterval(timer);
     timer = null;
     resetSimulationCore();
-    set({ activeSport: sport, running: false, speed: 'normal', game: simulatorRegistry[sport].createInitialGame(), history: [] });
+    set({ activeSport: sport, running: false, speed: 'normal', game: simulatorRegistry[sport].createInitialGame(), history: [], consistency: { corrected: false, corrections: 0 } });
   },
   reset: () => {
     if (timer) clearInterval(timer);
     timer = null;
     resetSimulationCore();
     const sport = get().activeSport;
-    set({ running: false, speed: 'normal', game: simulatorRegistry[sport].createInitialGame(), history: [] });
+    set({ running: false, speed: 'normal', game: simulatorRegistry[sport].createInitialGame(), history: [], consistency: { corrected: false, corrections: 0 } });
   },
   stepPitch: () => {
-    const { activeSport, game } = get();
+    const { activeSport, game, history } = get();
     const plugin = simulatorRegistry[activeSport];
-    const { game: nextGame, event } = plugin.step(game, ctx);
-    set((s) => ({ game: nextGame, history: [event, ...s.history].slice(0, 120) }));
+    const { game: nextGame, event } = plugin.step(game, ctx, history);
+    const normalized = applyConsistencyLayer({ sport: activeSport, previous: game, nextGame, event, history });
+    set((s) => ({ game: normalized.game, history: [normalized.event, ...s.history].slice(0, 120), consistency: normalized.consistency }));
   },
 }));

@@ -89,13 +89,13 @@ export const mlbSimulator: SimulatorPlugin = {
       pitcher: pitcherHome,
       batter: battersAway[0],
       lastPitch: createDefaultPitch(),
-      lastPlay: { summary: 'Waiting to start MLB simulation.', tags: ['pregame'] },
+      lastPlay: { type: 'pregame', description: 'Waiting to start MLB simulation.', tags: ['pregame'] },
       keyStats: [] as KeyStat[],
     };
     seed.keyStats = buildKeyStats(seed);
     return seed;
   },
-  step: (previous, ctx) => {
+  step: (previous, ctx, _history) => {
     const game = structuredClone(previous) as MlbGameState;
     const pitchType = randomPitchType(ctx.random);
     const velocityMph = ctx.randomInt(82, 100);
@@ -203,7 +203,7 @@ export const mlbSimulator: SimulatorPlugin = {
       projectedDistanceFt,
     };
     game.lastEvent = result;
-    game.lastPlay = { summary: result, tags: ['pitch'] };
+    game.lastPlay = { type: 'pitch', description: result, tags: ['pitch'] };
     game.keyStats = buildKeyStats(game);
 
     return {

@@ -33,7 +33,7 @@ export const mlsSimulator: SimulatorPlugin = {
       possession: null,
       lastEvent: 'Kickoff from the center circle.',
       keyStats: [],
-      lastPlay: { summary: 'Kickoff from the center circle.', tags: ['kickoff'] },
+      lastPlay: { type: 'kickoff', description: 'Kickoff from the center circle.' },
       matchClock: 0,
       stoppageTime: 0,
       possessionPctHome: 50,
@@ -61,7 +61,7 @@ export const mlsSimulator: SimulatorPlugin = {
     game.keyStats = buildKeyStats(game);
     return game;
   },
-  step: (previous, ctx) => {
+  step: (previous, ctx, _history) => {
     const game = structuredClone(previous) as MlsGameState;
     const tick = ctx.randomInt(12, 34);
     game.clockSeconds = Math.max(0, game.clockSeconds - tick);
@@ -72,30 +72,30 @@ export const mlsSimulator: SimulatorPlugin = {
 
     const roll = ctx.random();
     let summary = '';
-    let tags: string[] = [];
+    let playType = "sequence";
 
     if (roll < 0.14) {
       summary = `Foul by ${attackHome ? game.awayTeam : game.homeTeam} in midfield.`;
-      tags = ['foul'];
+      playType = 'foul';
       if (attackHome) game.foulsAway += 1;
       else game.foulsHome += 1;
     } else if (roll < 0.24) {
       summary = `Yellow card shown to ${attackHome ? game.awayTeam : game.homeTeam}.`;
-      tags = ['card'];
+      playType = 'card';
       if (attackHome) game.yellowCardsAway += 1;
       else game.yellowCardsHome += 1;
     } else if (roll < 0.34) {
       summary = `Corner won by ${attackTeam}.`;
-      tags = ['corner'];
+      playType = 'corner';
       if (attackHome) game.cornersHome += 1;
       else game.cornersAway += 1;
     } else if (roll < 0.44) {
       summary = `VAR check for possible handball... no penalty.`;
-      tags = ['var'];
+      playType = 'var';
       game.stoppageTime = clamp(game.stoppageTime + 1, 0, 8);
     } else if (roll < 0.56) {
       summary = `Substitution: fresh legs for ${attackTeam}.`;
-      tags = ['sub'];
+      playType = 'sub';
     } else if (roll < 0.79) {
       if (attackHome) {
         game.shotsHome += 1;
@@ -109,7 +109,7 @@ export const mlsSimulator: SimulatorPlugin = {
         game.xGAway = Number((game.xGAway + ctx.random() * 0.14).toFixed(2));
       }
       summary = `Shot on target by ${attackTeam}; strong save.`;
-      tags = ['shot', 'save'];
+      playType = 'shot-save';
     } else if (roll < 0.92) {
       if (attackHome) {
         game.shotsHome += 1;
@@ -125,10 +125,10 @@ export const mlsSimulator: SimulatorPlugin = {
         game.xGAway = Number((game.xGAway + ctx.random() * 0.4 + 0.1).toFixed(2));
       }
       summary = `GOAL ${attackTeam}! Clinical finish after a quick combination.`;
-      tags = ['goal', 'big-chance'];
+      playType = 'goal';
     } else {
       summary = `${attackTeam} strike whistles wide from distance.`;
-      tags = ['shot-missed'];
+      playType = 'shot-missed';
       if (attackHome) {
         game.shotsHome += 1;
         game.xGHome = Number((game.xGHome + ctx.random() * 0.08).toFixed(2));
@@ -149,11 +149,11 @@ export const mlsSimulator: SimulatorPlugin = {
       game.matchClock = 45;
       game.stoppageTime = ctx.randomInt(1, 4);
       summary = 'Second half begins.';
-      tags = ['half-start'];
+      playType = 'half-start';
     }
 
     game.lastEvent = summary;
-    game.lastPlay = { summary, tags };
+    game.lastPlay = { type: playType, description: summary, xg: attackHome ? game.xGHome : game.xGAway, isGoal: playType === 'goal' };
     game.keyStats = buildKeyStats(game);
 
     return {
