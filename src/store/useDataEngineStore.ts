@@ -73,6 +73,11 @@ export const useDataEngineStore = create<DataEngineStore>((set, get) => ({
     const plugin = simulatorRegistry[activeSport];
     const { game: nextGame, event } = plugin.step(game, ctx, history);
     const normalized = applyConsistencyLayer({ sport: activeSport, previous: game, nextGame, event, history });
-    set((s) => ({ game: normalized.game, history: [normalized.event, ...s.history].slice(0, 120), consistency: normalized.consistency }));
+    const issues = (normalized.game as GameState).consistencyIssues ?? [];
+    set((s) => ({
+      game: normalized.game,
+      history: [normalized.event, ...s.history].slice(0, 120),
+      consistency: { ...normalized.consistency, ok: issues.length === 0, issues },
+    }));
   },
 }));

@@ -23,6 +23,9 @@ export function DataEngineRoute() {
     { id: 'sponsor-catalog', name: 'Sponsor Catalog Feed (demo)', status: 'connected' },
   ] as const;
 
+
+  const leaderCategories = Object.keys(game.teamLeaders?.home ?? {});
+
   const samplePayload = {
     sport: activeSport,
     gameId: 'demo-001',
@@ -35,6 +38,10 @@ export function DataEngineRoute() {
     lastEvent: game.lastEvent,
     lastPlay: game.lastPlay,
     keyStats: game.keyStats,
+    boxScore: game.boxScore,
+    teamLeaders: game.teamLeaders,
+    gameLeaders: game.gameLeaders,
+    consistencyIssues: game.consistencyIssues,
     ...(game.sport === 'mlb' ? { pitcher: game.pitcher, batter: game.batter, lastPitch: game.lastPitch } : {}),
     updatedAt: new Date().toISOString(),
   };
@@ -160,9 +167,27 @@ export function DataEngineRoute() {
 
         <div className="rounded border border-slate-700 bg-slate-900 p-3">
           <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">Consistency</p>
-          <p className="text-sm text-slate-100">
-            {consistency.corrected ? `Auto-corrected (${consistency.corrections})` : 'OK'}
-          </p>
+          {consistency.issues && consistency.issues.length > 0 ? (
+            <ul className="list-disc pl-5 text-sm text-amber-200">{consistency.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>
+          ) : (
+            <p className="text-sm text-emerald-300">OK</p>
+          )}
+        </div>
+
+
+        <div className="grid gap-3 md:grid-cols-2"> 
+          <div className="rounded border border-slate-700 bg-slate-900 p-3">
+            <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">Team Leaders</p>
+            {leaderCategories.map((cat) => (
+              <p key={cat} className="text-xs text-slate-200">{cat}: {game.homeTeam} {game.teamLeaders?.home?.[cat]?.player} ({game.teamLeaders?.home?.[cat]?.value}) · {game.awayTeam} {game.teamLeaders?.away?.[cat]?.player} ({game.teamLeaders?.away?.[cat]?.value})</p>
+            ))}
+          </div>
+          <div className="rounded border border-slate-700 bg-slate-900 p-3">
+            <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">Game Leaders</p>
+            {leaderCategories.map((cat) => (
+              <p key={cat} className="text-xs text-slate-200">{cat}: {(game.gameLeaders?.[cat] ?? []).map((entry) => `${entry.player} ${entry.value}`).join(', ')}</p>
+            ))}
+          </div>
         </div>
 
         <div className="rounded border border-slate-700 bg-slate-900 p-3">
