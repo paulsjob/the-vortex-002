@@ -4,7 +4,6 @@ import { TemplateSceneSvg } from './TemplateSceneSvg';
 
 interface Props {
   template: SavedTemplate | null;
-  label: string;
   sponsor: string | null;
   tone?: 'preview' | 'program';
 }
@@ -17,20 +16,13 @@ const SPONSOR_STYLES: Record<string, { accentFillClass: string; accentBorderClas
 
 const getSponsorStyle = (sponsor: string | null) => (sponsor ? (SPONSOR_STYLES[sponsor] ?? SPONSOR_STYLES['Renderless Sports']) : null);
 
-export function TemplatePreview({ template, label, sponsor, tone = 'preview' }: Props) {
+export function TemplatePreview({ template, sponsor, tone = 'preview' }: Props) {
   const game = useDataEngineStore((s) => s.game);
-  const running = useDataEngineStore((s) => s.running);
   const isProgram = tone === 'program';
   const sponsorStyle = getSponsorStyle(sponsor);
 
   return (
-    <section className="flex h-full min-h-0 min-w-0 flex-col gap-1">
-      <div className="flex shrink-0 items-center justify-between gap-2">
-        <h4 className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${isProgram ? 'text-red-300' : 'text-blue-200'}`}>{label}</h4>
-        <div className={`rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] ${running ? 'border-emerald-600 bg-emerald-900/30 text-emerald-300' : 'border-amber-600 bg-amber-900/30 text-amber-300'}`}>
-          Data Engine {running ? 'Live' : 'Paused'}
-        </div>
-      </div>
+    <section className="flex h-full min-h-0 min-w-0 flex-col">
       <div className="flex min-h-0 flex-1 flex-col">
         {template ? (
           <div className="mb-0.5 flex shrink-0 items-center justify-between text-[11px] text-slate-400">
