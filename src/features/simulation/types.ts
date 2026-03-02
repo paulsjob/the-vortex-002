@@ -55,34 +55,67 @@ export interface MlbLastPlay extends BaseLastPlay {
 }
 
 export interface NbaLastPlay extends BaseLastPlay {
+  playId: number;
   points: number;
   shooter: string;
   assist?: string;
+  shotType: 'rim' | 'midrange' | 'three' | 'free-throw';
   isThree?: boolean;
   isFoul?: boolean;
+  possession: 'home' | 'away';
+  shotClock: number;
+  paceEstimate: number;
+  offensiveRating: number;
+  defensiveRating: number;
+  netRating: number;
+  tsApprox: number;
 }
 
 export interface NflLastPlay extends BaseLastPlay {
+  playId: number;
+  driveId: number;
   down: number;
   distance: number;
   yards: number;
+  fieldPosition: number;
+  playType: 'run' | 'pass' | 'sack' | 'penalty' | 'turnover' | 'field_goal' | 'punt';
   passer?: string;
   rusher?: string;
-  receiver?: string;
+  target?: string;
+  tackler?: string;
+  epa: number;
+  success: boolean;
+  pressure: boolean;
+  redZone: boolean;
   isTurnover?: boolean;
 }
 
 export interface NhlLastPlay extends BaseLastPlay {
+  playId: number;
   shooter?: string;
-  assister?: string;
-  strength?: string;
+  assister?: string[];
+  strength: 'EV' | 'PP' | 'PK';
+  xg: number;
+  sog: boolean;
+  goalieSave?: string;
+  faceoffWinPctHome: number;
+  toiLeader: string;
   isGoal?: boolean;
 }
 
 export interface MlsLastPlay extends BaseLastPlay {
+  playId: number;
   player?: string;
   assister?: string;
   xg?: number;
+  xa?: number;
+  shotType?: 'open-play' | 'set-piece' | 'counter' | 'penalty';
+  keyPass?: boolean;
+  progressivePasses: number;
+  possessionPctHome: number;
+  ppdaApprox: number;
+  pressures: number;
+  recoveries: number;
   isGoal?: boolean;
 }
 
@@ -243,6 +276,8 @@ export interface SimulatorPlugin {
   label: string;
   createInitialGame: () => GameState;
   step: (game: GameState, ctx: SimulatorContext, history: SimulationEvent[]) => { game: GameState; event: SimulationEvent };
+  forcePlay?: (game: GameState, ctx: SimulatorContext, history: SimulationEvent[], action: string) => { game: GameState; event: SimulationEvent };
+  forceActions?: string[];
 }
 
 export interface ConsistencyStatus {
@@ -258,7 +293,7 @@ export interface TeamMetricEntry {
   away: string | number;
 }
 
-export interface NormalizedSimulationPayload {
+interface NormalizedBasePayload {
   sport: SportKey;
   gameId: string;
   homeTeam: string;
@@ -275,9 +310,11 @@ export interface NormalizedSimulationPayload {
   gameLeaders?: GameLeaders;
   teamMetrics: TeamMetricEntry[];
   consistencyIssues?: string[];
-  mlb?: Partial<MlbGameState>;
-  nba?: Partial<NbaGameState>;
-  nfl?: Partial<NflGameState>;
-  nhl?: Partial<NhlGameState>;
-  mls?: Partial<MlsGameState>;
 }
+
+export type NormalizedSimulationPayload =
+  | (NormalizedBasePayload & { sport: 'mlb'; mlb: Pick<MlbGameState, 'inning' | 'half' | 'balls' | 'strikes' | 'outs' | 'pitcher' | 'batter' | 'lastPitch' | 'lastPlay'> })
+  | (NormalizedBasePayload & { sport: 'nba'; nba: Pick<NbaGameState, 'shotClock' | 'teamFoulsHome' | 'teamFoulsAway' | 'run' | 'lastPlay'> })
+  | (NormalizedBasePayload & { sport: 'nfl'; nfl: Pick<NflGameState, 'down' | 'distance' | 'yardLine' | 'playType' | 'lastPlay'> })
+  | (NormalizedBasePayload & { sport: 'nhl'; nhl: Pick<NhlGameState, 'strengthState' | 'ppTimeRemaining' | 'pulledGoalie' | 'lastPlay'> })
+  | (NormalizedBasePayload & { sport: 'mls'; mls: Pick<MlsGameState, 'matchClock' | 'stoppageTime' | 'possessionPctHome' | 'lastPlay'> });

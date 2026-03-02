@@ -41,7 +41,7 @@ export const nbaSimulator: SimulatorPlugin = {
     const boxScore = initializeBoxScore('nba', homePlayers, awayPlayers, ['pts', 'ast', 'reb', 'stl', 'blk', 'fgm', 'fga', 'tpm', 'tpa', 'ftm', 'fta', 'fouls', 'turnovers', 'minutes','paintPts','doubleDouble']);
     const game: NbaGameState = {
       sport: 'nba', homeTeam: 'LAL', awayTeam: 'BOS', scoreHome: 0, scoreAway: 0, period: 1, periodLabel: 'Q1', clockSeconds: QUARTER_SECONDS, possession: 'away',
-      lastEvent: 'Tip-off controlled by BOS.', keyStats: [], lastPlay: { type: 'tipoff', description: 'Tip-off controlled by BOS.', points: 0, shooter: 'N/A' },
+      lastEvent: 'Tip-off controlled by BOS.', keyStats: [], lastPlay: { type: 'tipoff', description: 'Tip-off controlled by BOS.', playId: 0, points: 0, shooter: 'N/A', shotType: 'midrange', possession: 'away', shotClock: 24, paceEstimate: 99, offensiveRating: 110, defensiveRating: 110, netRating: 0, tsApprox: 0 },
       shotClock: shotClockMax, teamFoulsHome: 0, teamFoulsAway: 0, bonusHome: false, bonusAway: false, turnoversHome: 0, turnoversAway: 0,
       pointsLeader: 'L. James 0', assistsLeader: 'L. James 0', reboundsLeader: 'A. Davis 0', lastShot: 'NONE', shotResult: 'none', run: '0-0 run',
       paceEstimate: 99, offensiveRatingEstimate: 110, winProbabilityHome: 0.5, boxScore, consistencyIssues: [],
@@ -51,6 +51,13 @@ export const nbaSimulator: SimulatorPlugin = {
     game.gameLeaders = leaders.gameLeaders;
     game.keyStats = buildKeyStats(game);
     return game;
+  },
+  forceActions: ['3PT', 'turnover', 'foul'],
+  forcePlay: (game, ctx, history, action) => {
+    if (action === '3PT') return nbaSimulator.step(game, { ...ctx, random: () => 0.26, randomInt: (a,b)=>b }, history);
+    if (action === 'turnover') return nbaSimulator.step(game, { ...ctx, random: () => 0.12, randomInt: (a,b)=>a }, history);
+    if (action === 'foul') return nbaSimulator.step(game, { ...ctx, random: () => 0.2, randomInt: (a,b)=>a }, history);
+    return nbaSimulator.step(game, ctx, history);
   },
   step: (previous, ctx) => {
     const game = structuredClone(previous) as NbaGameState;
@@ -175,7 +182,7 @@ export const nbaSimulator: SimulatorPlugin = {
     const check = validateConsistency('nba', game.boxScore!, game.scoreHome, game.scoreAway);
     game.consistencyIssues = check.issues;
     game.lastEvent = summary;
-    game.lastPlay = { type, description: summary, points, shooter, assist: assister, isThree: game.lastShot === '3PT', isFoul: type === 'foul' };
+    game.lastPlay = { type, description: summary, playId: ctx.nextId(), points, shooter, assist: assister, shotType: game.lastShot==='3PT'?'three':game.lastShot==='FT'?'free-throw':'rim', isThree: game.lastShot === '3PT', isFoul: type === 'foul', possession: offense, shotClock: game.shotClock, paceEstimate: game.paceEstimate, offensiveRating: game.offensiveRatingEstimate, defensiveRating: 112, netRating: Number((game.offensiveRatingEstimate-112).toFixed(1)), tsApprox: Number((((game.boxScore?.teamTotals[offense].pts ?? 0)/(2*Math.max((game.boxScore?.teamTotals[offense].fga ?? 0)+0.44*(game.boxScore?.teamTotals[offense].fta ?? 0),1)))*100).toFixed(1)) };
     game.keyStats = buildKeyStats(game);
     game.possession = game.possession ?? (offense === 'home' ? 'away' : 'home');
 

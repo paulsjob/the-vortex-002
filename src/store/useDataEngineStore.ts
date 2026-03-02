@@ -18,7 +18,8 @@ interface DataEngineStore {
   reset: () => void;
   setSpeed: (speed: Speed) => void;
   setSport: (sport: SportKey) => void;
-  stepPitch: () => void;
+  stepPitch: (action?: string) => void;
+  forceActions: string[];
 }
 
 const speedsMs: Record<Speed, number> = { slow: 1800, normal: 900, fast: 350 };
@@ -39,6 +40,7 @@ export const useDataEngineStore = create<DataEngineStore>((set, get) => ({
   speed: 'normal',
   history: [],
   consistency: { corrected: false, corrections: 0 },
+  forceActions: simulatorRegistry.mlb.forceActions ?? [],
   start: () => {
     if (timer) return;
     set({ running: true });
@@ -59,19 +61,20 @@ export const useDataEngineStore = create<DataEngineStore>((set, get) => ({
     if (timer) clearInterval(timer);
     timer = null;
     resetSimulationCore();
-    set({ activeSport: sport, running: false, speed: 'normal', game: simulatorRegistry[sport].createInitialGame(), history: [], consistency: { corrected: false, corrections: 0 } });
+    set({ activeSport: sport, running: false, speed: 'normal', game: simulatorRegistry[sport].createInitialGame(), history: [], consistency: { corrected: false, corrections: 0 }, forceActions: simulatorRegistry[sport].forceActions ?? [] });
   },
   reset: () => {
     if (timer) clearInterval(timer);
     timer = null;
     resetSimulationCore();
     const sport = get().activeSport;
-    set({ running: false, speed: 'normal', game: simulatorRegistry[sport].createInitialGame(), history: [], consistency: { corrected: false, corrections: 0 } });
+    set({ running: false, speed: 'normal', game: simulatorRegistry[sport].createInitialGame(), history: [], consistency: { corrected: false, corrections: 0 }, forceActions: simulatorRegistry[sport].forceActions ?? [] });
   },
-  stepPitch: () => {
+  stepPitch: (action) => {
     const { activeSport, game, history } = get();
     const plugin = simulatorRegistry[activeSport];
-    const { game: nextGame, event } = plugin.step(game, ctx, history);
+    const simulated = action && plugin.forcePlay ? plugin.forcePlay(game, ctx, history, action) : plugin.step(game, ctx, history);
+    const { game: nextGame, event } = simulated;
     const normalized = applyConsistencyLayer({ sport: activeSport, previous: game, nextGame, event, history });
     const issues = (normalized.game as GameState).consistencyIssues ?? [];
     set((s) => ({
