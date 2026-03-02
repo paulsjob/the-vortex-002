@@ -7,8 +7,8 @@ export function StageCanvas() {
   const ordered = [...layers].sort((a, b) => a.zIndex - b.zIndex);
 
   return (
-    <div className="flex items-center justify-center rounded-xl bg-slate-950 p-4">
-      <div className="relative overflow-hidden bg-slate-900" style={{ width: '100%', aspectRatio: `${canvasWidth} / ${canvasHeight}` }}>
+    <div className="flex min-h-0 items-center justify-center overflow-hidden rounded-xl bg-slate-950 p-4">
+      <div className="relative w-full max-h-full overflow-hidden bg-slate-900" style={{ width: '100%', aspectRatio: `${canvasWidth} / ${canvasHeight}` }}>
         {ordered.map((layer) => (
           <div
             key={layer.id}

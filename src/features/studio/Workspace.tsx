@@ -4,7 +4,7 @@ import { PropertiesInspector } from './components/Inspector/PropertiesInspector'
 
 export function Workspace() {
   return (
-    <section className="grid min-h-[calc(100vh-160px)] grid-cols-1 gap-3 lg:grid-cols-[280px_1fr_320px]">
+    <section className="grid h-full min-h-0 grid-cols-1 gap-3 lg:grid-cols-[280px_minmax(0,1fr)_320px]">
       <StudioSidebar />
       <StageCanvas />
       <PropertiesInspector />
