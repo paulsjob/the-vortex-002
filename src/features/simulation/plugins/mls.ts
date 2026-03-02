@@ -19,7 +19,10 @@ const l=computeLeaders(boxScore,['goals','assists','shotsOnTarget']); g.teamLead
 step:(previous,ctx)=>{const g=structuredClone(previous) as MlsGameState; const tick=ctx.randomInt(12,34); g.clockSeconds=Math.max(0,g.clockSeconds-tick); g.matchClock+=tick; const atkHome=ctx.random()<0.5; const team=atkHome?'home':'away'; const players=atkHome?home:away; const fwd=players[ctx.randomInt(0,1)], mid=players[2], def=players[3], gk=players[4];
 players.forEach((p)=>bumpPlayerStat(g.boxScore!,team,p,'distanceCovered',0.12)); bumpPlayerStat(g.boxScore!,team,mid,'passAtt',2); bumpPlayerStat(g.boxScore!,team,mid,'passComp',ctx.random()<0.88?2:1);
 let summary=''; let type='sequence'; const r=ctx.random();
-if(r<0.14){type='tackle'; const other=atkHome?'away':'home'; const d=(other==='home'?home:away)[3]; bumpPlayerStat(g.boxScore!,other,d,'tackles',1); summary=`${d} wins a tackle.`;}
+if(r<0.1){type='offside'; summary='Offside flag goes up.';}
+else if(r<0.18){type='substitution'; summary='Substitution made in midfield.';}
+else if(r<0.22){type='injury-time'; g.stoppageTime=Math.min(10,g.stoppageTime+1); summary='Stoppage time extended after injury treatment.';}
+else if(r<0.3){type='tackle'; const other=atkHome?'away':'home'; const d=(other==='home'?home:away)[3]; bumpPlayerStat(g.boxScore!,other,d,'tackles',1); summary=`${d} wins a tackle.`;}
 else if(r<0.25){type='interception'; const other=atkHome?'away':'home'; const d=(other==='home'?home:away)[3]; bumpPlayerStat(g.boxScore!,other,d,'interceptions',1); summary=`Interception by ${d}.`;}
 else if(r<0.35){type='corner'; atkHome?g.cornersHome++:g.cornersAway++; bumpPlayerStat(g.boxScore!,team,mid,'corners',1); summary=`Corner for ${atkHome?g.homeTeam:g.awayTeam}.`;}
 else if(r<0.43){type='card'; const other=atkHome?'away':'home'; if(ctx.random()<0.85){other==='home'?g.yellowCardsHome++:g.yellowCardsAway++; bumpPlayerStat(g.boxScore!,other,(other==='home'?home:away)[3],'yellowCards',1);} else {other==='home'?g.redCardsHome++:g.redCardsAway++; bumpPlayerStat(g.boxScore!,other,(other==='home'?home:away)[3],'redCards',1);} summary='Card shown.';}
@@ -28,7 +31,7 @@ if(ctx.random()<0.58){ bumpPlayerStat(g.boxScore!,team,fwd,'shotsOnTarget',1); a
 else {type='shot-miss'; bumpPlayerStat(g.boxScore!,team,fwd,'bigChancesMissed',1); summary=`${fwd} misses the target.`;}
 const xg=Number((0.05+ctx.random()*0.35).toFixed(2)); bumpPlayerStat(g.boxScore!,team,fwd,'xg',xg); atkHome?g.xGHome=Number((g.xGHome+xg).toFixed(2)):g.xGAway=Number((g.xGAway+xg).toFixed(2)); }
 
-sumTeamTotals(g.boxScore!); g.possessionPctHome=clamp(50+((g.boxScore!.teamTotals.home.passComp??0)-(g.boxScore!.teamTotals.away.passComp??0))*2,30,70);
+sumTeamTotals(g.boxScore!); g.boxScore!.teamTotals.home.possPct=g.possessionPctHome; g.boxScore!.teamTotals.away.possPct=100-g.possessionPctHome; g.boxScore!.teamTotals.home.finalThirdEntries=(g.boxScore!.teamTotals.home.keyPasses??0)+(g.boxScore!.teamTotals.home.shots??0); g.boxScore!.teamTotals.away.finalThirdEntries=(g.boxScore!.teamTotals.away.keyPasses??0)+(g.boxScore!.teamTotals.away.shots??0); g.boxScore!.teamTotals.home.bigCreated=g.bigChancesHome; g.boxScore!.teamTotals.away.bigCreated=g.bigChancesAway; g.possessionPctHome=clamp(50+((g.boxScore!.teamTotals.home.passComp??0)-(g.boxScore!.teamTotals.away.passComp??0))*2,30,70);
 g.passesCompletedPctHome=((g.boxScore!.teamTotals.home.passAtt??0)>0?((g.boxScore!.teamTotals.home.passComp??0)/(g.boxScore!.teamTotals.home.passAtt??1))*100:0);
 g.passesCompletedPctAway=((g.boxScore!.teamTotals.away.passAtt??0)>0?((g.boxScore!.teamTotals.away.passComp??0)/(g.boxScore!.teamTotals.away.passAtt??1))*100:0);
 const l=computeLeaders(g.boxScore!,['goals','assists','shotsOnTarget']); g.teamLeaders=l.teamLeaders; g.gameLeaders=l.gameLeaders;

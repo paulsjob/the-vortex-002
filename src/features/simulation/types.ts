@@ -251,3 +251,33 @@ export interface ConsistencyStatus {
   ok?: boolean;
   issues?: string[];
 }
+
+export interface TeamMetricEntry {
+  label: string;
+  home: string | number;
+  away: string | number;
+}
+
+export interface NormalizedSimulationPayload {
+  sport: SportKey;
+  gameId: string;
+  homeTeam: string;
+  awayTeam: string;
+  score: { home: number; away: number };
+  period: string;
+  clock: string;
+  possession: 'home' | 'away' | null;
+  lastEvent: string;
+  updatedAt: string;
+  keyStats: KeyStat[];
+  boxScore?: SportBoxScore;
+  teamLeaders?: TeamLeaders;
+  gameLeaders?: GameLeaders;
+  teamMetrics: TeamMetricEntry[];
+  consistencyIssues?: string[];
+  mlb?: Partial<MlbGameState>;
+  nba?: Partial<NbaGameState>;
+  nfl?: Partial<NflGameState>;
+  nhl?: Partial<NhlGameState>;
+  mls?: Partial<MlsGameState>;
+}
