@@ -18,8 +18,6 @@ const transitionOptions: Array<{ type: TransitionType; label: string }> = [
 
 const durationChoices = [150, 300, 500, 1000];
 const QUICK_LAUNCH_DEFAULT_COUNT = 4;
-const COLLAPSED_LAUNCHER_ROW_HEIGHT = '7.5rem';
-const EXPANDED_LAUNCHER_ROW_HEIGHT = '11rem';
 const COLLAPSED_LAUNCHER_GRID_ROWS = '1fr';
 const EXPANDED_LAUNCHER_GRID_ROWS = 'repeat(2, minmax(0, 1fr))';
 
@@ -221,8 +219,6 @@ export function ControlRoomRoute() {
     );
   };
 
-  const launcherPanelHeight = (expanded: boolean) => (expanded ? EXPANDED_LAUNCHER_ROW_HEIGHT : COLLAPSED_LAUNCHER_ROW_HEIGHT);
-
   const launcherGridRows = (expanded: boolean) => (expanded ? EXPANDED_LAUNCHER_GRID_ROWS : COLLAPSED_LAUNCHER_GRID_ROWS);
 
   return (
@@ -391,7 +387,7 @@ export function ControlRoomRoute() {
               </div>
             </div>
 
-            <div className="flex-1 min-h-0 overflow-hidden grid grid-rows-2 gap-3">
+            <div className="flex-1 min-h-0 overflow-hidden grid grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
               <div className="min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-2">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">FAVORITES</p>
@@ -403,8 +399,8 @@ export function ControlRoomRoute() {
                     {favoritesExpanded ? 'Show less' : 'Show more'}
                   </button>
                 </div>
-                <div className="mt-2 overflow-x-auto overflow-y-hidden pb-1 no-scrollbar" style={{ height: launcherPanelHeight(favoritesExpanded) }}>
-                  <div className="grid auto-cols-[180px] grid-flow-col gap-2" style={{ gridTemplateRows: launcherGridRows(favoritesExpanded) }}>
+                <div className="mt-2 h-[calc(100%-2rem)] overflow-x-auto overflow-y-hidden pb-1 no-scrollbar">
+                  <div className="grid h-full auto-cols-[180px] grid-flow-col gap-2" style={{ gridTemplateRows: launcherGridRows(favoritesExpanded) }}>
                   {favoriteTemplates.length === 0 ? (
                     <p className="text-sm text-slate-500">Star templates in the library to pin your favorites.</p>
                   ) : favoriteTemplates.map((template) => (
@@ -433,8 +429,8 @@ export function ControlRoomRoute() {
                     {quickLaunchExpanded ? 'Show less' : 'Show more'}
                   </button>
                 </div>
-                <div className="mt-2 overflow-x-auto overflow-y-hidden pb-1 no-scrollbar" style={{ height: launcherPanelHeight(quickLaunchExpanded) }}>
-                  <div className="grid auto-cols-[180px] grid-flow-col gap-2" style={{ gridTemplateRows: launcherGridRows(quickLaunchExpanded) }}>
+                <div className="mt-2 h-[calc(100%-2rem)] overflow-x-auto overflow-y-hidden pb-1 no-scrollbar">
+                  <div className="grid h-full auto-cols-[180px] grid-flow-col gap-2" style={{ gridTemplateRows: launcherGridRows(quickLaunchExpanded) }}>
                   {quickLaunchTemplates.length === 0 ? (
                     <p className="text-sm text-slate-500">Add templates with 🚀 in the library for one-tap preloading.</p>
                   ) : quickLaunchTemplates.map((template) => (
