@@ -1,5 +1,6 @@
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { buildNormalizedPayload, buildTeamMetrics } from '../features/simulation/derived';
+import { requiredAdvancedMetrics, validateAdvancedMetrics } from '../features/simulation/advancedMetrics';
 import { simulatorOptions } from '../features/simulation/registry';
 import { Speed, useDataEngineStore } from '../store/useDataEngineStore';
 
@@ -29,7 +30,13 @@ export function DataEngineRoute() {
 
   const samplePayload = buildNormalizedPayload(game, 'demo-001');
   const teamMetrics = buildTeamMetrics(game);
-  const consistencyCode = consistency.issues && consistency.issues.length > 0 ? consistency.issues[0] : 'OK';
+  const missingAdvanced = running ? validateAdvancedMetrics(game) : [];
+  const consistencyCode = missingAdvanced.length > 0
+    ? `CONSISTENCY: FAIL (missing ${missingAdvanced.join(', ')})`
+    : consistency.issues && consistency.issues.length > 0
+      ? consistency.issues[0]
+      : 'OK';
+  const advancedOrder = requiredAdvancedMetrics[game.sport];
 
   return (
     <section className="grid h-full min-h-0 gap-4 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-4 lg:grid-cols-[300px_minmax(0,1fr)]">
@@ -169,8 +176,9 @@ export function DataEngineRoute() {
         <div className="rounded border border-slate-700 bg-slate-900 p-3">
           <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">Consistency</p>
           <p className={`text-sm ${consistencyCode === 'OK' ? 'text-emerald-300' : 'text-amber-200'}`}>{consistencyCode}</p>
-          {(consistency.issues ?? []).length > 0 && (
+          {(missingAdvanced.length > 0 || (consistency.issues ?? []).length > 0) && (
             <ul className="mt-2 list-disc pl-5 text-xs text-amber-200">
+              {missingAdvanced.map((issue) => <li key={issue}>missing {issue}</li>)}
               {(consistency.issues ?? []).map((issue) => <li key={issue}>{issue}</li>)}
             </ul>
           )}
@@ -200,6 +208,19 @@ export function DataEngineRoute() {
               <p key={metric.label} className="text-slate-200">
                 {metric.label}: {game.homeTeam} {metric.home} · {game.awayTeam} {metric.away}
               </p>
+            ))}
+          </div>
+        </div>
+
+
+        <div className="rounded border border-slate-700 bg-slate-900 p-3">
+          <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">Advanced Metrics</p>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {advancedOrder.map((name) => (
+              <div key={name} className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs">
+                <p className="text-slate-400">{name}</p>
+                <p className="font-medium text-cyan-200">{(game.advancedMetrics as unknown as Record<string, number>)[name]}</p>
+              </div>
             ))}
           </div>
         </div>

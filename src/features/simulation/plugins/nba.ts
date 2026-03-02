@@ -1,6 +1,6 @@
 import { formatClock } from '../core';
 import { bumpPlayerStat, computeLeaders, initializeBoxScore, setMeta, sumTeamTotals, validateConsistency } from '../boxScore';
-import type { KeyStat, NbaGameState, SimulatorPlugin } from '../types';
+import type { KeyStat, NbaAdvancedMetrics, NbaGameState, SimulatorPlugin } from '../types';
 
 const QUARTER_SECONDS = 12 * 60;
 const shotClockMax = 24;
@@ -44,7 +44,7 @@ export const nbaSimulator: SimulatorPlugin = {
       lastEvent: 'Tip-off controlled by BOS.', keyStats: [], lastPlay: { type: 'tipoff', description: 'Tip-off controlled by BOS.', playId: 0, points: 0, shooter: 'N/A', shotType: 'midrange', possession: 'away', shotClock: 24, paceEstimate: 99, offensiveRating: 110, defensiveRating: 110, netRating: 0, tsApprox: 0 },
       shotClock: shotClockMax, teamFoulsHome: 0, teamFoulsAway: 0, bonusHome: false, bonusAway: false, turnoversHome: 0, turnoversAway: 0,
       pointsLeader: 'L. James 0', assistsLeader: 'L. James 0', reboundsLeader: 'A. Davis 0', lastShot: 'NONE', shotResult: 'none', run: '0-0 run',
-      paceEstimate: 99, offensiveRatingEstimate: 110, winProbabilityHome: 0.5, boxScore, consistencyIssues: [],
+      paceEstimate: 99, offensiveRatingEstimate: 110, winProbabilityHome: 0.5, advancedMetrics: { offensiveRating: 110, defensiveRating: 110, netRating: 0, trueShootingPct: 55, pace: 99, assistRatio: 16, reboundPct: 50, usageRate: 21, ppp: 1.1, astToRatio: 1.5 }, boxScore, consistencyIssues: [],
     };
     const leaders = computeLeaders(boxScore, ['pts', 'ast', 'reb']);
     game.teamLeaders = leaders.teamLeaders;
@@ -173,6 +173,32 @@ export const nbaSimulator: SimulatorPlugin = {
     game.paceEstimate = clamp(Math.round(90 + poss / Math.max(game.period, 1)), 85, 115);
     game.offensiveRatingEstimate = clamp(Math.round(((game.scoreHome + game.scoreAway) / Math.max(poss, 1)) * 100), 80, 140);
     game.winProbabilityHome = clamp(0.5 + (game.scoreHome - game.scoreAway) * 0.03, 0.02, 0.98);
+
+    const homeTotals = game.boxScore!.teamTotals.home;
+    const awayTotals = game.boxScore!.teamTotals.away;
+    const homePoss = (homeTotals.fga ?? 0) + 0.44 * (homeTotals.fta ?? 0) + (homeTotals.turnovers ?? 0);
+    const awayPoss = (awayTotals.fga ?? 0) + 0.44 * (awayTotals.fta ?? 0) + (awayTotals.turnovers ?? 0);
+    const totalPoss = Math.max((homePoss + awayPoss) / 2, 1);
+    const offRtg = ((homeTotals.pts ?? game.scoreHome) / totalPoss) * 100;
+    const defRtg = ((awayTotals.pts ?? game.scoreAway) / totalPoss) * 100;
+    const ts = ((homeTotals.pts ?? game.scoreHome) / (2 * Math.max((homeTotals.fga ?? 0) + 0.44 * (homeTotals.fta ?? 0), 1))) * 100;
+    const assistRatio = ((homeTotals.ast ?? 0) * 100) / Math.max((homeTotals.fga ?? 0) + 0.44 * (homeTotals.fta ?? 0) + (homeTotals.ast ?? 0) + (homeTotals.turnovers ?? 0), 1);
+    const rebPct = ((homeTotals.reb ?? 0) / Math.max((homeTotals.reb ?? 0) + (awayTotals.reb ?? 0), 1)) * 100;
+    const usage = (((homeTotals.fga ?? 0) + 0.44 * (homeTotals.fta ?? 0) + (homeTotals.turnovers ?? 0)) / Math.max(totalPoss * 5, 1)) * 100;
+    const ppp = (homeTotals.pts ?? game.scoreHome) / Math.max(homePoss, 1);
+    const astTo = (homeTotals.ast ?? 0) / Math.max(homeTotals.turnovers ?? 0, 1);
+    game.advancedMetrics = {
+      offensiveRating: Number(offRtg.toFixed(1)),
+      defensiveRating: Number(defRtg.toFixed(1)),
+      netRating: Number((offRtg - defRtg).toFixed(1)),
+      trueShootingPct: Number(ts.toFixed(1)),
+      pace: game.paceEstimate,
+      assistRatio: Number(assistRatio.toFixed(1)),
+      reboundPct: Number(rebPct.toFixed(1)),
+      usageRate: Number(usage.toFixed(1)),
+      ppp: Number(ppp.toFixed(2)),
+      astToRatio: Number(astTo.toFixed(2)),
+    } satisfies NbaAdvancedMetrics;
 
     if (game.clockSeconds <= 0 && game.period < 4) {
       game.period += 1; game.periodLabel = `Q${game.period}`; game.clockSeconds = QUARTER_SECONDS; game.teamFoulsHome = 0; game.teamFoulsAway = 0;
