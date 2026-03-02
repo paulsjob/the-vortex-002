@@ -1,10 +1,10 @@
 import { useDataEngineStore } from '../../store/useDataEngineStore';
 import type { SavedTemplate } from '../../store/useTemplateStore';
+import { StageViewportFrame } from '../../components/stage/StageViewportFrame';
 import { TemplateSceneSvg } from './TemplateSceneSvg';
 
 interface Props {
   template: SavedTemplate | null;
-  label: string;
   sponsor: string | null;
   tone?: 'preview' | 'program';
 }
@@ -17,20 +17,13 @@ const SPONSOR_STYLES: Record<string, { accentFillClass: string; accentBorderClas
 
 const getSponsorStyle = (sponsor: string | null) => (sponsor ? (SPONSOR_STYLES[sponsor] ?? SPONSOR_STYLES['Renderless Sports']) : null);
 
-export function TemplatePreview({ template, label, sponsor, tone = 'preview' }: Props) {
+export function TemplatePreview({ template, sponsor, tone = 'preview' }: Props) {
   const game = useDataEngineStore((s) => s.game);
-  const running = useDataEngineStore((s) => s.running);
   const isProgram = tone === 'program';
   const sponsorStyle = getSponsorStyle(sponsor);
 
   return (
-    <section className="flex h-full min-h-0 min-w-0 flex-col gap-1">
-      <div className="flex shrink-0 items-center justify-between gap-2">
-        <h4 className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${isProgram ? 'text-red-300' : 'text-blue-200'}`}>{label}</h4>
-        <div className={`rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] ${running ? 'border-emerald-600 bg-emerald-900/30 text-emerald-300' : 'border-amber-600 bg-amber-900/30 text-amber-300'}`}>
-          Data Engine {running ? 'Live' : 'Paused'}
-        </div>
-      </div>
+    <section className="flex h-full min-h-0 min-w-0 flex-col">
       <div className="flex min-h-0 flex-1 flex-col">
         {template ? (
           <div className="mb-0.5 flex shrink-0 items-center justify-between text-[11px] text-slate-400">
@@ -43,10 +36,10 @@ export function TemplatePreview({ template, label, sponsor, tone = 'preview' }: 
             <span>16 × 9</span>
           </div>
         )}
-        <div className="flex min-h-0 flex-1 items-center justify-center">
-          <div className="relative w-full max-w-full">
+        <StageViewportFrame className="border-0 bg-transparent p-[clamp(12px,1.8vh,22px)]">
+          <div className="relative flex h-full w-full items-center justify-center">
             <div
-              className={`relative aspect-video w-full max-h-full overflow-hidden rounded-lg border bg-slate-950 ${isProgram ? 'border-red-600/70' : (sponsorStyle?.accentBorderClass ?? 'border-slate-700')}`}
+              className={`relative aspect-video h-auto w-full max-h-full max-w-full rounded-lg border bg-slate-950 ${isProgram ? 'border-red-600/70' : (sponsorStyle?.accentBorderClass ?? 'border-slate-700')}`}
             >
               <div className="absolute inset-0 bg-[linear-gradient(45deg,#0f172a_25%,#111827_25%,#111827_50%,#0f172a_50%,#0f172a_75%,#111827_75%,#111827_100%)] bg-[length:18px_18px] opacity-70" />
               {!isProgram && sponsorStyle && <div className={`absolute inset-0 bg-gradient-to-br ${sponsorStyle.accentFillClass} opacity-55`} />}
@@ -61,9 +54,6 @@ export function TemplatePreview({ template, label, sponsor, tone = 'preview' }: 
                   )}
                 </div>
               </div>
-              <div className={`absolute right-1.5 top-1.5 rounded border px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.12em] ${isProgram ? 'border-red-500 bg-red-900/60 text-red-100' : 'border-blue-500 bg-blue-900/45 text-blue-100'}`}>
-                {isProgram ? 'LOCKED' : 'EDITABLE'}
-              </div>
               {sponsor ? (
                 <div className="absolute left-1.5 top-1.5 rounded border border-slate-200/35 bg-slate-900/70 px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.16em] text-slate-100">
                   {sponsorStyle?.logo ?? 'SP'} · {sponsor}
@@ -71,7 +61,7 @@ export function TemplatePreview({ template, label, sponsor, tone = 'preview' }: 
               ) : null}
             </div>
           </div>
-        </div>
+        </StageViewportFrame>
         <div className="mt-0.5 grid shrink-0 grid-cols-3 gap-2 text-[9px] text-slate-500">
           <span>Pitch #{game.lastPitch.pitchNumber}</span>
           <span>{game.awayTeam} {game.scoreAway} - {game.scoreHome} {game.homeTeam}</span>

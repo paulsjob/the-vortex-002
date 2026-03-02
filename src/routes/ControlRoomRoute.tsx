@@ -6,6 +6,7 @@ import { useDataEngineStore } from '../store/useDataEngineStore';
 import { useDemoSessionStore } from '../store/useDemoSessionStore';
 import { buildOutputFeedUrl, buildTemplateFeedUrl } from '../features/playout/publicUrl';
 import { StatusBadge } from '../components/ui/StatusBadge';
+import { StageViewportFrame } from '../components/stage/StageViewportFrame';
 
 type TreeNode = { id: string; type: 'folder'; name: string; children: TreeNode[] } | { id: string; type: 'template'; name: string };
 
@@ -18,10 +19,9 @@ const transitionOptions: Array<{ type: TransitionType; label: string }> = [
 
 const durationChoices = [150, 300, 500, 1000];
 const QUICK_LAUNCH_DEFAULT_COUNT = 4;
-const COLLAPSED_LAUNCHER_ROW_HEIGHT = '7.5rem';
-const EXPANDED_LAUNCHER_ROW_HEIGHT = '11rem';
 const COLLAPSED_LAUNCHER_GRID_ROWS = '1fr';
 const EXPANDED_LAUNCHER_GRID_ROWS = 'repeat(2, minmax(0, 1fr))';
+const PANEL_STATUS_BADGE_CLASS = 'rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em]';
 
 export function ControlRoomRoute() {
   const templateStore = useTemplateStore();
@@ -128,14 +128,6 @@ export function ControlRoomRoute() {
   const takeTime = lastTakeAt ? new Date(lastTakeAt).toLocaleTimeString() : 'No take yet';
   const previewReady = Boolean(previewTemplate && previewTemplate.layers.length > 0 && engineRunning);
 
-  const fallbackMessage = !previewTemplate
-    ? 'Select a template to stage preview before TAKE.'
-    : previewTemplate.layers.length === 0
-      ? 'Preview template is empty. Add at least one layer in Design.'
-      : !programTemplate
-        ? 'Program is clear. Press TAKE to move Preview to Program.'
-        : null;
-
   const runTransitionTake = () => {
     if (!previewReady || transitionActive) return;
 
@@ -229,9 +221,43 @@ export function ControlRoomRoute() {
     );
   };
 
-  const launcherPanelHeight = (expanded: boolean) => (expanded ? EXPANDED_LAUNCHER_ROW_HEIGHT : COLLAPSED_LAUNCHER_ROW_HEIGHT);
-
   const launcherGridRows = (expanded: boolean) => (expanded ? EXPANDED_LAUNCHER_GRID_ROWS : COLLAPSED_LAUNCHER_GRID_ROWS);
+
+  const renderViewportPanel = (options: {
+    title: 'PREVIEW' | 'PROGRAM';
+    titleClassName: string;
+    template: typeof previewTemplate;
+    sponsor: string | null;
+    tone: 'preview' | 'program';
+    lockLabel: 'EDITABLE' | 'LOCKED';
+    blackout?: boolean;
+  }) => (
+    <div className="min-h-0 min-w-0">
+      <div className="flex min-h-0 min-w-0 flex-col gap-2">
+        <div className="flex h-6 items-center justify-between gap-2 px-0.5">
+          <h4 className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${options.titleClassName}`}>{options.title}</h4>
+          <div className="flex min-w-0 items-center justify-end gap-1.5">
+            <div className={`${PANEL_STATUS_BADGE_CLASS} ${engineRunning ? 'border-emerald-600 bg-emerald-900/30 text-emerald-300' : 'border-amber-600 bg-amber-900/30 text-amber-300'}`}>
+              Data Engine {engineRunning ? 'Live' : 'Paused'}
+            </div>
+            <div className={`${PANEL_STATUS_BADGE_CLASS} ${options.tone === 'program' ? 'border-red-500 bg-red-900/60 text-red-100' : 'border-blue-500 bg-blue-900/45 text-blue-100'}`}>
+              {options.lockLabel}
+            </div>
+          </div>
+        </div>
+        <StageViewportFrame className="relative w-full aspect-video rounded-md border-slate-700 bg-slate-900 p-3">
+          {options.blackout && (
+            <div className="pointer-events-none absolute inset-0 z-10 border border-slate-800 bg-black/95 text-center text-sm font-semibold uppercase tracking-[0.25em] text-white">
+              <div className="flex h-full items-center justify-center">Blackout</div>
+            </div>
+          )}
+          <div className="h-full w-full">
+            <TemplatePreview template={options.template} sponsor={options.sponsor} tone={options.tone} />
+          </div>
+        </StageViewportFrame>
+      </div>
+    </div>
+  );
 
   return (
     <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-4">
@@ -278,76 +304,72 @@ export function ControlRoomRoute() {
         </aside>
 
         <section className="h-full min-h-0 min-w-0 rounded-lg border border-slate-700 bg-slate-950 p-4">
-          <div className="h-full min-h-0 min-w-0 grid grid-rows-[minmax(0,1fr)_auto_auto] gap-3">
-            <div className="min-h-0">
-              <div className="grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_minmax(220px,260px)_minmax(0,1fr)] gap-3 items-stretch">
-                <div className="flex items-center justify-center min-h-0 min-w-0">
-                  <div className="w-full min-h-0 min-w-0 flex items-center justify-center">
-                    <div className="w-full max-w-full aspect-video">
-                      <div className="h-full w-full">
-                        <TemplatePreview template={previewTemplate} label="PREVIEW" sponsor={previewSponsor} tone="preview" />
-                      </div>
-                    </div>
-                  </div>
+          <div className="h-full min-h-0 min-w-0 flex flex-col gap-3">
+            <div className="shrink-0">
+              <div className="grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_minmax(220px,260px)_minmax(0,1fr)] gap-3 items-stretch">
+                <div className="min-h-0 min-w-0">
+                  {renderViewportPanel({
+                    title: 'PREVIEW',
+                    titleClassName: 'text-blue-200',
+                    template: previewTemplate,
+                    sponsor: previewSponsor,
+                    tone: 'preview',
+                    lockLabel: 'EDITABLE',
+                  })}
                 </div>
 
                 <div className="flex min-h-0 min-w-0 flex-col rounded-md border border-slate-700 bg-slate-900 p-3">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Transitions</p>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    {transitionOptions.map((option) => (
-                      <button
-                        key={option.type}
-                        className={`rounded border px-2 py-2 text-xs font-semibold uppercase tracking-wide transition ${transitionType === option.type ? 'border-blue-400 bg-blue-900/40 text-blue-100' : 'border-slate-600 bg-slate-950 text-slate-200 hover:bg-slate-800'}`}
-                        onClick={() => setTransitionType(option.type)}
-                        disabled={transitionActive}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="mt-4 rounded border border-slate-700 bg-slate-950 p-3">
-                    <div className="mb-2 flex items-center justify-between">
-                      <label htmlFor="transition-duration" className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Transition Duration</label>
-                      <span className="text-xs text-slate-300">{transitionDurationMs}ms</span>
+                  <div className="h-full flex flex-col">
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      {transitionOptions.map((option) => (
+                        <button
+                          key={option.type}
+                          className={`rounded border px-2 py-2 text-xs font-semibold uppercase tracking-wide transition ${transitionType === option.type ? 'border-blue-400 bg-blue-900/40 text-blue-100' : 'border-slate-600 bg-slate-950 text-slate-200 hover:bg-slate-800'}`}
+                          onClick={() => setTransitionType(option.type)}
+                          disabled={transitionActive}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
                     </div>
-                    <input
-                      id="transition-duration"
-                      type="range"
-                      min={0}
-                      max={durationChoices.length - 1}
-                      step={1}
-                      value={durationChoices.indexOf(transitionDurationMs)}
-                      onChange={(e) => setTransitionDurationMs(durationChoices[Number(e.target.value)] ?? 300)}
-                      className="w-full accent-blue-400"
-                      disabled={transitionType === 'cut' || transitionActive}
-                    />
-                  </div>
 
-                  <button
-                    className="mt-4 w-full rounded-md border border-red-500 bg-red-600 px-6 py-3 text-base font-black tracking-[0.24em] text-white shadow-lg shadow-red-950/60 transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40"
-                    onClick={runTransitionTake}
-                    disabled={!previewReady || transitionActive}
-                  >
-                    {transitionActive ? 'TRANSITIONING' : 'TAKE'}
-                  </button>
+                    <div className="mt-4 rounded border border-slate-700 bg-slate-950 p-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <label htmlFor="transition-duration" className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Transition Duration</label>
+                        <span className="text-xs text-slate-300">{transitionDurationMs}ms</span>
+                      </div>
+                      <input
+                        id="transition-duration"
+                        type="range"
+                        min={0}
+                        max={durationChoices.length - 1}
+                        step={1}
+                        value={durationChoices.indexOf(transitionDurationMs)}
+                        onChange={(e) => setTransitionDurationMs(durationChoices[Number(e.target.value)] ?? 300)}
+                        className="w-full accent-blue-400"
+                        disabled={transitionType === 'cut' || transitionActive}
+                      />
+                    </div>
 
-                  <button
-                    className="mt-2 w-full rounded-md border border-amber-500/70 bg-amber-700/70 px-6 py-2 text-sm font-bold tracking-[0.2em] text-amber-100 transition hover:bg-amber-600/80 disabled:cursor-not-allowed disabled:opacity-40"
-                    onClick={clearProgram}
-                    disabled={transitionActive}
-                  >
-                    CLEAR
-                  </button>
+                    <button
+                      className="mt-4 w-full rounded-md border border-red-500 bg-red-600 px-6 py-3 text-base font-black tracking-[0.24em] text-white shadow-lg shadow-red-950/60 transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+                      onClick={runTransitionTake}
+                      disabled={!previewReady || transitionActive}
+                    >
+                      {transitionActive ? 'TRANSITIONING' : 'TAKE'}
+                    </button>
 
-                  <div className="mt-3 min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-950 p-3 text-sm text-slate-300">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Broadcast Notes</p>
-                    {fallbackMessage ? (
-                      <p className="mt-2 text-slate-300">{fallbackMessage}</p>
-                    ) : (
-                      <p className="mt-2 text-slate-300">Program and Preview states are isolated snapshots. Program only changes when TAKE is executed.</p>
-                    )}
-                    <div className="mt-3 flex justify-end">
+                    <button
+                      className="mt-2 w-full rounded-md border border-amber-500/70 bg-amber-700/70 px-6 py-2 text-sm font-bold tracking-[0.2em] text-amber-100 transition hover:bg-amber-600/80 disabled:cursor-not-allowed disabled:opacity-40"
+                      onClick={clearProgram}
+                      disabled={transitionActive}
+                    >
+                      CLEAR
+                    </button>
+
+                    <div className="mt-auto pt-2">
+                      <div className="grid grid-cols-2 gap-2">
                       <button
                         className="rounded border border-emerald-700 px-3 py-1 text-xs font-semibold text-emerald-300 disabled:opacity-50 hover:bg-emerald-900/30"
                         onClick={() => previewTemplate && copyTemplateUrl(previewTemplate.id)}
@@ -356,102 +378,99 @@ export function ControlRoomRoute() {
                         Copy Preview URL
                       </button>
                       <button
-                        className="ml-2 rounded border border-emerald-700 px-3 py-1 text-xs font-semibold text-emerald-300 disabled:opacity-50 hover:bg-emerald-900/30"
+                        className="rounded border border-emerald-700 px-3 py-1 text-xs font-semibold text-emerald-300 disabled:opacity-50 hover:bg-emerald-900/30"
                         onClick={copyAggregateOutputUrl}
                         disabled={!programTemplate}
                       >
-                        Copy Output URL
+                        Copy Program URL
                       </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="relative flex items-center justify-center min-h-0 min-w-0">
-                  <div className="relative h-full w-full min-h-0 min-w-0">
-                      {blackoutActive && (
-                        <div className="pointer-events-none absolute inset-0 z-10 rounded-md border border-slate-800 bg-black/95 text-center text-sm font-semibold uppercase tracking-[0.25em] text-white">
-                          <div className="flex h-full items-center justify-center">Blackout</div>
-                        </div>
-                      )}
-                      <div className="w-full min-h-0 min-w-0 flex items-center justify-center">
-                        <div className="w-full max-w-full aspect-video">
-                          <div className="h-full w-full">
-                            <TemplatePreview template={programTemplate} label="PROGRAM" sponsor={programSponsor} tone="program" />
-                          </div>
-                        </div>
                       </div>
                     </div>
+                  </div>
+                </div>
+
+                <div className="min-h-0 min-w-0">
+                  {renderViewportPanel({
+                    title: 'PROGRAM',
+                    titleClassName: 'text-red-300',
+                    template: programTemplate,
+                    sponsor: programSponsor,
+                    tone: 'program',
+                    lockLabel: 'LOCKED',
+                    blackout: blackoutActive,
+                  })}
                 </div>
               </div>
             </div>
 
-            <div className="min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-2">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">FAVORITES</p>
-              <button
-                type="button"
-                className="rounded border border-slate-600 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-200 hover:bg-slate-800"
-                onClick={() => setFavoritesExpanded((current) => !current)}
-              >
-                {favoritesExpanded ? 'Show less' : 'Show more'}
-              </button>
-            </div>
-            <div className="mt-2 overflow-x-auto overflow-y-hidden pb-1 no-scrollbar" style={{ height: launcherPanelHeight(favoritesExpanded) }}>
-              <div className="grid auto-cols-[180px] grid-flow-col gap-2" style={{ gridTemplateRows: launcherGridRows(favoritesExpanded) }}>
-              {favoriteTemplates.length === 0 ? (
-                <p className="text-sm text-slate-500">Star templates in the library to pin your favorites.</p>
-              ) : favoriteTemplates.map((template) => (
-                <button
-                  key={template.id}
-                  className="group min-w-[180px] rounded-md border border-slate-700 bg-slate-950 p-2 text-left transition hover:border-amber-400/60 hover:shadow-[0_0_24px_rgba(251,191,36,0.15)]"
-                  onClick={() => setPreviewTemplate(template)}
-                >
-                  <div className="mb-1 aspect-video w-full overflow-hidden rounded border border-slate-700 bg-slate-900 grid place-items-center text-[10px] uppercase tracking-[0.2em] text-slate-500">
-                    16:9
-                  </div>
-                  <p className="truncate text-xs font-semibold text-slate-100">{template.name}</p>
-                </button>
-              ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-2">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">QUICK LAUNCH</p>
-              <button
-                type="button"
-                className="rounded border border-slate-600 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-200 hover:bg-slate-800"
-                onClick={() => setQuickLaunchExpanded((current) => !current)}
-              >
-                {quickLaunchExpanded ? 'Show less' : 'Show more'}
-              </button>
-            </div>
-            <div className="mt-2 overflow-x-auto overflow-y-hidden pb-1 no-scrollbar" style={{ height: launcherPanelHeight(quickLaunchExpanded) }}>
-              <div className="grid auto-cols-[180px] grid-flow-col gap-2" style={{ gridTemplateRows: launcherGridRows(quickLaunchExpanded) }}>
-              {quickLaunchTemplates.length === 0 ? (
-                <p className="text-sm text-slate-500">Add templates with 🚀 in the library for one-tap preloading.</p>
-              ) : quickLaunchTemplates.map((template) => (
-                <div key={template.id} className="group relative min-w-[180px] rounded-md border border-slate-700 bg-slate-950 p-2 transition hover:border-cyan-400/60 hover:shadow-[0_0_24px_rgba(34,211,238,0.15)]">
+            <div className="flex-1 min-h-0 overflow-hidden grid grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
+              <div className="min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">FAVORITES</p>
                   <button
                     type="button"
-                    className="absolute right-2 top-2 rounded px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-800 hover:text-slate-200"
-                    onClick={() => templateStore.removeQuickLaunchTemplate(template.id)}
-                    aria-label={`Remove ${template.name} from quick launch`}
+                    className="rounded border border-slate-600 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-200 hover:bg-slate-800"
+                    onClick={() => setFavoritesExpanded((current) => !current)}
                   >
-                    ✕
-                  </button>
-                  <button className="w-full text-left" onClick={() => setPreviewTemplate(template)}>
-                    <div className="mb-1 aspect-video w-full overflow-hidden rounded border border-slate-700 bg-slate-900 grid place-items-center text-[10px] uppercase tracking-[0.2em] text-slate-500">
-                      Quick
-                    </div>
-                    <p className="truncate text-xs font-semibold text-slate-100">{template.name}</p>
+                    {favoritesExpanded ? 'Show less' : 'Show more'}
                   </button>
                 </div>
-              ))}
+                <div className="mt-2 h-[calc(100%-2rem)] min-h-0 overflow-x-auto overflow-y-hidden pb-1 no-scrollbar">
+                  <div className="grid h-full auto-cols-max grid-flow-col gap-2" style={{ gridTemplateRows: launcherGridRows(favoritesExpanded) }}>
+                  {favoriteTemplates.length === 0 ? (
+                    <p className="text-sm text-slate-500">Star templates in the library to pin your favorites.</p>
+                  ) : favoriteTemplates.map((template) => (
+                    <button
+                      key={template.id}
+                      className="group shrink-0 rounded-md border border-slate-700 bg-slate-950 p-2 text-left transition hover:border-amber-400/60 hover:shadow-[0_0_24px_rgba(251,191,36,0.15)]"
+                      onClick={() => setPreviewTemplate(template)}
+                    >
+                      <div className="mb-1 h-[clamp(72px,10vh,110px)] w-auto aspect-video overflow-hidden rounded border border-slate-700 bg-slate-900 grid place-items-center text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                        16:9
+                      </div>
+                      <p className="truncate text-xs font-semibold text-slate-100">{template.name}</p>
+                    </button>
+                  ))}
+                  </div>
+                </div>
+              </div>
+              <div className="min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">QUICK LAUNCH</p>
+                  <button
+                    type="button"
+                    className="rounded border border-slate-600 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-200 hover:bg-slate-800"
+                    onClick={() => setQuickLaunchExpanded((current) => !current)}
+                  >
+                    {quickLaunchExpanded ? 'Show less' : 'Show more'}
+                  </button>
+                </div>
+                <div className="mt-2 h-[calc(100%-2rem)] min-h-0 overflow-x-auto overflow-y-hidden pb-1 no-scrollbar">
+                  <div className="grid h-full auto-cols-max grid-flow-col gap-2" style={{ gridTemplateRows: launcherGridRows(quickLaunchExpanded) }}>
+                  {quickLaunchTemplates.length === 0 ? (
+                    <p className="text-sm text-slate-500">Add templates with 🚀 in the library for one-tap preloading.</p>
+                  ) : quickLaunchTemplates.map((template) => (
+                    <div key={template.id} className="group relative shrink-0 rounded-md border border-slate-700 bg-slate-950 p-2 transition hover:border-cyan-400/60 hover:shadow-[0_0_24px_rgba(34,211,238,0.15)]">
+                      <button
+                        type="button"
+                        className="absolute right-2 top-2 rounded px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-800 hover:text-slate-200"
+                        onClick={() => templateStore.removeQuickLaunchTemplate(template.id)}
+                        aria-label={`Remove ${template.name} from quick launch`}
+                      >
+                        ✕
+                      </button>
+                      <button className="text-left" onClick={() => setPreviewTemplate(template)}>
+                        <div className="mb-1 h-[clamp(72px,10vh,110px)] w-auto aspect-video overflow-hidden rounded border border-slate-700 bg-slate-900 grid place-items-center text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                          Quick
+                        </div>
+                        <p className="truncate text-xs font-semibold text-slate-100">{template.name}</p>
+                      </button>
+                    </div>
+                  ))}
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
           </div>
         </section>
       </div>
