@@ -278,12 +278,16 @@ export function ControlRoomRoute() {
         </aside>
 
         <section className="h-full min-h-0 min-w-0 rounded-lg border border-slate-700 bg-slate-950 p-4">
-          <div className="h-full min-h-0 min-w-0 flex flex-col gap-3">
-            <div className="flex-1 min-h-0">
+          <div className="h-full min-h-0 min-w-0 grid grid-rows-[minmax(0,1fr)_auto_auto] gap-3">
+            <div className="min-h-0">
               <div className="grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_minmax(220px,260px)_minmax(0,1fr)] gap-3 items-stretch">
                 <div className="flex items-center justify-center min-h-0 min-w-0">
-                  <div className="h-full w-full min-h-0 min-w-0">
-                    <TemplatePreview template={previewTemplate} label="PREVIEW" sponsor={previewSponsor} tone="preview" />
+                  <div className="w-full min-h-0 min-w-0 flex items-center justify-center">
+                    <div className="w-full max-w-full aspect-video">
+                      <div className="h-full w-full">
+                        <TemplatePreview template={previewTemplate} label="PREVIEW" sponsor={previewSponsor} tone="preview" />
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -335,6 +339,31 @@ export function ControlRoomRoute() {
                   >
                     CLEAR
                   </button>
+
+                  <div className="mt-3 min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-950 p-3 text-sm text-slate-300">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Broadcast Notes</p>
+                    {fallbackMessage ? (
+                      <p className="mt-2 text-slate-300">{fallbackMessage}</p>
+                    ) : (
+                      <p className="mt-2 text-slate-300">Program and Preview states are isolated snapshots. Program only changes when TAKE is executed.</p>
+                    )}
+                    <div className="mt-3 flex justify-end">
+                      <button
+                        className="rounded border border-emerald-700 px-3 py-1 text-xs font-semibold text-emerald-300 disabled:opacity-50 hover:bg-emerald-900/30"
+                        onClick={() => previewTemplate && copyTemplateUrl(previewTemplate.id)}
+                        disabled={!previewTemplate}
+                      >
+                        Copy Preview URL
+                      </button>
+                      <button
+                        className="ml-2 rounded border border-emerald-700 px-3 py-1 text-xs font-semibold text-emerald-300 disabled:opacity-50 hover:bg-emerald-900/30"
+                        onClick={copyAggregateOutputUrl}
+                        disabled={!programTemplate}
+                      >
+                        Copy Output URL
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="relative flex items-center justify-center min-h-0 min-w-0">
@@ -344,17 +373,19 @@ export function ControlRoomRoute() {
                           <div className="flex h-full items-center justify-center">Blackout</div>
                         </div>
                       )}
-                      <div className="w-full h-full min-h-0 min-w-0">
-                        <TemplatePreview template={programTemplate} label="PROGRAM" sponsor={programSponsor} tone="program" />
+                      <div className="w-full min-h-0 min-w-0 flex items-center justify-center">
+                        <div className="w-full max-w-full aspect-video">
+                          <div className="h-full w-full">
+                            <TemplatePreview template={programTemplate} label="PROGRAM" sponsor={programSponsor} tone="program" />
+                          </div>
+                        </div>
                       </div>
                     </div>
                 </div>
               </div>
             </div>
 
-            <div className="shrink-0 h-[210px] overflow-hidden">
-              <div className="grid min-h-0 gap-3 pr-1" style={{ gridTemplateRows: 'auto auto minmax(0,1fr)' }}>
-          <div className="min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-2">
+            <div className="min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-2">
             <div className="flex items-center justify-between gap-2">
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">FAVORITES</p>
               <button
@@ -421,25 +452,6 @@ export function ControlRoomRoute() {
               </div>
             </div>
           </div>
-
-          <div className="min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-2.5 text-sm text-slate-300">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Broadcast Notes</p>
-            {fallbackMessage ? (
-              <p className="mt-2 text-slate-300 line-clamp-3">{fallbackMessage}</p>
-            ) : (
-              <p className="mt-2 text-slate-300 line-clamp-3">Program and Preview states are isolated snapshots. Program only changes when TAKE is executed.</p>
-            )}
-            <div className="mt-3 flex justify-end">
-              <button className="rounded border border-emerald-700 px-3 py-1 text-xs font-semibold text-emerald-300 disabled:opacity-50 hover:bg-emerald-900/30" onClick={() => previewTemplate && copyTemplateUrl(previewTemplate.id)} disabled={!previewTemplate}>
-                Copy Preview URL
-              </button>
-              <button className="ml-2 rounded border border-emerald-700 px-3 py-1 text-xs font-semibold text-emerald-300 disabled:opacity-50 hover:bg-emerald-900/30" onClick={copyAggregateOutputUrl} disabled={!programTemplate}>
-                Copy Output URL
-              </button>
-            </div>
-          </div>
-              </div>
-            </div>
           </div>
         </section>
       </div>
