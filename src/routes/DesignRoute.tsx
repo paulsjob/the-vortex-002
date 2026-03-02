@@ -6,7 +6,9 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import type { ExplorerNode, Layer } from '../types/domain';
 import { getLiveTextContent } from '../features/playout/liveBindings';
 import { buildTemplateFeedUrl } from '../features/playout/publicUrl';
+import { buildNormalizedPayload, buildTeamMetrics } from '../features/simulation/derived';
 import { StageViewportFrame } from '../components/stage/StageViewportFrame';
+import { DataInspectorPanel } from '../components/design/DataInspectorPanel';
 
 const TEMPLATE_FORMATS = [
   { id: '16:9', value: '1920x1080', label: '16:9 (1920x1080)', width: 1920, height: 1080 },
@@ -92,6 +94,7 @@ export function DesignRoute() {
   const assetStore = useAssetStore();
   const templateStore = useTemplateStore();
   const engineGame = useDataEngineStore((s) => s.game);
+  const engineHistoryLength = useDataEngineStore((s) => s.history.length);
   const {
     layers,
     canvasWidth,
@@ -136,6 +139,7 @@ export function DesignRoute() {
   const [showGrid, setShowGrid] = useState(true);
   const [snapToGrid, setSnapToGrid] = useState(true);
   const [showSafeZones, setShowSafeZones] = useState(false);
+  const [dataBindingBetaEnabled, setDataBindingBetaEnabled] = useState(false);
   const [guides, setGuides] = useState<Guide[]>([]);
   const [selectedGuideId, setSelectedGuideId] = useState<string | null>(null);
   const [guideReadout, setGuideReadout] = useState<{ x: number; y: number; value: number } | null>(null);
@@ -178,6 +182,20 @@ export function DesignRoute() {
     });
     return [...families];
   }, [layers]);
+  const hasSimulationData = engineHistoryLength > 0;
+  const livePayload = hasSimulationData ? engineGame : null;
+  const derivedPayload = useMemo(() => {
+    if (!hasSimulationData) return null;
+    return {
+      teamMetrics: buildTeamMetrics(engineGame),
+      advancedMetrics: engineGame.advancedMetrics,
+      consistencyIssues: engineGame.consistencyIssues ?? [],
+      sport: engineGame.sport,
+    };
+  }, [engineGame, hasSimulationData]);
+  const scorebugPayload = useMemo(() => (
+    hasSimulationData ? buildNormalizedPayload(engineGame, 'live-scorebug') : null
+  ), [engineGame, hasSimulationData]);
 
   const ensureFontLoaded = useCallback((fontFamily: string, size = 56) => {
     if (typeof document === 'undefined' || !('fonts' in document) || !fontFamily) return;
@@ -1191,6 +1209,16 @@ export function DesignRoute() {
             <button className="rounded border border-slate-700 px-2 py-1" onClick={() => distributeSpacing('y')}>Space V</button>
           </div>
           {saveNotice && <p className="rounded border border-emerald-700 bg-emerald-900/20 px-3 py-2 text-xs text-emerald-200">{saveNotice}</p>}
+          <div className="flex items-center justify-between rounded border border-slate-700 bg-slate-900 p-2 text-xs text-slate-300">
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Feature Flags</span>
+            <button
+              type="button"
+              className={`rounded border px-2 py-1 ${dataBindingBetaEnabled ? 'border-cyan-500 text-cyan-300' : 'border-slate-700 text-slate-400'}`}
+              onClick={() => setDataBindingBetaEnabled((v) => !v)}
+            >
+              Data Binding (Beta)
+            </button>
+          </div>
           <div className="flex flex-wrap items-center gap-2 rounded border border-slate-700 bg-slate-900 p-2 text-xs text-slate-300">
             <button className={`rounded border px-2 py-1 ${showRulers ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => setShowRulers((v) => !v)}>Rulers</button>
             <button className={`rounded border px-2 py-1 ${showGuides ? 'border-blue-500 text-blue-300' : 'border-slate-700'}`} onClick={() => setShowGuides((v) => !v)}>Guides</button>
@@ -1279,10 +1307,12 @@ export function DesignRoute() {
         <aside className="flex min-h-0 flex-col rounded-lg border border-slate-700 bg-slate-950 p-3">
           <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-300">Layer Inspector</h3>
           <div className="min-h-0 flex-1 overflow-auto pr-1">
-          {!selectedPrimary ? <p className="text-slate-400">Select a layer to edit.</p> : (
-            <div className="space-y-3">
+            {dataBindingBetaEnabled && (
+              <DataInspectorPanel live={livePayload} derived={derivedPayload} scorebug={scorebugPayload} />
+            )}
+            {!selectedPrimary ? <p className="mt-3 text-slate-400">Select a layer to edit.</p> : (
+            <div className="space-y-3 mt-3">
               <div className="rounded border border-slate-700 bg-slate-900 p-2"><div className="mb-1 text-xs uppercase text-slate-400">Selected ({selectedLayerIds.length})</div>{editingLayerId === selectedPrimary.id ? (<input className="w-full rounded border border-blue-500 bg-slate-950 px-2 py-1 font-semibold" value={editingLayerValue} onChange={(e) => setEditingLayerValue(e.target.value)} onBlur={() => { renameLayer(selectedPrimary.id, editingLayerValue.trim() || selectedPrimary.name); setEditingLayerId(null); setEditingLayerValue(''); }} onKeyDown={(e) => { if (e.key === 'Enter') { renameLayer(selectedPrimary.id, editingLayerValue.trim() || selectedPrimary.name); setEditingLayerId(null); setEditingLayerValue(''); } }} autoFocus />) : (<strong className="cursor-text" onDoubleClick={() => { setEditingLayerId(selectedPrimary.id); setEditingLayerValue(selectedPrimary.name); }}>{selectedPrimary.name}</strong>)}</div>
-
 
               {selectedPrimary.kind === 'shape' && (
                 <div className="space-y-2 rounded border border-slate-700 bg-slate-900 p-3">
