@@ -119,6 +119,71 @@ export interface MlsLastPlay extends BaseLastPlay {
   isGoal?: boolean;
 }
 
+export interface MlbAdvancedMetrics {
+  exitVelocity: number;
+  launchAngle: number;
+  barrelPct: number;
+  whiffPct: number;
+  chaseRate: number;
+  spinRate: number;
+  hardHitPct: number;
+  xwOBA: number;
+  zoneContactPct: number;
+  sprintSpeed: number;
+}
+
+export interface NflAdvancedMetrics {
+  epa: number;
+  successRate: number;
+  cpoe: number;
+  pressureRate: number;
+  airYards: number;
+  yardsAfterContact: number;
+  adot: number;
+  explosivePlayPct: number;
+  defensiveStuffs: number;
+  neutralPace: number;
+}
+
+export interface NbaAdvancedMetrics {
+  offensiveRating: number;
+  defensiveRating: number;
+  netRating: number;
+  trueShootingPct: number;
+  pace: number;
+  assistRatio: number;
+  reboundPct: number;
+  usageRate: number;
+  ppp: number;
+  astToRatio: number;
+}
+
+export interface NhlAdvancedMetrics {
+  xG: number;
+  corsiForPct: number;
+  fenwickForPct: number;
+  pdo: number;
+  highDangerChances: number;
+  zoneStartsPct: number;
+  takeaways: number;
+  xGA: number;
+  giveaways: number;
+  slotShots: number;
+}
+
+export interface MlsAdvancedMetrics {
+  xG: number;
+  xA: number;
+  ppda: number;
+  fieldTilt: number;
+  progressivePasses: number;
+  packing: number;
+  ballRecoveries: number;
+  pressures: number;
+  shotEndingSequences: number;
+  bigChancesCreated: number;
+}
+
 interface BaseGameState {
   sport: SportKey;
   homeTeam: string;
@@ -151,6 +216,7 @@ export interface MlbGameState extends BaseGameState {
   pitcher: string;
   batter: string;
   lastPitch: LastPitch;
+  advancedMetrics: MlbAdvancedMetrics;
   lastPlay: MlbLastPlay;
 }
 
@@ -172,6 +238,7 @@ export interface NbaGameState extends BaseGameState {
   paceEstimate: number;
   offensiveRatingEstimate: number;
   winProbabilityHome: number;
+  advancedMetrics: NbaAdvancedMetrics;
   lastPlay: NbaLastPlay;
 }
 
@@ -198,6 +265,7 @@ export interface NflGameState extends BaseGameState {
   redZone: boolean;
   turnoverCount: number;
   penaltiesYards: number;
+  advancedMetrics: NflAdvancedMetrics;
   lastPlay: NflLastPlay;
 }
 
@@ -223,6 +291,7 @@ export interface NhlGameState extends BaseGameState {
   xGAway: number;
   scoringChancesHome: number;
   scoringChancesAway: number;
+  advancedMetrics: NhlAdvancedMetrics;
   lastPlay: NhlLastPlay;
 }
 
@@ -251,6 +320,7 @@ export interface MlsGameState extends BaseGameState {
   bigChancesAway: number;
   goalkeeperSavesHome: number;
   goalkeeperSavesAway: number;
+  advancedMetrics: MlsAdvancedMetrics;
   lastPlay: MlsLastPlay;
 }
 
@@ -313,8 +383,8 @@ interface NormalizedBasePayload {
 }
 
 export type NormalizedSimulationPayload =
-  | (NormalizedBasePayload & { sport: 'mlb'; mlb: Pick<MlbGameState, 'inning' | 'half' | 'balls' | 'strikes' | 'outs' | 'pitcher' | 'batter' | 'lastPitch' | 'lastPlay'> })
-  | (NormalizedBasePayload & { sport: 'nba'; nba: Pick<NbaGameState, 'shotClock' | 'teamFoulsHome' | 'teamFoulsAway' | 'run' | 'lastPlay'> })
-  | (NormalizedBasePayload & { sport: 'nfl'; nfl: Pick<NflGameState, 'down' | 'distance' | 'yardLine' | 'playType' | 'lastPlay'> })
-  | (NormalizedBasePayload & { sport: 'nhl'; nhl: Pick<NhlGameState, 'strengthState' | 'ppTimeRemaining' | 'pulledGoalie' | 'lastPlay'> })
-  | (NormalizedBasePayload & { sport: 'mls'; mls: Pick<MlsGameState, 'matchClock' | 'stoppageTime' | 'possessionPctHome' | 'lastPlay'> });
+  | (NormalizedBasePayload & { sport: 'mlb'; advancedMetrics: MlbAdvancedMetrics; mlb: Pick<MlbGameState, 'inning' | 'half' | 'balls' | 'strikes' | 'outs' | 'pitcher' | 'batter' | 'lastPitch' | 'lastPlay'> })
+  | (NormalizedBasePayload & { sport: 'nba'; advancedMetrics: NbaAdvancedMetrics; nba: Pick<NbaGameState, 'shotClock' | 'teamFoulsHome' | 'teamFoulsAway' | 'run' | 'lastPlay'> })
+  | (NormalizedBasePayload & { sport: 'nfl'; advancedMetrics: NflAdvancedMetrics; nfl: Pick<NflGameState, 'down' | 'distance' | 'yardLine' | 'playType' | 'lastPlay'> })
+  | (NormalizedBasePayload & { sport: 'nhl'; advancedMetrics: NhlAdvancedMetrics; nhl: Pick<NhlGameState, 'strengthState' | 'ppTimeRemaining' | 'pulledGoalie' | 'lastPlay'> })
+  | (NormalizedBasePayload & { sport: 'mls'; advancedMetrics: MlsAdvancedMetrics; mls: Pick<MlsGameState, 'matchClock' | 'stoppageTime' | 'possessionPctHome' | 'lastPlay'> });

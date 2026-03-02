@@ -1,6 +1,6 @@
 import { formatClock } from '../core';
 import { bumpPlayerStat, computeLeaders, initializeBoxScore, sumTeamTotals, validateConsistency } from '../boxScore';
-import type { KeyStat, NhlGameState, SimulatorPlugin } from '../types';
+import type { KeyStat, NhlAdvancedMetrics, NhlGameState, SimulatorPlugin } from '../types';
 
 const PERIOD_SECONDS = 20 * 60;
 const homeSkaters = ['A. Panarin', 'C. Kreider', 'M. Zibanejad'];
@@ -22,7 +22,7 @@ const buildKeyStats=(g:NhlGameState):KeyStat[]=>{
 export const nhlSimulator: SimulatorPlugin={
   key:'nhl',label:'NHL',
   createInitialGame:()=>{const boxScore=initializeBoxScore('nhl',[...homeSkaters,goalies.home],[...awaySkaters,goalies.away],['goals','assists','sog','plusMinus','blocks','takeaways','toi','goalieSaves','goalieShotsAgainst','goalieGoalsAgainst','penalties','hits','giveaways','ppGoals','ppOpps','pkKills','pkOpps','foPct','hdc','corsiPct']);
-    const g:NhlGameState={sport:'nhl',homeTeam:'NYR',awayTeam:'TOR',scoreHome:0,scoreAway:0,period:1,periodLabel:'P1',clockSeconds:PERIOD_SECONDS,possession:null,lastEvent:'Puck drop at center ice.',keyStats:[],lastPlay:{type:'faceoff',description:'Puck drop at center ice.',playId:0,strength:'EV',xg:0,sog:false,faceoffWinPctHome:50,toiLeader:'A. Panarin'},strengthState:'EV',ppTimeRemaining:0,shotsHome:0,shotsAway:0,sogHome:0,sogAway:0,hitsHome:0,hitsAway:0,faceoffWinPctHome:50,giveawaysHome:0,giveawaysAway:0,takeawaysHome:0,takeawaysAway:0,goalieSavesHome:0,goalieSavesAway:0,pulledGoalie:false,xGHome:0,xGAway:0,scoringChancesHome:0,scoringChancesAway:0,boxScore,consistencyIssues:[]};
+    const g:NhlGameState={sport:'nhl',homeTeam:'NYR',awayTeam:'TOR',scoreHome:0,scoreAway:0,period:1,periodLabel:'P1',clockSeconds:PERIOD_SECONDS,possession:null,lastEvent:'Puck drop at center ice.',keyStats:[],lastPlay:{type:'faceoff',description:'Puck drop at center ice.',playId:0,strength:'EV',xg:0,sog:false,faceoffWinPctHome:50,toiLeader:'A. Panarin'},strengthState:'EV',ppTimeRemaining:0,shotsHome:0,shotsAway:0,sogHome:0,sogAway:0,hitsHome:0,hitsAway:0,faceoffWinPctHome:50,giveawaysHome:0,giveawaysAway:0,takeawaysHome:0,takeawaysAway:0,goalieSavesHome:0,goalieSavesAway:0,pulledGoalie:false,xGHome:0,xGAway:0,scoringChancesHome:0,scoringChancesAway:0,advancedMetrics:{xG:0,corsiForPct:50,fenwickForPct:50,pdo:100,highDangerChances:0,zoneStartsPct:50,takeaways:0,xGA:0,giveaways:0,slotShots:0},boxScore,consistencyIssues:[]};
     const l=computeLeaders(boxScore,['goals','assists','sog']); g.teamLeaders=l.teamLeaders; g.gameLeaders=l.gameLeaders; g.keyStats=buildKeyStats(g); return g;},
   forceActions:['goal','power-play'],
   forcePlay:(game,ctx,history,action)=>{
@@ -46,6 +46,28 @@ step:(previous,ctx)=>{const g=structuredClone(previous) as NhlGameState; g.clock
     g.faceoffWinPctHome=clamp(g.faceoffWinPctHome+(ctx.random()*4-2),35,65);
     sumTeamTotals(g.boxScore!); g.boxScore!.teamTotals.home.foPct=g.faceoffWinPctHome; g.boxScore!.teamTotals.away.foPct=100-g.faceoffWinPctHome; g.boxScore!.teamTotals.home.hdc=g.scoringChancesHome; g.boxScore!.teamTotals.away.hdc=g.scoringChancesAway; g.boxScore!.teamTotals.home.corsiPct=((g.shotsHome+g.scoringChancesHome)/Math.max((g.shotsHome+g.shotsAway+g.scoringChancesHome+g.scoringChancesAway),1))*100; g.boxScore!.teamTotals.away.corsiPct=100-(g.boxScore!.teamTotals.home.corsiPct??50);
     g.pulledGoalie=g.period===3&&g.clockSeconds<120&&Math.abs(g.scoreHome-g.scoreAway)===1;
+
+    const homeAttempts = g.shotsHome + g.scoringChancesHome + (g.boxScore!.teamTotals.home.blocks ?? 0);
+    const awayAttempts = g.shotsAway + g.scoringChancesAway + (g.boxScore!.teamTotals.away.blocks ?? 0);
+    const homeFenwick = g.shotsHome + g.scoringChancesHome;
+    const awayFenwick = g.shotsAway + g.scoringChancesAway;
+    const homeShootingPct = g.sogHome > 0 ? g.scoreHome / g.sogHome : 0;
+    const homeSvPct = (g.sogAway > 0 ? g.goalieSavesHome / g.sogAway : 1);
+    const pdo = (homeShootingPct + homeSvPct) * 100;
+    const zoneStarts = clamp(50 + (g.takeawaysHome - g.giveawaysHome) * 1.2, 30, 70);
+    const slotShots = g.scoringChancesHome + Math.round((g.shotsHome - g.sogHome) * 0.2);
+    g.advancedMetrics = {
+      xG: Number(g.xGHome.toFixed(2)),
+      corsiForPct: Number(((homeAttempts / Math.max(homeAttempts + awayAttempts, 1)) * 100).toFixed(1)),
+      fenwickForPct: Number(((homeFenwick / Math.max(homeFenwick + awayFenwick, 1)) * 100).toFixed(1)),
+      pdo: Number(pdo.toFixed(1)),
+      highDangerChances: g.scoringChancesHome,
+      zoneStartsPct: Number(zoneStarts.toFixed(1)),
+      takeaways: g.takeawaysHome,
+      xGA: Number(g.xGAway.toFixed(2)),
+      giveaways: g.giveawaysHome,
+      slotShots,
+    } satisfies NhlAdvancedMetrics;
     const svHome=(g.boxScore!.homePlayers[goalies.home].goalieShotsAgainst??0)>0?(g.boxScore!.homePlayers[goalies.home].goalieSaves??0)/(g.boxScore!.homePlayers[goalies.home].goalieShotsAgainst??1):1;
     if(g.clockSeconds<=0&&g.period<3){g.period++;g.periodLabel=`P${g.period}`;g.clockSeconds=PERIOD_SECONDS;summary=`${g.periodLabel} begins.`;}
     const leaders=computeLeaders(g.boxScore!,['goals','assists','sog']); g.teamLeaders=leaders.teamLeaders; g.gameLeaders=leaders.gameLeaders;

@@ -1,6 +1,6 @@
 import { createDefaultPitch } from '../core';
 import { bumpPlayerStat, computeLeaders, initializeBoxScore, sumTeamTotals, validateConsistency } from '../boxScore';
-import type { KeyStat, MlbGameState, HalfInning, PitchType, SimulatorPlugin } from '../types';
+import type { KeyStat, MlbAdvancedMetrics, MlbGameState, HalfInning, PitchType, SimulatorPlugin } from '../types';
 
 const battersAway = ['A. Jones', 'B. Cruz', 'C. Watts', 'D. Hale', 'E. Reed', 'F. Knox', 'G. Ray', 'H. Snow', 'I. Dale'];
 const battersHome = ['J. Cole', 'K. Ford', 'L. Pope', 'M. Wade', 'N. Moss', 'O. Beck', 'P. Shaw', 'Q. Boyd', 'R. Lane'];
@@ -13,6 +13,45 @@ const randomPitchType = (random: () => number): PitchType => ['FF', 'SI', 'SL', 
 const randomLocation = (random: () => number) => `${['Up', 'Mid', 'Low'][Math.floor(random() * 3)]}-${['In', 'Center', 'Away'][Math.floor(random() * 3)]}`;
 
 const nextBatter = (half: HalfInning) => half === 'top' ? battersAway[(awayIndex = (awayIndex + 1) % battersAway.length)] : battersHome[(homeIndex = (homeIndex + 1) % battersHome.length)];
+
+
+const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
+const round = (n: number, digits = 1) => Number(n.toFixed(digits));
+const updateMlbAdvancedMetrics = (game: MlbGameState, type: string, exitVelocity: number, launchAngle: number, velocityMph: number) => {
+  const meta = game.boxScore!.meta ?? {};
+  const pa = Number(meta.pa ?? 0) + (['single', 'double', 'triple', 'home-run', 'bb', 'k', 'bip-out', 'error'].includes(type) ? 1 : 0);
+  const swings = Number(meta.swings ?? 0) + (['single', 'double', 'triple', 'home-run', 'bip-out', 'k', 'foul'].includes(type) ? 1 : 0);
+  const whiffs = Number(meta.whiffs ?? 0) + (type === 'k' ? 1 : 0);
+  const chases = Number(meta.chases ?? 0) + (['foul', 'k'].includes(type) ? 1 : 0);
+  const chaseOpps = Number(meta.chaseOpps ?? 0) + (['ball', 'foul', 'k', 'single', 'double', 'triple', 'home-run', 'bip-out'].includes(type) ? 1 : 0);
+  const hardHits = Number(meta.hardHits ?? 0) + (['single', 'double', 'triple', 'home-run'].includes(type) && exitVelocity >= 95 ? 1 : 0);
+  const barrels = Number(meta.barrels ?? 0) + ((['double', 'home-run'].includes(type) && exitVelocity >= 98 && launchAngle >= 18 && launchAngle <= 32) ? 1 : 0);
+  const contactSwings = Math.max(swings - whiffs, 0);
+  const zoneContacts = Number(meta.zoneContacts ?? 0) + (['single', 'double', 'triple', 'home-run', 'bip-out'].includes(type) ? 1 : 0);
+  const xwobaTotal = Number(meta.xwobaTotal ?? 0) + (type === 'home-run' ? 1.95 : type === 'triple' ? 1.55 : type === 'double' ? 1.25 : type === 'single' ? 0.9 : type === 'bb' ? 0.7 : type === 'k' ? 0 : 0.22);
+  const sprintBase = 26.8 + (game.onFirst || game.onSecond || game.onThird ? 0.2 : 0) + (type === 'triple' ? 0.4 : 0);
+  game.boxScore!.meta = { ...meta, pa, swings, whiffs, chases, chaseOpps, hardHits, barrels, zoneContacts, xwobaTotal };
+  const metrics: MlbAdvancedMetrics = {
+    exitVelocity: round(0.82 * game.advancedMetrics.exitVelocity + 0.18 * (['single', 'double', 'triple', 'home-run', 'bip-out'].includes(type) ? exitVelocity : game.advancedMetrics.exitVelocity)),
+    launchAngle: round(0.8 * game.advancedMetrics.launchAngle + 0.2 * (['single', 'double', 'triple', 'home-run', 'bip-out'].includes(type) ? launchAngle : game.advancedMetrics.launchAngle)),
+    barrelPct: round((barrels / Math.max(pa, 1)) * 100),
+    whiffPct: round((whiffs / Math.max(swings, 1)) * 100),
+    chaseRate: round((chases / Math.max(chaseOpps, 1)) * 100),
+    spinRate: round(0.85 * game.advancedMetrics.spinRate + 0.15 * (2050 + (velocityMph - 82) * 28)),
+    hardHitPct: round((hardHits / Math.max(pa, 1)) * 100),
+    xwOBA: round(xwobaTotal / Math.max(pa, 1), 3),
+    zoneContactPct: round((zoneContacts / Math.max(contactSwings, 1)) * 100),
+    sprintSpeed: round(0.9 * game.advancedMetrics.sprintSpeed + 0.1 * sprintBase, 1),
+  };
+  game.advancedMetrics = {
+    ...metrics,
+    barrelPct: clamp(metrics.barrelPct, 0, 100),
+    whiffPct: clamp(metrics.whiffPct, 0, 100),
+    chaseRate: clamp(metrics.chaseRate, 0, 100),
+    hardHitPct: clamp(metrics.hardHitPct, 0, 100),
+    zoneContactPct: clamp(metrics.zoneContactPct, 0, 100),
+  };
+};
 
 const advanceRunners = (game: MlbGameState, bases: 1 | 2 | 3 | 4) => {
   let runs = 0;
@@ -44,7 +83,7 @@ export const mlbSimulator: SimulatorPlugin = {
     const seed: MlbGameState = {
       sport: 'mlb', homeTeam: 'Home', awayTeam: 'Away', scoreHome: 0, scoreAway: 0, period: 1, periodLabel: 'Top 1', clockSeconds: 0, possession: null,
       lastEvent: 'Waiting to start MLB simulation.', inning: 1, half: 'top', balls: 0, strikes: 0, outs: 0, onFirst: false, onSecond: false, onThird: false,
-      pitcher: pitcherHome, batter: battersAway[0], lastPitch: createDefaultPitch(), lastPlay: { type: 'pregame', description: 'Waiting to start MLB simulation.', tags: ['pregame'] }, keyStats: [], boxScore: box, consistencyIssues: [],
+      pitcher: pitcherHome, batter: battersAway[0], lastPitch: createDefaultPitch(), lastPlay: { type: 'pregame', description: 'Waiting to start MLB simulation.', tags: ['pregame'] }, advancedMetrics: { exitVelocity: 88.5, launchAngle: 11.2, barrelPct: 6.5, whiffPct: 23.1, chaseRate: 28.4, spinRate: 2255, hardHitPct: 38.4, xwOBA: 0.308, zoneContactPct: 81.2, sprintSpeed: 27.0 }, keyStats: [], boxScore: box, consistencyIssues: [],
     };
     const l = computeLeaders(box, ['h', 'rbi', 'hr', 'k']); seed.teamLeaders = l.teamLeaders; seed.gameLeaders = l.gameLeaders; seed.keyStats = buildKeyStats(seed); return seed;
   },
@@ -111,6 +150,7 @@ export const mlbSimulator: SimulatorPlugin = {
 
     game.period = game.inning; game.periodLabel = `${game.half === 'top' ? 'Top' : 'Bottom'} ${game.inning}`;
     game.lastPitch = { pitchNumber: game.lastPitch.pitchNumber + 1, pitchType, velocityMph, location, result, batSpeedMph: ctx.randomInt(62, 85), exitVelocityMph: ctx.randomInt(72, 114), launchAngleDeg: ctx.randomInt(-8, 40), projectedDistanceFt: ctx.randomInt(120, 430) };
+    updateMlbAdvancedMetrics(game, type, game.lastPitch.exitVelocityMph ?? game.advancedMetrics.exitVelocity, game.lastPitch.launchAngleDeg ?? game.advancedMetrics.launchAngle, velocityMph);
     const leaders = computeLeaders(game.boxScore!, ['h', 'rbi', 'hr', 'k']); game.teamLeaders = leaders.teamLeaders; game.gameLeaders = leaders.gameLeaders;
     game.consistencyIssues = validateConsistency('mlb', game.boxScore!, game.scoreHome, game.scoreAway).issues;
     game.lastEvent = result; game.lastPlay = { type, description: result, tags: [type] }; game.keyStats = buildKeyStats(game);
