@@ -6,6 +6,7 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import type { ExplorerNode, Layer } from '../types/domain';
 import { getLiveTextContent } from '../features/playout/liveBindings';
 import { buildTemplateFeedUrl } from '../features/playout/publicUrl';
+import { StageViewportFrame } from '../components/stage/StageViewportFrame';
 
 const TEMPLATE_FORMATS = [
   { id: '16:9', value: '1920x1080', label: '16:9 (1920x1080)', width: 1920, height: 1080 },
@@ -1205,7 +1206,7 @@ export function DesignRoute() {
             </div>
             <span className="text-slate-500">Ctrl + wheel to zoom canvas.</span>
           </div>
-          <div ref={stageViewportRef} className="flex flex-1 min-h-0 items-center justify-center overflow-hidden rounded-lg border border-slate-700 bg-slate-800 p-[clamp(16px,2vh,28px)]">
+          <StageViewportFrame ref={stageViewportRef}>
             <div className="relative" style={{ width: `${canvasWidth * stageScale + rulerOffset}px`, height: `${canvasHeight * stageScale + rulerOffset}px` }}>
               {showRulers && (
                 <div className="pointer-events-none absolute inset-0 z-20 text-[10px] text-slate-300/90">
@@ -1272,7 +1273,7 @@ export function DesignRoute() {
               </div>
               </div>
             </div>
-          </div>
+          </StageViewportFrame>
         </div>
 
         <aside className="flex min-h-0 flex-col rounded-lg border border-slate-700 bg-slate-950 p-3">

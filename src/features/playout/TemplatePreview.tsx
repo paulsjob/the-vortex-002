@@ -1,5 +1,6 @@
 import { useDataEngineStore } from '../../store/useDataEngineStore';
 import type { SavedTemplate } from '../../store/useTemplateStore';
+import { StageViewportFrame } from '../../components/stage/StageViewportFrame';
 import { TemplateSceneSvg } from './TemplateSceneSvg';
 
 interface Props {
@@ -35,8 +36,8 @@ export function TemplatePreview({ template, sponsor, tone = 'preview' }: Props) 
             <span>16 × 9</span>
           </div>
         )}
-        <div className="flex min-h-0 flex-1 items-start justify-start">
-          <div className="relative w-full max-w-full">
+        <StageViewportFrame className="border-0 bg-transparent p-[clamp(12px,1.8vh,22px)]">
+          <div className="relative flex h-full w-full items-center justify-center">
             <div
               className={`relative aspect-video h-auto w-full max-h-full max-w-full rounded-lg border bg-slate-950 ${isProgram ? 'border-red-600/70' : (sponsorStyle?.accentBorderClass ?? 'border-slate-700')}`}
             >
@@ -60,7 +61,7 @@ export function TemplatePreview({ template, sponsor, tone = 'preview' }: Props) 
               ) : null}
             </div>
           </div>
-        </div>
+        </StageViewportFrame>
         <div className="mt-0.5 grid shrink-0 grid-cols-3 gap-2 text-[9px] text-slate-500">
           <span>Pitch #{game.lastPitch.pitchNumber}</span>
           <span>{game.awayTeam} {game.scoreAway} - {game.scoreHome} {game.homeTeam}</span>
