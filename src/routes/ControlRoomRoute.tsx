@@ -281,7 +281,7 @@ export function ControlRoomRoute() {
           <div className="h-full min-h-0 min-w-0 grid grid-rows-[minmax(0,1fr)_auto_auto] gap-3">
             <div className="min-h-0">
               <div className="grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_minmax(220px,260px)_minmax(0,1fr)] gap-3 items-stretch">
-                <div className="flex items-center justify-center min-h-0 min-w-0">
+                <div className="flex items-start justify-center min-h-0 min-w-0">
                   <div className="w-full min-h-0 min-w-0 flex items-center justify-center">
                     <div className="w-full max-w-full aspect-video">
                       <div className="h-full w-full">
