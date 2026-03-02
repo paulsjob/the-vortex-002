@@ -21,9 +21,45 @@ export interface KeyStat {
   emphasis?: 'low' | 'med' | 'high';
 }
 
-export interface LastPlay {
-  summary: string;
+export interface BaseLastPlay {
+  type: string;
+  description: string;
+}
+
+export interface MlbLastPlay extends BaseLastPlay {
   tags?: string[];
+}
+
+export interface NbaLastPlay extends BaseLastPlay {
+  points: number;
+  shooter: string;
+  assist?: string;
+  isThree?: boolean;
+  isFoul?: boolean;
+}
+
+export interface NflLastPlay extends BaseLastPlay {
+  down: number;
+  distance: number;
+  yards: number;
+  passer?: string;
+  rusher?: string;
+  receiver?: string;
+  isTurnover?: boolean;
+}
+
+export interface NhlLastPlay extends BaseLastPlay {
+  shooter?: string;
+  assister?: string;
+  strength?: string;
+  isGoal?: boolean;
+}
+
+export interface MlsLastPlay extends BaseLastPlay {
+  player?: string;
+  assister?: string;
+  xg?: number;
+  isGoal?: boolean;
 }
 
 interface BaseGameState {
@@ -38,7 +74,7 @@ interface BaseGameState {
   possession: 'home' | 'away' | null;
   lastEvent: string;
   keyStats: KeyStat[];
-  lastPlay: LastPlay;
+  lastPlay: BaseLastPlay;
 }
 
 export interface MlbGameState extends BaseGameState {
@@ -54,6 +90,7 @@ export interface MlbGameState extends BaseGameState {
   pitcher: string;
   batter: string;
   lastPitch: LastPitch;
+  lastPlay: MlbLastPlay;
 }
 
 export interface NbaGameState extends BaseGameState {
@@ -74,6 +111,7 @@ export interface NbaGameState extends BaseGameState {
   paceEstimate: number;
   offensiveRatingEstimate: number;
   winProbabilityHome: number;
+  lastPlay: NbaLastPlay;
 }
 
 export interface NflGameState extends BaseGameState {
@@ -81,6 +119,7 @@ export interface NflGameState extends BaseGameState {
   down: 1 | 2 | 3 | 4;
   distance: number;
   yardLine: string;
+  ballOn: number;
   driveNumber: number;
   playClock: number;
   possessionTeam: string;
@@ -98,6 +137,7 @@ export interface NflGameState extends BaseGameState {
   redZone: boolean;
   turnoverCount: number;
   penaltiesYards: number;
+  lastPlay: NflLastPlay;
 }
 
 export interface NhlGameState extends BaseGameState {
@@ -122,6 +162,7 @@ export interface NhlGameState extends BaseGameState {
   xGAway: number;
   scoringChancesHome: number;
   scoringChancesAway: number;
+  lastPlay: NhlLastPlay;
 }
 
 export interface MlsGameState extends BaseGameState {
@@ -149,6 +190,7 @@ export interface MlsGameState extends BaseGameState {
   bigChancesAway: number;
   goalkeeperSavesHome: number;
   goalkeeperSavesAway: number;
+  lastPlay: MlsLastPlay;
 }
 
 export type GameState = MlbGameState | NbaGameState | NflGameState | NhlGameState | MlsGameState;
@@ -172,5 +214,10 @@ export interface SimulatorPlugin {
   key: SportKey;
   label: string;
   createInitialGame: () => GameState;
-  step: (game: GameState, ctx: SimulatorContext) => { game: GameState; event: SimulationEvent };
+  step: (game: GameState, ctx: SimulatorContext, history: SimulationEvent[]) => { game: GameState; event: SimulationEvent };
+}
+
+export interface ConsistencyStatus {
+  corrected: boolean;
+  corrections: number;
 }

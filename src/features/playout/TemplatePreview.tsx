@@ -63,7 +63,7 @@ export function TemplatePreview({ template, sponsor, tone = 'preview' }: Props) 
           </div>
         </StageViewportFrame>
         <div className="mt-0.5 grid shrink-0 grid-cols-3 gap-2 text-[9px] text-slate-500">
-          <span>{game.sport === 'mlb' ? `Pitch #${game.lastPitch.pitchNumber}` : game.lastPlay.summary}</span>
+          <span>{game.sport === 'mlb' ? `Pitch #${game.lastPitch.pitchNumber}` : game.lastPlay.description}</span>
           <span>{game.awayTeam} {game.scoreAway} - {game.scoreHome} {game.homeTeam}</span>
           <span>
             {game.sport === 'mlb'

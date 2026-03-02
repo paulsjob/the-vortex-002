@@ -33,7 +33,7 @@ export const nhlSimulator: SimulatorPlugin = {
       possession: null,
       lastEvent: 'Puck drop at center ice.',
       keyStats: [],
-      lastPlay: { summary: 'Puck drop at center ice.', tags: ['faceoff'] },
+      lastPlay: { type: 'faceoff', description: 'Puck drop at center ice.' },
       strengthState: 'EV',
       ppTimeRemaining: 0,
       shotsHome: 0,
@@ -58,7 +58,7 @@ export const nhlSimulator: SimulatorPlugin = {
     game.keyStats = buildKeyStats(game);
     return game;
   },
-  step: (previous, ctx) => {
+  step: (previous, ctx, _history) => {
     const game = structuredClone(previous) as NhlGameState;
     game.clockSeconds = Math.max(0, game.clockSeconds - ctx.randomInt(8, 30));
     if (game.ppTimeRemaining > 0) {
@@ -68,18 +68,18 @@ export const nhlSimulator: SimulatorPlugin = {
 
     const roll = ctx.random();
     let summary = '';
-    let tags: string[] = [];
+    let playType = "sequence";
     const attackHome = ctx.random() < 0.5;
 
     if (roll < 0.16) {
       summary = `${attackHome ? game.homeTeam : game.awayTeam} dumps it in, icing waved off.`;
-      tags = ['icing'];
+      playType = 'icing';
     } else if (roll < 0.3) {
       summary = `Offside on ${attackHome ? game.homeTeam : game.awayTeam}. Neutral zone faceoff.`;
-      tags = ['offside'];
+      playType = 'offside';
     } else if (roll < 0.45) {
       summary = `${attackHome ? game.homeTeam : game.awayTeam} assessed a minor penalty.`;
-      tags = ['penalty'];
+      playType = 'penalty';
       game.strengthState = attackHome ? 'PK' : 'PP';
       game.ppTimeRemaining = 2 * 60;
     } else if (roll < 0.76) {
@@ -95,7 +95,7 @@ export const nhlSimulator: SimulatorPlugin = {
         game.xGAway = Number((game.xGAway + ctx.random() * 0.18).toFixed(2));
       }
       summary = `Shot on goal by ${attackHome ? game.homeTeam : game.awayTeam}; save made.`;
-      tags = ['shot', 'save'];
+      playType = 'shot-save';
     } else if (roll < 0.9) {
       if (attackHome) {
         game.shotsHome += 1;
@@ -111,10 +111,10 @@ export const nhlSimulator: SimulatorPlugin = {
         game.xGAway = Number((game.xGAway + ctx.random() * 0.35 + 0.1).toFixed(2));
       }
       summary = `GOAL ${attackHome ? game.homeTeam : game.awayTeam}! One-timer from the slot.`;
-      tags = ['goal'];
+      playType = 'goal';
     } else {
       summary = `${attackHome ? game.homeTeam : game.awayTeam} enters with speed; odd-man rush denied.`;
-      tags = ['zone-entry'];
+      playType = 'zone-entry';
     }
 
     game.hitsHome += ctx.randomInt(0, 2);
@@ -131,17 +131,17 @@ export const nhlSimulator: SimulatorPlugin = {
       game.periodLabel = `P${game.period}`;
       game.clockSeconds = PERIOD_SECONDS;
       summary = `${game.periodLabel} begins.`;
-      tags = ['period-start'];
+      playType = 'period-start';
     } else if (game.clockSeconds <= 0 && game.period >= 3 && game.scoreHome === game.scoreAway) {
       game.period += 1;
       game.periodLabel = 'OT';
       game.clockSeconds = 5 * 60;
       summary = 'Overtime underway at 3-on-3.';
-      tags = ['overtime'];
+      playType = 'overtime';
     }
 
     game.lastEvent = summary;
-    game.lastPlay = { summary, tags };
+    game.lastPlay = { type: playType, description: summary, strength: game.strengthState, isGoal: playType === 'goal' };
     game.keyStats = buildKeyStats(game);
 
     return {

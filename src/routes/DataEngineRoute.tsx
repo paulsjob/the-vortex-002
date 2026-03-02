@@ -15,7 +15,7 @@ const clockLabel = (seconds: number) => {
 };
 
 export function DataEngineRoute() {
-  const { activeSport, game, history, running, speed, start, stop, reset, setSpeed, setSport, stepPitch } = useDataEngineStore();
+  const { activeSport, game, history, consistency, running, speed, start, stop, reset, setSpeed, setSport, stepPitch } = useDataEngineStore();
 
   const feeds = [
     { id: 'live-game', name: 'Live Game Feed', status: running ? 'connected' : 'disconnected' },
@@ -156,6 +156,13 @@ export function DataEngineRoute() {
               </div>
             ))}
           </div>
+        </div>
+
+        <div className="rounded border border-slate-700 bg-slate-900 p-3">
+          <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">Consistency</p>
+          <p className="text-sm text-slate-100">
+            {consistency.corrected ? `Auto-corrected (${consistency.corrections})` : 'OK'}
+          </p>
         </div>
 
         <div className="rounded border border-slate-700 bg-slate-900 p-3">
