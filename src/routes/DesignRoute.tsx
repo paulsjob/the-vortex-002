@@ -243,6 +243,18 @@ export function DesignRoute() {
     }, bindingFilterContext)
   ), [bindingCatalog, bindingLevel, bindingMetricQuery, bindingSide, bindingPlayerId, bindingFilterContext]);
   const groupedMetricOptions = useMemo(() => groupMetricOptions(metricOptions), [metricOptions]);
+  const dedupedMetricGroups = useMemo(() => (
+    groupedMetricOptions.map((group) => {
+      const seenPaths = new Set<string>();
+      const fields = group.fields.filter((field) => {
+        const dedupeKey = `${group.group}:${field.path}`;
+        if (seenPaths.has(dedupeKey)) return false;
+        seenPaths.add(dedupeKey);
+        return true;
+      });
+      return { ...group, fields };
+    }).filter((group) => group.fields.length > 0)
+  ), [groupedMetricOptions]);
   const currentBindingPayload = bindingContext === 'live' ? livePayload : bindingContext === 'derived' ? derivedPayload : scorebugPayload;
   const selectedTextBindingField = selectedPrimary?.kind === 'text' ? selectedPrimary.dataBindingField : '';
   const previewValue = selectedPrimary?.kind === 'text'
@@ -657,7 +669,6 @@ export function DesignRoute() {
         canvasHeight,
         layers,
       });
-      setSaveNotice(`Updated “${name}” at ${new Date().toLocaleTimeString()}.`);
     } else {
       const newId = templateStore.saveTemplate({
         name,
@@ -668,8 +679,16 @@ export function DesignRoute() {
       });
       if (newId) {
         setLoadedTemplateId(newId);
-        setSaveNotice(`Saved new template “${name}” at ${new Date().toLocaleTimeString()}.`);
       }
+    }
+
+    const persistState = useTemplateStore.getState();
+    if (persistState.lastPersistError === 'quota' && persistState.lastPersistMessage) {
+      setSaveNotice(persistState.lastPersistMessage);
+    } else {
+      setSaveNotice(mode === 'update'
+        ? `Updated “${name}” at ${new Date().toLocaleTimeString()}.`
+        : `Saved new template “${name}” at ${new Date().toLocaleTimeString()}.`);
     }
     setTemplateName(name);
   };
@@ -1332,7 +1351,7 @@ export function DesignRoute() {
             <button className="rounded border border-slate-700 px-2 py-1" onClick={() => distributeSpacing('x')}>Space H</button>
             <button className="rounded border border-slate-700 px-2 py-1" onClick={() => distributeSpacing('y')}>Space V</button>
           </div>
-          {saveNotice && <p className="rounded border border-emerald-700 bg-emerald-900/20 px-3 py-2 text-xs text-emerald-200">{saveNotice}</p>}
+          {saveNotice && <p className={`rounded border px-3 py-2 text-xs ${templateStore.lastPersistError ? 'border-amber-700 bg-amber-900/20 text-amber-100' : 'border-emerald-700 bg-emerald-900/20 text-emerald-200'}`}>{saveNotice}</p>}
           <div className="flex items-center justify-between rounded border border-slate-700 bg-slate-900 p-2 text-xs text-slate-300">
             <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Feature Flags</span>
             <button
@@ -1504,7 +1523,7 @@ export function DesignRoute() {
                         onChange={(event) => applyToSelected((layer) => layer.kind === 'text' ? ({ dataBindingField: event.target.value } as Partial<Layer>) : ({}))}
                       >
                         <option value="">Choose metric…</option>
-                        {groupedMetricOptions.map((group) => (
+                        {dedupedMetricGroups.map((group) => (
                           <optgroup key={`metric-group-${group.group}`} label={group.group}>
                             {group.fields.map((field) => <option key={`${group.group}:${field.path}`} value={field.path}>{`${field.label} (${field.path})`}</option>)}
                           </optgroup>
