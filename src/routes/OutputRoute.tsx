@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePlayoutStore } from '../store/usePlayoutStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { TemplateSceneSvg } from '../features/playout/TemplateSceneSvg';
@@ -10,6 +10,7 @@ import { getManifestFormat } from '../features/packages/loadVortexPackage';
 import { FontGateOverlay } from '../features/playout/FontGateOverlay';
 import { applyBindingsToScene, normalizeBindingSchema } from '../features/playout/vortexBindings';
 import { StatusBadge } from '../components/ui/StatusBadge';
+import { decodeOutputPayload } from '../features/playout/publicUrl';
 import { useDemoSessionStore } from '../store/useDemoSessionStore';
 import { getCatalogRegistry, getCatalogRegistryHealth } from '../components/design/dataBindingPaths';
 
@@ -45,8 +46,10 @@ const shouldShowCatalogOverlay = (): boolean => {
 
 export function OutputRoute() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const templateStore = useTemplateStore();
   const programSnapshot = usePlayoutStore((s) => s.programSnapshot);
+  const programTemplate = usePlayoutStore((s) => s.programTemplate);
   const programRevision = usePlayoutStore((s) => s.programRevision);
   const outputRevision = usePlayoutStore((s) => s.outputRevision);
   const fontOverrides = usePlayoutStore((s) => s.fontOverrides);
@@ -55,6 +58,7 @@ export function OutputRoute() {
   const setBindingFontGateSatisfied = usePlayoutStore((s) => s.setBindingFontGateSatisfied);
   const setFontOverride = usePlayoutStore((s) => s.setFontOverride);
   const setBindingValues = usePlayoutStore((s) => s.setBindingValues);
+  const activateProgramTemplate = usePlayoutStore((s) => s.activateProgramTemplate);
 
   const selectedPlayer = useDemoSessionStore((s) => s.selectedPlayer);
   const selectedStat = useDemoSessionStore((s) => s.selectedStat);
@@ -64,10 +68,11 @@ export function OutputRoute() {
   const [fontGateLoading, setFontGateLoading] = useState(false);
 
   const activeTemplateRef = useMemo(() => {
-    if (!programSnapshot?.templateId) return null;
-    const vortexPackage = templateStore.getVortexPackage(programSnapshot.templateId);
-    return { source: vortexPackage ? 'vortex' as const : 'native' as const, id: programSnapshot.templateId };
-  }, [programSnapshot?.templateId, templateStore.vortexPackages]);
+    const templateId = programTemplate?.id ?? programSnapshot?.templateId;
+    if (!templateId) return null;
+    const vortexPackage = templateStore.getVortexPackage(templateId);
+    return { source: vortexPackage ? 'vortex' as const : 'native' as const, id: templateId };
+  }, [programTemplate?.id, programSnapshot?.templateId, templateStore.vortexPackages]);
 
   const vortexRenderState = useMemo(() => {
     if (!activeTemplateRef || activeTemplateRef.source !== 'vortex') return null;
@@ -102,6 +107,23 @@ export function OutputRoute() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [navigate]);
+
+  useEffect(() => {
+    const encoded = searchParams.get('tpl');
+    if (!encoded) return;
+    const payload = decodeOutputPayload(encoded);
+    if (!payload?.template) return;
+
+    activateProgramTemplate(payload.template);
+
+    const pkg = templateStore.getVortexPackage(payload.template.id);
+    if (!pkg) return;
+    const schema = normalizeBindingSchema(pkg.bindings);
+    initializeBindings(payload.template.id, schema);
+    if (payload.bindings) {
+      setBindingValues(payload.template.id, payload.bindings);
+    }
+  }, [searchParams, activateProgramTemplate, templateStore, initializeBindings, setBindingValues]);
 
   useEffect(() => {
     if (!vortexRenderState || !('template' in vortexRenderState) || !vortexRenderState.template || !vortexRenderState.schema) return;
@@ -150,7 +172,7 @@ export function OutputRoute() {
   const vortexSchema = vortexRenderState && 'template' in vortexRenderState ? vortexRenderState.schema : undefined;
   const bindingState = vortexTemplate ? getBindingState(vortexTemplate.id) : undefined;
   const transformedVortexTemplate = vortexTemplate && vortexSchema ? applyBindingsToScene(vortexTemplate, vortexSchema, bindingState) : undefined;
-  const activeTemplate = transformedVortexTemplate || programSnapshot?.sceneDefinition || null;
+  const activeTemplate = transformedVortexTemplate || programTemplate || programSnapshot?.sceneDefinition || null;
   const override = vortexTemplate ? fontOverrides[vortexTemplate.id] : undefined;
 
   const shouldBlockForFonts = Boolean(vortexRenderState?.template && fontGateResult && !fontGateResult.ok && !override?.enabled);

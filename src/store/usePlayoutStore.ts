@@ -36,14 +36,6 @@ const deepFreeze = <T>(value: T): T => {
   return value;
 };
 
-const createImmutableTemplate = (template: SavedTemplate): SavedTemplate => {
-  const cloned = deepClone(template);
-  if (import.meta.env.DEV) {
-    return deepFreeze(cloned);
-  }
-  return cloned;
-};
-
 const createSceneDefinition = (template: SavedTemplate): TemplateSnapshot['sceneDefinition'] => {
   const sceneDefinition = {
     id: template.id,
@@ -104,8 +96,6 @@ interface PlayoutStore {
   getBindingSchema: (templateId: string) => BindingSchema | undefined;
 }
 
-const cloneTemplate = (template: SavedTemplate): SavedTemplate => deepClone(template);
-
 const templatesMatch = (left: SavedTemplate | null, right: SavedTemplate | null): boolean => {
   if (!left || !right) return left === right;
   return JSON.stringify(left) === JSON.stringify(right);
@@ -141,7 +131,7 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
     const snapshot = createTemplateSnapshot(template, nextRevision);
     set({
       previewSnapshot: snapshot,
-      previewTemplate: cloneTemplate(createImmutableTemplate(template)),
+      previewTemplate: template,
       previewRevision: nextRevision,
     });
   },
@@ -156,16 +146,11 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
     }
     const state = get();
     const nextRevision = state.previewRevision + 1;
-    const existing = state.previewTemplate;
-    const immutableTemplate = existing && existing.id === snapshot.templateId
-      ? createImmutableTemplate(existing)
-      : null;
     set({
       previewSnapshot: {
         ...snapshot,
         revision: nextRevision,
       },
-      previewTemplate: immutableTemplate ? cloneTemplate(immutableTemplate) : state.previewTemplate,
       previewRevision: nextRevision,
     });
   },
@@ -182,16 +167,11 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
     }
     const state = get();
     const nextRevision = state.programRevision + 1;
-    const currentProgram = state.programTemplate;
-    const immutableTemplate = currentProgram && currentProgram.id === snapshot.templateId
-      ? createImmutableTemplate(currentProgram)
-      : null;
     set({
       programSnapshot: {
         ...snapshot,
         revision: nextRevision,
       },
-      programTemplate: immutableTemplate ? cloneTemplate(immutableTemplate) : state.programTemplate,
       lastTakeAt: snapshot.capturedAt,
       programRevision: nextRevision,
       outputRevision: state.outputRevision + 1,
@@ -211,7 +191,7 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
     const snapshot = createTemplateSnapshot(preview, nextRevision);
     set({
       programSnapshot: snapshot,
-      programTemplate: cloneTemplate(createImmutableTemplate(preview)),
+      programTemplate: preview,
       programSponsor: previewSponsor,
       lastTakeAt: snapshot.capturedAt,
       programRevision: nextRevision,
@@ -227,13 +207,13 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
   })),
   activateProgramTemplate: (template) => set((state) => {
     if (!template) return state;
-    const nextProgram = cloneTemplate(template);
+    const nextProgram = template;
     if (templatesMatch(state.programTemplate, nextProgram)) return state;
     const nextRevision = state.programRevision + 1;
     const snapshot = createTemplateSnapshot(nextProgram, nextRevision);
     return {
       programSnapshot: snapshot,
-      programTemplate: cloneTemplate(createImmutableTemplate(nextProgram)),
+      programTemplate: nextProgram,
       lastTakeAt: snapshot.capturedAt,
       programRevision: nextRevision,
       outputRevision: state.outputRevision + 1,
