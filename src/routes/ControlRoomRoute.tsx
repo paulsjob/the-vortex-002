@@ -7,6 +7,8 @@ import { useDemoSessionStore } from '../store/useDemoSessionStore';
 import { buildOutputFeedUrl, buildTemplateFeedUrl } from '../features/playout/publicUrl';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { StageViewportFrame } from '../components/stage/StageViewportFrame';
+import { sceneFromVortexPackage } from '../features/packages/vortexSceneAdapter';
+import { applyBindingsToScene, normalizeBindingSchema } from '../features/playout/vortexBindings';
 
 type TreeNode = { id: string; type: 'folder'; name: string; children: TreeNode[] } | { id: string; type: 'template'; name: string };
 
@@ -27,6 +29,7 @@ export function ControlRoomRoute() {
   const programTemplate = usePlayoutStore((s) => s.programTemplate);
   const previewSnapshot = usePlayoutStore((s) => s.previewSnapshot);
   const programSnapshot = usePlayoutStore((s) => s.programSnapshot);
+  const vortexBindings = usePlayoutStore((s) => s.vortexBindings);
   const lastTakeAt = usePlayoutStore((s) => s.lastTakeAt);
   const previewSponsor = usePlayoutStore((s) => s.previewSponsor);
   const programSponsor = usePlayoutStore((s) => s.programSponsor);
@@ -104,6 +107,36 @@ export function ControlRoomRoute() {
     [templateStore, templateStore.quickLaunchTemplateIds],
   );
 
+  const previewRenderTemplate = useMemo(() => {
+    if (!previewTemplate) return null;
+    const pkg = templateStore.getVortexPackage(previewTemplate.id);
+    if (!pkg) return previewTemplate;
+    const schema = normalizeBindingSchema(pkg.bindings);
+    const scene = sceneFromVortexPackage(pkg);
+    return applyBindingsToScene({
+      id: pkg.manifest.templateId,
+      name: pkg.manifest.templateName,
+      canvasWidth: scene.canvas.width,
+      canvasHeight: scene.canvas.height,
+      layers: scene.layers,
+    }, schema, vortexBindings[previewTemplate.id]);
+  }, [previewTemplate, templateStore, vortexBindings]);
+
+  const programRenderTemplate = useMemo(() => {
+    if (!programTemplate) return null;
+    const pkg = templateStore.getVortexPackage(programTemplate.id);
+    if (!pkg) return programTemplate;
+    const schema = normalizeBindingSchema(pkg.bindings);
+    const scene = sceneFromVortexPackage(pkg);
+    return applyBindingsToScene({
+      id: pkg.manifest.templateId,
+      name: pkg.manifest.templateName,
+      canvasWidth: scene.canvas.width,
+      canvasHeight: scene.canvas.height,
+      layers: scene.layers,
+    }, schema, vortexBindings[programTemplate.id]);
+  }, [programTemplate, templateStore, vortexBindings]);
+
   const copyTemplateUrl = async (templateId: string) => {
     const template = templateStore.getTemplateById(templateId);
     if (!template) return;
@@ -117,13 +150,15 @@ export function ControlRoomRoute() {
 
   const copyAggregateOutputUrl = async () => {
     if (!programTemplate) return;
-    const url = buildOutputFeedUrl(window.location.origin, programTemplate);
+    const bindings = vortexBindings[programTemplate.id]?.values;
+    const url = buildOutputFeedUrl(window.location.origin, programTemplate, bindings, programSponsor);
     try {
       await navigator.clipboard.writeText(url);
     } catch {
       window.prompt('Copy Control Room output URL', url);
     }
   };
+
 
   const takeTime = lastTakeAt ? new Date(lastTakeAt).toLocaleTimeString() : 'No take yet';
   const previewReady = Boolean(previewTemplate && previewTemplate.layers.length > 0 && engineRunning);
@@ -315,7 +350,7 @@ export function ControlRoomRoute() {
                   {renderViewportPanel({
                     title: 'PREVIEW',
                     titleClassName: 'text-blue-200',
-                    template: previewTemplate,
+                    template: previewRenderTemplate,
                     sponsor: previewSponsor,
                     tone: 'preview',
                     lockLabel: 'EDITABLE',
@@ -397,7 +432,7 @@ export function ControlRoomRoute() {
                   {renderViewportPanel({
                     title: 'PROGRAM',
                     titleClassName: 'text-red-300',
-                    template: programTemplate,
+                    template: programRenderTemplate,
                     sponsor: programSponsor,
                     tone: 'program',
                     lockLabel: 'LOCKED',
