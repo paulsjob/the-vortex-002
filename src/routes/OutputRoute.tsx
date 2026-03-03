@@ -10,8 +10,9 @@ import { getManifestFormat } from '../features/packages/loadVortexPackage';
 import { FontGateOverlay } from '../features/playout/FontGateOverlay';
 import { applyBindingsToScene, normalizeBindingSchema } from '../features/playout/vortexBindings';
 import { StatusBadge } from '../components/ui/StatusBadge';
-import { decodeOutputPayload } from '../features/playout/publicUrl';
+import { decodeTemplatePayload } from '../features/playout/publicUrl';
 import { useDemoSessionStore } from '../store/useDemoSessionStore';
+import { useDataEngineStore } from '../store/useDataEngineStore';
 import { getCatalogRegistry, getCatalogRegistryHealth } from '../components/design/dataBindingPaths';
 
 const mapDemoBindingDefaults = (
@@ -47,6 +48,8 @@ const shouldShowCatalogOverlay = (): boolean => {
 export function OutputRoute() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const embed = searchParams.get('embed') === '1';
+  const tpl = searchParams.get('tpl');
   const templateStore = useTemplateStore();
   const programSnapshot = usePlayoutStore((s) => s.programSnapshot);
   const programTemplate = usePlayoutStore((s) => s.programTemplate);
@@ -59,6 +62,7 @@ export function OutputRoute() {
   const setFontOverride = usePlayoutStore((s) => s.setFontOverride);
   const setBindingValues = usePlayoutStore((s) => s.setBindingValues);
   const activateProgramTemplate = usePlayoutStore((s) => s.activateProgramTemplate);
+  const startDataEngine = useDataEngineStore((s) => s.start);
 
   const selectedPlayer = useDemoSessionStore((s) => s.selectedPlayer);
   const selectedStat = useDemoSessionStore((s) => s.selectedStat);
@@ -102,28 +106,29 @@ export function OutputRoute() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') navigate('/control-room');
+      if (!embed && event.key === 'Escape') navigate('/control-room');
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [navigate]);
+  }, [embed, navigate]);
 
   useEffect(() => {
-    const encoded = searchParams.get('tpl');
-    if (!encoded) return;
-    const payload = decodeOutputPayload(encoded);
-    if (!payload?.template) return;
+    if (!tpl) return;
+    const decodedTemplate = decodeTemplatePayload(tpl);
+    if (!decodedTemplate) return;
 
-    activateProgramTemplate(payload.template);
+    activateProgramTemplate(decodedTemplate);
 
-    const pkg = templateStore.getVortexPackage(payload.template.id);
+    const pkg = templateStore.getVortexPackage(decodedTemplate.id);
     if (!pkg) return;
     const schema = normalizeBindingSchema(pkg.bindings);
-    initializeBindings(payload.template.id, schema);
-    if (payload.bindings) {
-      setBindingValues(payload.template.id, payload.bindings);
-    }
-  }, [searchParams, activateProgramTemplate, templateStore, initializeBindings, setBindingValues]);
+    initializeBindings(decodedTemplate.id, schema);
+  }, [tpl, activateProgramTemplate, templateStore, initializeBindings]);
+
+  useEffect(() => {
+    if (!tpl) return;
+    startDataEngine();
+  }, [tpl, startDataEngine]);
 
   useEffect(() => {
     if (!vortexRenderState || !('template' in vortexRenderState) || !vortexRenderState.template || !vortexRenderState.schema) return;
@@ -189,11 +194,13 @@ export function OutputRoute() {
   return (
     <section className="relative h-screen overflow-hidden bg-slate-950 text-slate-100">
       <div className="relative h-full overflow-hidden">
-        <div className="absolute left-4 top-4 z-20 flex items-center gap-2">
-          <button className="rounded border border-slate-600 bg-slate-900 px-3 py-1 text-xs font-semibold text-slate-200" onClick={() => navigate('/control-room')}>Back to Control Room</button>
-          {activeTemplate ? <StatusBadge tone="on-air">ON AIR</StatusBadge> : <StatusBadge tone="not-ready">NOT READY</StatusBadge>}
-          {vortexTemplate && bindingState?.readyToAir ? <StatusBadge tone="ready">READY</StatusBadge> : null}
-        </div>
+        {!embed && (
+          <div className="absolute left-4 top-4 z-20 flex items-center gap-2">
+            <button className="rounded border border-slate-600 bg-slate-900 px-3 py-1 text-xs font-semibold text-slate-200" onClick={() => navigate('/control-room')}>Back to Control Room</button>
+            {activeTemplate ? <StatusBadge tone="on-air">ON AIR</StatusBadge> : <StatusBadge tone="not-ready">NOT READY</StatusBadge>}
+            {vortexTemplate && bindingState?.readyToAir ? <StatusBadge tone="ready">READY</StatusBadge> : null}
+          </div>
+        )}
 
         {showDebugOverlay ? (
           <div className="pointer-events-none absolute bottom-3 right-3 z-30 rounded border border-slate-600/80 bg-black/70 px-2 py-1 text-[10px] leading-tight text-slate-200">
@@ -215,7 +222,7 @@ export function OutputRoute() {
         ) : !activeTemplate ? (
           <div className="grid h-full place-items-center text-sm text-slate-500">No template on air.</div>
         ) : (
-          <div className="relative grid h-full place-items-center overflow-hidden p-4">
+          <div className={`relative grid h-full place-items-center overflow-hidden ${embed ? 'p-0' : 'p-4'}`}>
             {fontGateLoading && vortexRenderState?.template && (
               <div className="absolute inset-0 z-20 grid place-items-center text-sm text-slate-200">Loading template fonts…</div>
             )}
@@ -245,9 +252,11 @@ export function OutputRoute() {
             )}
 
             <div
-              className="relative h-full w-full max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)]"
+              className="relative h-full w-full"
               style={{
                 aspectRatio: `${activeTemplate.canvasWidth} / ${activeTemplate.canvasHeight}`,
+                maxWidth: embed ? '100vw' : 'calc(100vw - 2rem)',
+                maxHeight: embed ? '100vh' : 'calc(100vh - 2rem)',
                 fontFamily: override?.enabled ? override.fallbackFamily : undefined,
               }}
             >

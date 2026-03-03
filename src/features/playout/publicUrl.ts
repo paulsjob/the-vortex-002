@@ -44,9 +44,9 @@ export const buildTemplateFeedUrl = (origin: string, template: SavedTemplate): s
 export const buildOutputFeedUrl = (
   origin: string,
   template: SavedTemplate,
-  bindings?: Record<string, unknown>,
-  sponsor?: string | null,
+  _bindings?: Record<string, unknown>,
+  _sponsor?: string | null,
 ): string => {
-  const payload = encodeOutputPayload({ template, bindings, sponsor });
-  return `${origin}/output?tpl=${payload}`;
+  const payload = encodeTemplatePayload(template);
+  return `${origin}/output?embed=1&tpl=${payload}`;
 };
