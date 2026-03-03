@@ -43,6 +43,7 @@ export function ControlRoomRoute() {
   const clearProgram = usePlayoutStore((s) => s.clearProgram);
 
   const engineRunning = useDataEngineStore((s) => s.running);
+  const activeSport = useDataEngineStore((s) => s.activeSport);
   const sponsorChoices = useDemoSessionStore((s) => s.sponsorChoices);
   const updateSelections = useDemoSessionStore((s) => s.updateSelections);
 
@@ -140,7 +141,7 @@ export function ControlRoomRoute() {
   const copyTemplateUrl = async (templateId: string) => {
     const template = templateStore.getTemplateById(templateId);
     if (!template) return;
-    const url = buildTemplateFeedUrl(window.location.origin, template);
+    const url = buildTemplateFeedUrl(window.location.origin, { template, sport: activeSport });
     try {
       await navigator.clipboard.writeText(url);
     } catch {
@@ -150,7 +151,7 @@ export function ControlRoomRoute() {
 
   const copyAggregateOutputUrl = async () => {
     if (!programTemplate) return;
-    const url = buildOutputFeedUrl(window.location.origin, programTemplate);
+    const url = buildOutputFeedUrl(window.location.origin, { template: programTemplate, sport: activeSport });
     try {
       await navigator.clipboard.writeText(url);
     } catch {

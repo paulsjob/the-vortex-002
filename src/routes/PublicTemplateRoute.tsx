@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useDataEngineStore } from '../store/useDataEngineStore';
-import { decodeTemplatePayload } from '../features/playout/publicUrl';
+import { decodeTemplateFeedPayload } from '../features/playout/publicUrl';
 import { TemplateSceneSvg } from '../features/playout/TemplateSceneSvg';
 import { sceneFromVortexPackage } from '../features/packages/vortexSceneAdapter';
 import { getVortexAssetUrl } from '../features/packages/vortexAssetResolver';
@@ -33,21 +33,28 @@ export function PublicTemplateRoute() {
   const setBindingFontGateSatisfied = usePlayoutStore((s) => s.setBindingFontGateSatisfied);
 
   useEffect(() => {
-    const hasTplParam = Boolean(searchParams.get('tpl'));
-    const hasTemplateRouteId = Boolean(templateId);
-    if (!hasTplParam && !hasTemplateRouteId) return;
-    const { running, start } = useDataEngineStore.getState();
-    if (!running) {
-      start();
+    const encoded = searchParams.get('tpl');
+    if (encoded) {
+      const payload = decodeTemplateFeedPayload(encoded);
+      if (!payload) return;
+      const engine = useDataEngineStore.getState();
+      if (payload.sport && engine.activeSport !== payload.sport) engine.setSport(payload.sport);
+      engine.reset();
+      engine.start();
+      return;
     }
-  }, []);
+
+    if (!templateId) return;
+    const { running, start } = useDataEngineStore.getState();
+    if (!running) start();
+  }, [searchParams, templateId]);
 
   const renderState = useMemo(() => {
     const encoded = searchParams.get('tpl');
     if (encoded) {
-      const decoded = decodeTemplatePayload(encoded);
-      if (decoded) {
-        return { template: decoded, source: 'native' as const };
+      const payload = decodeTemplateFeedPayload(encoded);
+      if (payload) {
+        return { template: payload.template, source: 'native' as const };
       }
       return { error: 'Template payload is invalid.' };
     }
@@ -289,6 +296,7 @@ export function PublicTemplateRoute() {
             template={renderedTemplate}
             className="h-full w-full"
             assetResolver={renderState.source === 'vortex' ? (path) => getVortexAssetUrl(template.id, path) : undefined}
+            debugLiveLabel="output"
           />
         )}
 

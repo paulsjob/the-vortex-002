@@ -10,7 +10,7 @@ import { getManifestFormat } from '../features/packages/loadVortexPackage';
 import { FontGateOverlay } from '../features/playout/FontGateOverlay';
 import { applyBindingsToScene, normalizeBindingSchema } from '../features/playout/vortexBindings';
 import { StatusBadge } from '../components/ui/StatusBadge';
-import { decodeTemplatePayload } from '../features/playout/publicUrl';
+import { decodeOutputFeedPayload } from '../features/playout/publicUrl';
 import { useDemoSessionStore } from '../store/useDemoSessionStore';
 import { useDataEngineStore } from '../store/useDataEngineStore';
 import { getCatalogRegistry, getCatalogRegistryHealth } from '../components/design/dataBindingPaths';
@@ -113,24 +113,28 @@ export function OutputRoute() {
 
   useEffect(() => {
     if (!tpl) return;
-    const decodedTemplate = decodeTemplatePayload(tpl);
-    if (!decodedTemplate) return;
+    const payload = decodeOutputFeedPayload(tpl);
+    if (!payload) return;
 
-    activateProgramTemplate(decodedTemplate);
+    activateProgramTemplate(payload.template);
 
-    const pkg = templateStore.getVortexPackage(decodedTemplate.id);
-    if (!pkg) return;
-    const schema = normalizeBindingSchema(pkg.bindings);
-    initializeBindings(decodedTemplate.id, schema);
-  }, [tpl, activateProgramTemplate, templateStore, initializeBindings]);
-
-  useEffect(() => {
-    if (!embed && !tpl) return;
-    const { running, start } = useDataEngineStore.getState();
-    if (!running) {
-      start();
+    const pkg = templateStore.getVortexPackage(payload.template.id);
+    if (pkg) {
+      const schema = normalizeBindingSchema(pkg.bindings);
+      initializeBindings(payload.template.id, schema);
     }
-  }, [embed, tpl]);
+
+    if (embed) {
+      const engine = useDataEngineStore.getState();
+      if (payload.sport && engine.activeSport !== payload.sport) engine.setSport(payload.sport);
+      engine.reset();
+      engine.start();
+      return;
+    }
+
+    const { running, start } = useDataEngineStore.getState();
+    if (!running) start();
+  }, [tpl, embed, activateProgramTemplate, templateStore, initializeBindings]);
 
   useEffect(() => {
     if (!vortexRenderState || !('template' in vortexRenderState) || !vortexRenderState.template || !vortexRenderState.schema) return;

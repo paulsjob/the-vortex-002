@@ -26,6 +26,8 @@ const DEFAULT_TRANSFORM = {
 export function TemplateSceneSvg({ template, className, assetResolver, debugLiveLabel }: Props) {
   const assets = useAssetStore((s) => s.assets);
   const game = useDataEngineStore((s) => s.game);
+  const running = useDataEngineStore((s) => s.running);
+  const activeSport = useDataEngineStore((s) => s.activeSport);
   const historyLength = useDataEngineStore((s) => s.history.length);
   const assetById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets]);
   const hasSimulationData = historyLength > 0;
@@ -160,7 +162,8 @@ export function TemplateSceneSvg({ template, className, assetResolver, debugLive
       {showLiveOverlay && debugLiveLabel ? (
         <foreignObject x={8} y={8} width={Math.max(200, template.canvasWidth * 0.45)} height={90}>
           <div xmlns="http://www.w3.org/1999/xhtml" className="pointer-events-none rounded border border-emerald-500/70 bg-black/70 px-2 py-1 text-[10px] leading-tight text-emerald-200">
-            <p>{debugLiveLabel} · live feed connected: {String(Boolean(game))}</p>
+            <p>{debugLiveLabel} · running: {String(running)}</p>
+            <p>engine sport: {String(activeSport)} · game sport: {String(game.sport)}</p>
             <p>clockSeconds: {String(game.clockSeconds)} · periodLabel: {String(game.periodLabel)}</p>
             {sampleBindings.map((entry) => (
               <p key={`${debugLiveLabel}-${entry.layerId}`}>
