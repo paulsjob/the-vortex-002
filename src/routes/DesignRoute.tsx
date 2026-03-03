@@ -4,7 +4,6 @@ import { useDataEngineStore } from '../store/useDataEngineStore';
 import { useLayerStore } from '../store/useLayerStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import type { ExplorerNode, Layer } from '../types/domain';
-import { getLiveTextContent } from '../features/playout/liveBindings';
 import { buildTemplateFeedUrl } from '../features/playout/publicUrl';
 import { buildNormalizedPayload, buildTeamMetrics } from '../features/simulation/derived';
 import { StageViewportFrame } from '../components/stage/StageViewportFrame';
@@ -17,6 +16,7 @@ import {
   groupMetricOptions,
   parseBindingPathToSelection,
   resolvePathValue,
+  resolveTextLayerBindingValue,
   type BindingContext,
   type BindingFilterContext,
   type FieldLevel,
@@ -446,7 +446,11 @@ export function DesignRoute() {
     templateStore.templates.filter((template) => template.name.toLowerCase().includes(search.toLowerCase()))
   ), [templateStore.templates, search]);
 
-  const getTextContent = (layer: Extract<Layer, { kind: 'text' }>) => getLiveTextContent(layer, engineGame);
+  const getTextContent = (layer: Extract<Layer, { kind: 'text' }>) => resolveTextLayerBindingValue(layer, {
+    liveFeedPayload: livePayload,
+    derivedPayload,
+    scorebugPayload,
+  });
 
   const clampGuidePosition = (axis: 'x' | 'y', value: number) => {
     const max = axis === 'x' ? canvasWidth : canvasHeight;
