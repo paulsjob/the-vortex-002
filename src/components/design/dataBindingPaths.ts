@@ -34,6 +34,14 @@ export type PathSelections = {
   playerId?: string;
 };
 
+export type BindingFilterContext = {
+  source: BindingContext;
+  sport: SportKey;
+  level: FieldLevel;
+  side?: FieldSide;
+  playerId?: string;
+};
+
 export type MaterializedMetricOption = {
   descriptor: FieldDescriptor;
   path: string;
@@ -80,6 +88,20 @@ const extractBindingPaths = (value: unknown, path = ''): string[] => {
 
 const titleCase = (value: string) => value.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]/g, ' ').replace(/\s+/g, ' ').trim().replace(/^./, (c) => c.toUpperCase());
 
+const tokenizePath = (path: string): string[] => {
+  const tokens: string[] = [];
+  const regex = /([^.[\]]+)|\[(\d+|"[^"]+")\]/g;
+  path.match(regex)?.forEach((part) => {
+    if (part.startsWith('[')) {
+      const inner = part.slice(1, -1);
+      tokens.push(inner.startsWith('"') ? inner.slice(1, -1) : inner);
+      return;
+    }
+    tokens.push(part);
+  });
+  return tokens;
+};
+
 const toLabelFromPath = (path: string) => {
   const tail = path.split('.').pop() ?? path;
   return titleCase(tail.replace(/\{side\}/g, '').replace(/\{playerId\}/g, '').replace(/[\[\]"]+/g, ''));
@@ -102,8 +124,10 @@ const levelFromPath = (path: string): FieldLevel => {
 };
 
 const buildDescriptorsForPath = (sport: SportKey, context: BindingContext, path: string): FieldDescriptor[] => {
-  if (/^boxScore\.homePlayers\./.test(path)) {
-    const statKey = path.slice('boxScore.homePlayers.'.length);
+  const tokens = tokenizePath(path);
+
+  if (tokens[0] === 'boxScore' && tokens[1] === 'homePlayers' && tokens.length > 3) {
+    const statKey = tokens.slice(3).reduce((acc, token) => appendPath(acc, token), '');
     return [{
       id: `${sport}:${context}:player:${statKey}`,
       label: titleCase(statKey),
@@ -116,10 +140,10 @@ const buildDescriptorsForPath = (sport: SportKey, context: BindingContext, path:
     }];
   }
 
-  if (/^boxScore\.awayPlayers\./.test(path)) return [];
+  if (tokens[0] === 'boxScore' && tokens[1] === 'awayPlayers') return [];
 
-  if (/^boxScore\.teamTotals\.home\./.test(path)) {
-    const statKey = path.slice('boxScore.teamTotals.home.'.length);
+  if (tokens[0] === 'boxScore' && tokens[1] === 'teamTotals' && tokens[2] === 'home' && tokens.length > 3) {
+    const statKey = tokens.slice(3).reduce((acc, token) => appendPath(acc, token), '');
     return [{
       id: `${sport}:${context}:teamtotals:${statKey}`,
       label: titleCase(statKey),
@@ -132,13 +156,13 @@ const buildDescriptorsForPath = (sport: SportKey, context: BindingContext, path:
     }];
   }
 
-  if (/^boxScore\.teamTotals\.away\./.test(path)) return [];
+  if (tokens[0] === 'boxScore' && tokens[1] === 'teamTotals' && tokens[2] === 'away') return [];
 
-  if (/^teamLeaders\.home\./.test(path)) {
-    const tail = path.slice('teamLeaders.home.'.length);
+  if (tokens[0] === 'teamLeaders' && tokens[1] === 'home' && tokens.length > 2) {
+    const tail = tokens.slice(2).reduce((acc, token) => appendPath(acc, token), '');
     return [{
       id: `${sport}:${context}:leaders:${tail}`,
-      label: `${titleCase(tail.split('.')[0] ?? tail)} ${titleCase(tail.split('.')[1] ?? '')}`.trim(),
+      label: `${titleCase(tokens[2] ?? tail)} ${titleCase(tokens[3] ?? '')}`.trim(),
       pathTemplate: `teamLeaders.{side}.${tail}`,
       level: 'team',
       group: 'Leaders',
@@ -148,7 +172,7 @@ const buildDescriptorsForPath = (sport: SportKey, context: BindingContext, path:
     }];
   }
 
-  if (/^teamLeaders\.away\./.test(path)) return [];
+  if (tokens[0] === 'teamLeaders' && tokens[1] === 'away') return [];
 
   return [{
     id: `${sport}:${context}:${path}`,
@@ -208,7 +232,7 @@ const buildPathMatcher = (pathTemplate: string): { regex: RegExp; tokenNames: st
       if (closeIndex > i + 1) {
         const token = pathTemplate.slice(i + 1, closeIndex);
         tokenNames.push(token);
-        pattern += '([^\\.]+)';
+        pattern += '(.+?)';
         i = closeIndex + 1;
         continue;
       }
@@ -239,10 +263,21 @@ const buildPathMatcher = (pathTemplate: string): { regex: RegExp; tokenNames: st
 export const materializeFieldPath = (descriptor: FieldDescriptor, selections: PathSelections): string | null => {
   if (descriptor.requires.side && !selections.side) return null;
   if (descriptor.requires.player && !selections.playerId) return null;
-  return descriptor.pathTemplate
+
+  let materialized = descriptor.pathTemplate
     .replace(/\{side\}/g, selections.side ?? '')
-    .replace(/\{team\}/g, selections.side ?? '')
-    .replace(/\{playerId\}/g, selections.playerId ?? '');
+    .replace(/\{team\}/g, selections.side ?? '');
+
+  if (descriptor.requires.player && selections.playerId) {
+    const playerAccess = isIdentifier(selections.playerId)
+      ? `.${selections.playerId}`
+      : `[${JSON.stringify(selections.playerId)}]`;
+    materialized = materialized
+      .replace(/\.\{playerId\}/g, playerAccess)
+      .replace(/\{playerId\}/g, selections.playerId);
+  }
+
+  return materialized;
 };
 
 export const parseBindingPathToSelection = (catalog: FieldDescriptor[], path: string): { descriptor: FieldDescriptor; selections: PathSelections } | null => {
@@ -282,7 +317,29 @@ export const getPlayersForSide = (payload: unknown, side: FieldSide): PlayerOpti
   return getBoxScorePlayers(boxScore, side);
 };
 
-export const getMetricOptions = (catalog: FieldDescriptor[], level: FieldLevel, query: string, selections: PathSelections): MaterializedMetricOption[] => {
+const matchesBindingContext = (path: string, context: BindingFilterContext): boolean => {
+  const tokens = tokenizePath(path);
+  if (context.level === 'player') {
+    if (tokens[0] !== 'boxScore' || !['homePlayers', 'awayPlayers'].includes(tokens[1] ?? '')) return false;
+    if (context.side && tokens[1] !== `${context.side}Players`) return false;
+    if (context.playerId && tokens[2] !== context.playerId) return false;
+    return true;
+  }
+
+  if (context.level === 'team') {
+    const isTeamTotals = tokens[0] === 'boxScore' && tokens[1] === 'teamTotals';
+    const isTeamLeaders = tokens[0] === 'teamLeaders';
+    if (!isTeamTotals && !isTeamLeaders) return false;
+    if (!context.side) return true;
+    return isTeamTotals ? tokens[2] === context.side : tokens[1] === context.side;
+  }
+
+  if (tokens[0] === 'boxScore' && ['homePlayers', 'awayPlayers', 'teamTotals'].includes(tokens[1] ?? '')) return false;
+  if (tokens[0] === 'teamLeaders') return false;
+  return true;
+};
+
+export const getMetricOptions = (catalog: FieldDescriptor[], level: FieldLevel, query: string, selections: PathSelections, context?: BindingFilterContext): MaterializedMetricOption[] => {
   const normalized = query.trim().toLowerCase();
   return catalog
     .filter((descriptor) => descriptor.level === level)
@@ -298,6 +355,7 @@ export const getMetricOptions = (catalog: FieldDescriptor[], level: FieldLevel, 
       };
     })
     .filter((entry): entry is MaterializedMetricOption => Boolean(entry))
+    .filter((entry) => !context || matchesBindingContext(entry.path, context))
     .filter((entry) => !normalized || `${entry.label} ${entry.path}`.toLowerCase().includes(normalized))
     .sort((a, b) => a.label.localeCompare(b.label));
 };
@@ -307,20 +365,6 @@ export const groupMetricOptions = (options: MaterializedMetricOption[]) => (
     .map((group) => ({ group, fields: options.filter((option) => option.group === group) }))
     .filter((entry) => entry.fields.length > 0)
 );
-
-const tokenizePath = (path: string): string[] => {
-  const tokens: string[] = [];
-  const regex = /([^.[\]]+)|\[(\d+|"[^"]+")\]/g;
-  path.match(regex)?.forEach((part) => {
-    if (part.startsWith('[')) {
-      const inner = part.slice(1, -1);
-      tokens.push(inner.startsWith('"') ? inner.slice(1, -1) : inner);
-      return;
-    }
-    tokens.push(part);
-  });
-  return tokens;
-};
 
 export const resolvePathValue = (source: unknown, path: string): unknown => {
   if (!path) return source;

@@ -18,6 +18,7 @@ import {
   parseBindingPathToSelection,
   resolvePathValue,
   type BindingContext,
+  type BindingFilterContext,
   type FieldLevel,
   type FieldSide,
 } from '../components/design/dataBindingPaths';
@@ -224,12 +225,19 @@ export function DesignRoute() {
     getPlayersForSide(hasSimulationPayload, bindingSide)
       .filter((player) => !bindingPlayerQuery.trim() || player.label.toLowerCase().includes(bindingPlayerQuery.trim().toLowerCase()))
   ), [hasSimulationPayload, bindingSide, bindingPlayerQuery]);
+  const bindingFilterContext = useMemo<BindingFilterContext>(() => ({
+    source: bindingContext,
+    sport: activeSport,
+    level: bindingLevel,
+    side: bindingLevel !== 'game' ? bindingSide : undefined,
+    playerId: bindingLevel === 'player' ? bindingPlayerId : undefined,
+  }), [bindingContext, activeSport, bindingLevel, bindingSide, bindingPlayerId]);
   const metricOptions = useMemo(() => (
     getMetricOptions(bindingCatalog, bindingLevel, bindingMetricQuery, {
       side: bindingLevel !== 'game' ? bindingSide : undefined,
       playerId: bindingLevel === 'player' ? bindingPlayerId : undefined,
-    })
-  ), [bindingCatalog, bindingLevel, bindingMetricQuery, bindingSide, bindingPlayerId]);
+    }, bindingFilterContext)
+  ), [bindingCatalog, bindingLevel, bindingMetricQuery, bindingSide, bindingPlayerId, bindingFilterContext]);
   const groupedMetricOptions = useMemo(() => groupMetricOptions(metricOptions), [metricOptions]);
   const currentBindingPayload = bindingContext === 'live' ? livePayload : bindingContext === 'derived' ? derivedPayload : scorebugPayload;
   const selectedTextBindingField = selectedPrimary?.kind === 'text' ? selectedPrimary.dataBindingField : '';
@@ -278,7 +286,7 @@ export function DesignRoute() {
 
   useEffect(() => {
     if (bindingLevel !== 'player') setBindingPlayerId('');
-  }, [bindingLevel, bindingSide]);
+  }, [bindingLevel]);
 
   useEffect(() => {
     setCurrentFormatId(activeFormatId);
