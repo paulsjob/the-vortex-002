@@ -11,8 +11,24 @@ export type FontOverride = {
 
 export type TransitionType = 'cut' | 'fade' | 'ftb' | 'luma';
 
+export type TemplateSnapshot = {
+  templateId: string;
+  revision: number;
+  capturedAt: string;
+  template: SavedTemplate;
+};
+
+export const createTemplateSnapshot = (template: SavedTemplate, revision = 1): TemplateSnapshot => ({
+  templateId: template.id,
+  revision,
+  capturedAt: new Date().toISOString(),
+  template: structuredClone(template),
+});
+
 interface PlayoutStore {
   vortexBindings: Record<string, VortexBindingState | undefined>;
+  previewSnapshot: TemplateSnapshot | null;
+  programSnapshot: TemplateSnapshot | null;
   previewTemplate: SavedTemplate | null;
   programTemplate: SavedTemplate | null;
   previewSponsor: string | null;
@@ -23,6 +39,8 @@ interface PlayoutStore {
   fontOverrides: Record<string, FontOverride | undefined>;
   vortexBindingSchemas: Record<string, BindingSchema | undefined>;
   setPreviewTemplate: (template: SavedTemplate | null) => void;
+  setPreviewSnapshot: (snapshot: TemplateSnapshot | null) => void;
+  setProgramSnapshot: (snapshot: TemplateSnapshot | null) => void;
   setPreviewSponsor: (sponsor: string | null) => void;
   setTransitionType: (type: TransitionType) => void;
   setTransitionDurationMs: (ms: number) => void;
@@ -56,40 +74,89 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
   transitionType: 'cut',
   transitionDurationMs: 300,
   previewTemplate: null,
+  previewSnapshot: null,
   vortexBindings: {},
   programTemplate: null,
+  programSnapshot: null,
   lastTakeAt: null,
   fontOverrides: {},
   vortexBindingSchemas: {},
-  setPreviewTemplate: (template) => set({ previewTemplate: template ? cloneTemplate(template) : null }),
+  setPreviewTemplate: (template) => {
+    if (!template) {
+      set({ previewTemplate: null, previewSnapshot: null });
+      return;
+    }
+    const state = get();
+    const nextRevision = (state.previewSnapshot?.revision ?? 0) + 1;
+    const snapshot = createTemplateSnapshot(template, nextRevision);
+    set({
+      previewSnapshot: snapshot,
+      previewTemplate: cloneTemplate(snapshot.template),
+    });
+  },
+  setPreviewSnapshot: (snapshot) => {
+    if (!snapshot) {
+      set({ previewSnapshot: null, previewTemplate: null });
+      return;
+    }
+    set({
+      previewSnapshot: {
+        ...snapshot,
+        template: cloneTemplate(snapshot.template),
+      },
+      previewTemplate: cloneTemplate(snapshot.template),
+    });
+  },
+  setProgramSnapshot: (snapshot) => {
+    if (!snapshot) {
+      set({ programSnapshot: null, programTemplate: null, programSponsor: null });
+      return;
+    }
+    set({
+      programSnapshot: {
+        ...snapshot,
+        template: cloneTemplate(snapshot.template),
+      },
+      programTemplate: cloneTemplate(snapshot.template),
+      lastTakeAt: snapshot.capturedAt,
+    });
+  },
   setPreviewSponsor: (sponsor) => set({ previewSponsor: sponsor }),
   setTransitionType: (type) => set({ transitionType: type }),
   setTransitionDurationMs: (ms) => set({ transitionDurationMs: ms }),
   takeToProgram: () => {
     const preview = get().previewTemplate;
-    const program = get().programTemplate;
+    const state = get();
+    const program = state.programTemplate;
     const previewSponsor = get().previewSponsor;
     if (!preview) return;
     if (templatesMatch(program, preview) && get().programSponsor === previewSponsor) return;
+    const nextRevision = (state.programSnapshot?.revision ?? 0) + 1;
+    const snapshot = createTemplateSnapshot(preview, nextRevision);
     set({
-      programTemplate: cloneTemplate(preview),
+      programSnapshot: snapshot,
+      programTemplate: cloneTemplate(snapshot.template),
       programSponsor: previewSponsor,
-      lastTakeAt: new Date().toISOString(),
+      lastTakeAt: snapshot.capturedAt,
     });
   },
-  clearProgram: () => set({ programTemplate: null, programSponsor: null }),
+  clearProgram: () => set({ programTemplate: null, programSnapshot: null, programSponsor: null }),
   activateProgramTemplate: (template) => set((state) => {
     if (!template) return state;
     const nextProgram = cloneTemplate(template);
     if (templatesMatch(state.programTemplate, nextProgram)) return state;
+    const snapshot = createTemplateSnapshot(nextProgram, (state.programSnapshot?.revision ?? 0) + 1);
     return {
-      programTemplate: nextProgram,
-      lastTakeAt: new Date().toISOString(),
+      programSnapshot: snapshot,
+      programTemplate: cloneTemplate(snapshot.template),
+      lastTakeAt: snapshot.capturedAt,
     };
   }),
   resetPlayoutState: () => set({
     previewTemplate: null,
+    previewSnapshot: null,
     programTemplate: null,
+    programSnapshot: null,
     previewSponsor: 'Renderless Sports',
     programSponsor: null,
     transitionType: 'cut',

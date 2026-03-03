@@ -27,6 +27,8 @@ export function ControlRoomRoute() {
   const templateStore = useTemplateStore();
   const previewTemplate = usePlayoutStore((s) => s.previewTemplate);
   const programTemplate = usePlayoutStore((s) => s.programTemplate);
+  const previewSnapshot = usePlayoutStore((s) => s.previewSnapshot);
+  const programSnapshot = usePlayoutStore((s) => s.programSnapshot);
   const lastTakeAt = usePlayoutStore((s) => s.lastTakeAt);
   const previewSponsor = usePlayoutStore((s) => s.previewSponsor);
   const programSponsor = usePlayoutStore((s) => s.programSponsor);
@@ -299,6 +301,9 @@ export function ControlRoomRoute() {
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">On-Air Status</p>
               <div className="mt-2">{programTemplate ? <StatusBadge tone="on-air">ON AIR</StatusBadge> : <StatusBadge tone="not-ready">OFF AIR</StatusBadge>}</div>
               <p className="mt-2 truncate text-xs text-slate-400">{programTemplate?.name ?? 'Program clear'}</p>
+              <p className="mt-1 text-[10px] text-slate-500">
+                preview {previewSnapshot?.templateId ?? 'none'} r{previewSnapshot?.revision ?? 0} · program {programSnapshot?.templateId ?? 'none'} r{programSnapshot?.revision ?? 0}
+              </p>
             </div>
           </div>
         </aside>
