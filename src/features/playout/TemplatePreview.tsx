@@ -46,7 +46,7 @@ export function TemplatePreview({ template, sponsor, tone = 'preview' }: Props) 
               <div className="relative z-10 flex h-full w-full items-center justify-center p-2">
                 <div className="relative h-full w-full max-h-full max-w-full">
                   {template ? (
-                    <TemplateSceneSvg template={template} className="h-full w-full object-contain" />
+                    <TemplateSceneSvg template={template} className="h-full w-full object-contain" debugLiveLabel={isProgram ? 'program' : 'preview'} />
                   ) : (
                     <div className={`grid h-full w-full place-items-center rounded border border-dashed border-slate-600/80 bg-slate-950/70 text-sm ${isProgram ? 'text-red-200' : 'text-slate-400'}`}>
                       No template loaded.

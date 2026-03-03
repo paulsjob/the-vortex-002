@@ -11,6 +11,7 @@ type Props = {
   template: SceneTemplate;
   className?: string;
   assetResolver?: (path: string) => string | undefined;
+  debugLiveLabel?: 'program' | 'output' | 'preview';
 };
 
 const DEFAULT_TRANSFORM = {
@@ -21,10 +22,28 @@ const DEFAULT_TRANSFORM = {
   rotation: 0,
 };
 
-export function TemplateSceneSvg({ template, className, assetResolver }: Props) {
+export function TemplateSceneSvg({ template, className, assetResolver, debugLiveLabel }: Props) {
   const assets = useAssetStore((s) => s.assets);
   const game = useDataEngineStore((s) => s.game);
   const assetById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets]);
+
+  const showLiveOverlay = useMemo(() => {
+    if (!import.meta.env.DEV || typeof window === 'undefined') return false;
+    return window.localStorage.getItem('debug_live') === '1';
+  }, []);
+
+  const sampleBindings = useMemo(() => {
+    const textLayers = template.layers
+      .filter((layer): layer is Extract<Layer, { kind: 'text' }> => layer.kind === 'text')
+      .filter((layer) => layer.dataBindingSource !== 'manual' && Boolean(layer.dataBindingField))
+      .slice(0, 2);
+
+    return textLayers.map((layer) => ({
+      layerId: layer.id,
+      field: layer.dataBindingField,
+      rendered: getLiveTextContent(layer, game),
+    }));
+  }, [template.layers, game]);
 
   const renderLayer = (layer: Layer) => {
     const opacity = (layer.opacity ?? 100) / 100;
@@ -111,6 +130,16 @@ export function TemplateSceneSvg({ template, className, assetResolver }: Props) 
       role="img"
       aria-label="Template scene"
     >
+
+      {showLiveOverlay && debugLiveLabel ? (
+        <foreignObject x={8} y={8} width={Math.max(200, template.canvasWidth * 0.45)} height={90}>
+          <div xmlns="http://www.w3.org/1999/xhtml" className="pointer-events-none rounded border border-emerald-500/70 bg-black/70 px-2 py-1 text-[10px] leading-tight text-emerald-200">
+            <p>{debugLiveLabel} · live feed connected: {String(Boolean(game))}</p>
+            <p>clockSeconds: {String(game.clockSeconds)} · periodLabel: {String(game.periodLabel)}</p>
+            {sampleBindings.map((entry) => <p key={`${debugLiveLabel}-${entry.layerId}`}>{entry.field}: {entry.rendered || '(empty)'}</p>)}
+          </div>
+        </foreignObject>
+      ) : null}
       {[...template.layers]
         .filter((layer) => layer.visible !== false)
         .sort((a, b) => a.zIndex - b.zIndex)

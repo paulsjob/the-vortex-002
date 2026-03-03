@@ -15,7 +15,7 @@ export type TemplateSnapshot = {
   templateId: string;
   revision: number;
   capturedAt: string;
-  template: SavedTemplate;
+  sceneDefinition: Pick<SavedTemplate, 'id' | 'name' | 'canvasWidth' | 'canvasHeight' | 'layers'>;
 };
 
 const deepClone = <T>(value: T): T => {
@@ -44,11 +44,25 @@ const createImmutableTemplate = (template: SavedTemplate): SavedTemplate => {
   return cloned;
 };
 
+const createSceneDefinition = (template: SavedTemplate): TemplateSnapshot['sceneDefinition'] => {
+  const sceneDefinition = {
+    id: template.id,
+    name: template.name,
+    canvasWidth: template.canvasWidth,
+    canvasHeight: template.canvasHeight,
+    layers: deepClone(template.layers),
+  };
+  if (import.meta.env.DEV) {
+    return deepFreeze(sceneDefinition);
+  }
+  return sceneDefinition;
+};
+
 export const createTemplateSnapshot = (template: SavedTemplate, revision = 1): TemplateSnapshot => ({
   templateId: template.id,
   revision,
   capturedAt: new Date().toISOString(),
-  template: createImmutableTemplate(template),
+  sceneDefinition: createSceneDefinition(template),
 });
 
 interface PlayoutStore {
@@ -127,7 +141,7 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
     const snapshot = createTemplateSnapshot(template, nextRevision);
     set({
       previewSnapshot: snapshot,
-      previewTemplate: cloneTemplate(snapshot.template),
+      previewTemplate: cloneTemplate(createImmutableTemplate(template)),
       previewRevision: nextRevision,
     });
   },
@@ -142,14 +156,16 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
     }
     const state = get();
     const nextRevision = state.previewRevision + 1;
-    const immutableTemplate = createImmutableTemplate(snapshot.template);
+    const existing = state.previewTemplate;
+    const immutableTemplate = existing && existing.id === snapshot.templateId
+      ? createImmutableTemplate(existing)
+      : null;
     set({
       previewSnapshot: {
         ...snapshot,
         revision: nextRevision,
-        template: immutableTemplate,
       },
-      previewTemplate: cloneTemplate(immutableTemplate),
+      previewTemplate: immutableTemplate ? cloneTemplate(immutableTemplate) : state.previewTemplate,
       previewRevision: nextRevision,
     });
   },
@@ -166,14 +182,16 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
     }
     const state = get();
     const nextRevision = state.programRevision + 1;
-    const immutableTemplate = createImmutableTemplate(snapshot.template);
+    const currentProgram = state.programTemplate;
+    const immutableTemplate = currentProgram && currentProgram.id === snapshot.templateId
+      ? createImmutableTemplate(currentProgram)
+      : null;
     set({
       programSnapshot: {
         ...snapshot,
         revision: nextRevision,
-        template: immutableTemplate,
       },
-      programTemplate: cloneTemplate(immutableTemplate),
+      programTemplate: immutableTemplate ? cloneTemplate(immutableTemplate) : state.programTemplate,
       lastTakeAt: snapshot.capturedAt,
       programRevision: nextRevision,
       outputRevision: state.outputRevision + 1,
@@ -193,7 +211,7 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
     const snapshot = createTemplateSnapshot(preview, nextRevision);
     set({
       programSnapshot: snapshot,
-      programTemplate: cloneTemplate(snapshot.template),
+      programTemplate: cloneTemplate(createImmutableTemplate(preview)),
       programSponsor: previewSponsor,
       lastTakeAt: snapshot.capturedAt,
       programRevision: nextRevision,
@@ -215,7 +233,7 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
     const snapshot = createTemplateSnapshot(nextProgram, nextRevision);
     return {
       programSnapshot: snapshot,
-      programTemplate: cloneTemplate(snapshot.template),
+      programTemplate: cloneTemplate(createImmutableTemplate(nextProgram)),
       lastTakeAt: snapshot.capturedAt,
       programRevision: nextRevision,
       outputRevision: state.outputRevision + 1,

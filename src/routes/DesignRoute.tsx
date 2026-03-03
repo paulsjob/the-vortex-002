@@ -1505,8 +1505,8 @@ export function DesignRoute() {
                       >
                         <option value="">Choose metric…</option>
                         {groupedMetricOptions.map((group) => (
-                          <optgroup key={group.group} label={group.group}>
-                            {group.fields.map((field) => <option key={field.path} value={field.path}>{`${field.label} (${field.path})`}</option>)}
+                          <optgroup key={`metric-group-${group.group}`} label={group.group}>
+                            {group.fields.map((field) => <option key={`${group.group}:${field.path}`} value={field.path}>{`${field.label} (${field.path})`}</option>)}
                           </optgroup>
                         ))}
                       </select>
