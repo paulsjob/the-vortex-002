@@ -1,23 +1,45 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useDataEngineStore } from '../store/useDataEngineStore';
+import { useDataEngineStore, type SportKey } from '../store/useDataEngineStore';
 import { decodeOutputFeedPayload } from '../features/playout/publicUrl';
 import { TemplateSceneSvg } from '../features/playout/TemplateSceneSvg';
+import { createLiveFeedSubscriber } from '../features/liveFeed/liveFeedBus';
 
 export function PublicOutputRoute() {
   const [searchParams] = useSearchParams();
+  const [waitingForLiveFeed, setWaitingForLiveFeed] = useState(false);
   const payload = useMemo(() => {
     const encoded = searchParams.get('tpl');
     return encoded ? decodeOutputFeedPayload(encoded) : null;
   }, [searchParams]);
 
   useEffect(() => {
-    if (!payload) return;
     const engine = useDataEngineStore.getState();
-    if (payload.sport && engine.activeSport !== payload.sport) engine.setSport(payload.sport);
-    engine.reset();
-    engine.start();
-  }, [payload]);
+    let receivedState = false;
+
+    engine.setExternalMode(true);
+    engine.clearExternalGame();
+    setWaitingForLiveFeed(true);
+
+    const unsubscribe = createLiveFeedSubscriber(({ activeSport, game }) => {
+      receivedState = true;
+      setWaitingForLiveFeed(false);
+      engine.setExternalGame(game, activeSport as SportKey);
+    });
+
+    const fallbackTimer = window.setTimeout(() => {
+      if (receivedState) return;
+      setWaitingForLiveFeed(true);
+    }, 2000);
+
+    return () => {
+      window.clearTimeout(fallbackTimer);
+      unsubscribe();
+      const nextEngine = useDataEngineStore.getState();
+      nextEngine.setExternalMode(false);
+      nextEngine.clearExternalGame();
+    };
+  }, []);
 
   const template = payload?.template ?? null;
 
@@ -28,6 +50,14 @@ export function PublicOutputRoute() {
           <h1 className="text-lg font-semibold">Output unavailable</h1>
           <p className="text-sm text-slate-500">No output template payload was provided.</p>
         </div>
+      </main>
+    );
+  }
+
+  if (waitingForLiveFeed) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-black text-slate-300">
+        <p className="text-sm">Waiting for live feed...</p>
       </main>
     );
   }

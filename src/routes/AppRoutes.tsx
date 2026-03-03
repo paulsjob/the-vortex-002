@@ -12,6 +12,7 @@ import { StatusBadge } from '../components/ui/StatusBadge';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useDemoSessionStore } from '../store/useDemoSessionStore';
 import { useDataEngineStore } from '../store/useDataEngineStore';
+import { createLiveFeedPublisher } from '../features/liveFeed/liveFeedBus';
 
 const tabs = [
   { to: '/', label: 'Dashboard' },
@@ -68,6 +69,16 @@ export function AppRoutes() {
   const isPublicOutputFeed = location.pathname.startsWith('/output-feed');
   const isOutputRoute = location.pathname === '/output';
   const isControlRoomRoute = location.pathname === '/control-room';
+  const isEmbedRoute = location.search.includes('embed=1');
+  const shouldPublishLiveFeed = !isEmbedRoute && !isPublicTemplateFeed && !isPublicOutputFeed;
+
+  useEffect(() => {
+    if (!shouldPublishLiveFeed) return;
+    return createLiveFeedPublisher(() => {
+      const { running, activeSport, game } = useDataEngineStore.getState();
+      return { running, activeSport, game };
+    }, 250);
+  }, [shouldPublishLiveFeed]);
 
   const navStatusLabel = useMemo(() => {
     if (!programTemplate) return 'PROGRAM STANDBY';

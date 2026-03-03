@@ -10,6 +10,8 @@ interface DataEngineStore {
   activeSport: SportKey;
   game: GameState;
   running: boolean;
+  externalMode: boolean;
+  externalGame: GameState | null;
   speed: Speed;
   history: SimulationEvent[];
   consistency: ConsistencyStatus;
@@ -19,6 +21,9 @@ interface DataEngineStore {
   setSpeed: (speed: Speed) => void;
   setSport: (sport: SportKey) => void;
   stepPitch: (action?: string) => void;
+  setExternalMode: (enabled: boolean) => void;
+  setExternalGame: (game: GameState, sport: SportKey) => void;
+  clearExternalGame: () => void;
   forceActions: string[];
 }
 
@@ -29,6 +34,7 @@ const ctx = createSimulatorContext();
 
 const runInterval = (get: () => DataEngineStore) => {
   timer = setInterval(() => {
+    if (get().externalMode) return;
     get().stepPitch();
   }, speedsMs[get().speed]);
 };
@@ -37,12 +43,14 @@ export const useDataEngineStore = create<DataEngineStore>((set, get) => ({
   activeSport: 'mlb',
   game: simulatorRegistry.mlb.createInitialGame(),
   running: false,
+  externalMode: false,
+  externalGame: null,
   speed: 'normal',
   history: [],
   consistency: { corrected: false, corrections: 0 },
   forceActions: simulatorRegistry.mlb.forceActions ?? [],
   start: () => {
-    if (timer) return;
+    if (timer || get().externalMode) return;
     set({ running: true });
     runInterval(get);
   },
@@ -61,14 +69,14 @@ export const useDataEngineStore = create<DataEngineStore>((set, get) => ({
     if (timer) clearInterval(timer);
     timer = null;
     resetSimulationCore();
-    set({ activeSport: sport, running: false, speed: 'normal', game: simulatorRegistry[sport].createInitialGame(), history: [], consistency: { corrected: false, corrections: 0 }, forceActions: simulatorRegistry[sport].forceActions ?? [] });
+    set({ activeSport: sport, running: false, externalMode: false, externalGame: null, speed: 'normal', game: simulatorRegistry[sport].createInitialGame(), history: [], consistency: { corrected: false, corrections: 0 }, forceActions: simulatorRegistry[sport].forceActions ?? [] });
   },
   reset: () => {
     if (timer) clearInterval(timer);
     timer = null;
     resetSimulationCore();
     const sport = get().activeSport;
-    set({ running: false, speed: 'normal', game: simulatorRegistry[sport].createInitialGame(), history: [], consistency: { corrected: false, corrections: 0 }, forceActions: simulatorRegistry[sport].forceActions ?? [] });
+    set({ running: false, externalMode: false, externalGame: null, speed: 'normal', game: simulatorRegistry[sport].createInitialGame(), history: [], consistency: { corrected: false, corrections: 0 }, forceActions: simulatorRegistry[sport].forceActions ?? [] });
   },
   stepPitch: (action) => {
     const { activeSport, game, history } = get();
@@ -82,5 +90,22 @@ export const useDataEngineStore = create<DataEngineStore>((set, get) => ({
       history: [normalized.event, ...s.history].slice(0, 120),
       consistency: { ...normalized.consistency, ok: issues.length === 0, issues },
     }));
+  },
+  setExternalMode: (enabled) => {
+    if (enabled && timer) {
+      clearInterval(timer);
+      timer = null;
+    }
+    set((state) => ({
+      externalMode: enabled,
+      running: enabled ? false : state.running,
+      ...(enabled ? { externalGame: state.externalGame } : { externalGame: null }),
+    }));
+  },
+  setExternalGame: (game, sport) => {
+    set({ externalMode: true, externalGame: game, game, activeSport: sport, running: false });
+  },
+  clearExternalGame: () => {
+    set({ externalGame: null });
   },
 }));
