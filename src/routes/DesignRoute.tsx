@@ -9,7 +9,18 @@ import { buildTemplateFeedUrl } from '../features/playout/publicUrl';
 import { buildNormalizedPayload, buildTeamMetrics } from '../features/simulation/derived';
 import { StageViewportFrame } from '../components/stage/StageViewportFrame';
 import { DataInspectorPanel } from '../components/design/DataInspectorPanel';
-import { getFieldBreadcrumb, getGroupedFieldsForSportContext, isFieldAvailableForSportContext } from '../components/design/dataBindingPaths';
+import {
+  formatPreviewValue,
+  getFieldCatalog,
+  getMetricOptions,
+  getPlayersForSide,
+  groupMetricOptions,
+  parseBindingPathToSelection,
+  resolvePathValue,
+  type BindingContext,
+  type FieldLevel,
+  type FieldSide,
+} from '../components/design/dataBindingPaths';
 
 const TEMPLATE_FORMATS = [
   { id: '16:9', value: '1920x1080', label: '16:9 (1920x1080)', width: 1920, height: 1080 },
@@ -141,8 +152,13 @@ export function DesignRoute() {
   const [snapToGrid, setSnapToGrid] = useState(true);
   const [showSafeZones, setShowSafeZones] = useState(false);
   const [dataBindingBetaEnabled, setDataBindingBetaEnabled] = useState(false);
-  const [bindingContext, setBindingContext] = useState<'live' | 'derived' | 'scorebug'>('live');
-  const [bindingFieldQuery, setBindingFieldQuery] = useState('');
+  const [bindingContext, setBindingContext] = useState<BindingContext>('live');
+  const [bindingLevel, setBindingLevel] = useState<FieldLevel>('game');
+  const [bindingSide, setBindingSide] = useState<FieldSide>('home');
+  const [bindingPlayerId, setBindingPlayerId] = useState('');
+  const [bindingMetricQuery, setBindingMetricQuery] = useState('');
+  const [bindingPlayerQuery, setBindingPlayerQuery] = useState('');
+  const [bindingAdvancedOpen, setBindingAdvancedOpen] = useState(false);
   const [guides, setGuides] = useState<Guide[]>([]);
   const [selectedGuideId, setSelectedGuideId] = useState<string | null>(null);
   const [guideReadout, setGuideReadout] = useState<{ x: number; y: number; value: number } | null>(null);
@@ -200,12 +216,27 @@ export function DesignRoute() {
     hasSimulationData ? buildNormalizedPayload(engineGame, 'live-scorebug') : null
   ), [engineGame, hasSimulationData]);
 
-  const bindingFieldGroups = useMemo(() => (
-    getGroupedFieldsForSportContext(activeSport, bindingContext, bindingFieldQuery)
-  ), [activeSport, bindingContext, bindingFieldQuery]);
-  const bindingFieldOptions = useMemo(() => (
-    bindingFieldGroups.flatMap((group) => group.fields.map((field) => field.path))
-  ), [bindingFieldGroups]);
+  const bindingCatalog = useMemo(() => (
+    getFieldCatalog({ sport: activeSport, context: bindingContext })
+  ), [activeSport, bindingContext]);
+  const hasSimulationPayload = hasSimulationData ? (bindingContext === 'live' ? livePayload : bindingContext === 'derived' ? derivedPayload : scorebugPayload) : null;
+  const playerOptions = useMemo(() => (
+    getPlayersForSide(hasSimulationPayload, bindingSide)
+      .filter((player) => !bindingPlayerQuery.trim() || player.label.toLowerCase().includes(bindingPlayerQuery.trim().toLowerCase()))
+  ), [hasSimulationPayload, bindingSide, bindingPlayerQuery]);
+  const metricOptions = useMemo(() => (
+    getMetricOptions(bindingCatalog, bindingLevel, bindingMetricQuery, {
+      side: bindingLevel !== 'game' ? bindingSide : undefined,
+      playerId: bindingLevel === 'player' ? bindingPlayerId : undefined,
+    })
+  ), [bindingCatalog, bindingLevel, bindingMetricQuery, bindingSide, bindingPlayerId]);
+  const groupedMetricOptions = useMemo(() => groupMetricOptions(metricOptions), [metricOptions]);
+  const currentBindingPayload = bindingContext === 'live' ? livePayload : bindingContext === 'derived' ? derivedPayload : scorebugPayload;
+  const selectedTextBindingField = selectedPrimary?.kind === 'text' ? selectedPrimary.dataBindingField : '';
+  const previewValue = selectedPrimary?.kind === 'text'
+    ? resolvePathValue(currentBindingPayload, selectedPrimary.dataBindingField)
+    : undefined;
+  const previewText = formatPreviewValue(previewValue);
 
   const ensureFontLoaded = useCallback((fontFamily: string, size = 56) => {
     if (typeof document === 'undefined' || !('fonts' in document) || !fontFamily) return;
@@ -235,6 +266,19 @@ export function DesignRoute() {
   useEffect(() => {
     textFontFamilies.forEach((fontFamily) => ensureFontLoaded(fontFamily));
   }, [textFontFamilies, ensureFontLoaded]);
+
+  useEffect(() => {
+    if (!selectedPrimary || selectedPrimary.kind !== 'text') return;
+    const matched = parseBindingPathToSelection(bindingCatalog, selectedPrimary.dataBindingField);
+    if (!matched) return;
+    setBindingLevel(matched.descriptor.level);
+    if (matched.selections.side) setBindingSide(matched.selections.side);
+    if (matched.selections.playerId) setBindingPlayerId(matched.selections.playerId);
+  }, [selectedPrimary?.id, selectedPrimary?.kind, selectedTextBindingField, bindingCatalog]);
+
+  useEffect(() => {
+    if (bindingLevel !== 'player') setBindingPlayerId('');
+  }, [bindingLevel, bindingSide]);
 
   useEffect(() => {
     setCurrentFormatId(activeFormatId);
@@ -1346,42 +1390,73 @@ export function DesignRoute() {
                   <div className="space-y-2 rounded border border-slate-700 bg-slate-900 p-3">
                     <h4 className="font-semibold">Data Binding</h4>
                     <label className="text-sm">Source<select className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" value={selectedPrimary.dataBindingSource} onChange={(e) => applyToSelected((layer) => layer.kind === 'text' ? ({ dataBindingSource: e.target.value } as Partial<Layer>) : ({}))}><option value="manual">Manual</option><option value="live-feed">Live Feed</option><option value="game-state">Game State</option><option value="stats-service">Stats Service</option></select></label>
-                    <label className="text-sm">
-                      Field Search
-                      <input
-                        className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2 text-sm"
-                        placeholder="Search fields in current sport/context…"
-                        value={bindingFieldQuery}
-                        onChange={(e) => setBindingFieldQuery(e.target.value)}
-                      />
+                    <label className="text-sm">Level
+                      <select className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" value={bindingLevel} onChange={(event) => setBindingLevel(event.target.value as FieldLevel)}>
+                        <option value="game">Game</option>
+                        <option value="team">Team</option>
+                        <option value="player">Player</option>
+                      </select>
                     </label>
-                    <label className="text-sm">
-                      Field
+                    {bindingLevel === 'team' && (
+                      <label className="text-sm">Scope
+                        <select className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" value={bindingSide} onChange={(event) => setBindingSide(event.target.value as FieldSide)}>
+                          <option value="home">Home team</option>
+                          <option value="away">Away team</option>
+                        </select>
+                      </label>
+                    )}
+                    {bindingLevel === 'player' && (
+                      <>
+                        <label className="text-sm">Scope
+                          <select className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" value={bindingSide} onChange={(event) => setBindingSide(event.target.value as FieldSide)}>
+                            <option value="home">Home players</option>
+                            <option value="away">Away players</option>
+                          </select>
+                        </label>
+                        <label className="text-sm">Player Search
+                          <input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2 text-sm" placeholder="Search players…" value={bindingPlayerQuery} onChange={(e) => setBindingPlayerQuery(e.target.value)} />
+                        </label>
+                        <label className="text-sm">Player
+                          <select className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" value={bindingPlayerId} onChange={(event) => setBindingPlayerId(event.target.value)}>
+                            <option value="">Choose player…</option>
+                            {playerOptions.map((player) => <option key={player.id} value={player.id}>{player.label}</option>)}
+                          </select>
+                        </label>
+                      </>
+                    )}
+                    <label className="text-sm">Metric Search
+                      <input className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2 text-sm" placeholder="Search metrics in current sport/context…" value={bindingMetricQuery} onChange={(e) => setBindingMetricQuery(e.target.value)} />
+                    </label>
+                    <label className="text-sm">Metric
                       <select
                         className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2"
                         value={selectedPrimary.dataBindingField}
-                        onChange={(e) => applyToSelected((layer) => layer.kind === 'text' ? ({ dataBindingField: e.target.value } as Partial<Layer>) : ({}))}
+                        onChange={(event) => applyToSelected((layer) => layer.kind === 'text' ? ({ dataBindingField: event.target.value } as Partial<Layer>) : ({}))}
                       >
-                        <option value="">Choose field…</option>
-                        {selectedPrimary.dataBindingField && !isFieldAvailableForSportContext(selectedPrimary.dataBindingField, activeSport, bindingContext) && (
-                          <option value={selectedPrimary.dataBindingField}>{`Unavailable for this sport: ${selectedPrimary.dataBindingField}`}</option>
-                        )}
-                        {bindingFieldGroups.map((group) => (
-                          <optgroup key={`${group.level}-${group.group}`} label={group.label}>
-                            {group.fields.map((field) => (
-                              <option key={field.path} value={field.path}>{`${field.label} (${field.path})`}</option>
-                            ))}
+                        <option value="">Choose metric…</option>
+                        {groupedMetricOptions.map((group) => (
+                          <optgroup key={group.group} label={group.group}>
+                            {group.fields.map((field) => <option key={field.path} value={field.path}>{`${field.label} (${field.path})`}</option>)}
                           </optgroup>
                         ))}
                       </select>
                     </label>
-                    {!!selectedPrimary.dataBindingField && (
-                      <p className="text-xs text-slate-400">
-                        Path: {getFieldBreadcrumb(selectedPrimary.dataBindingField, activeSport, bindingContext) ?? `Unavailable for this sport · ${selectedPrimary.dataBindingField}`}
-                      </p>
+                    <button type="button" className="w-fit rounded border border-slate-700 px-2 py-1 text-xs" onClick={() => setBindingAdvancedOpen((value) => !value)}>
+                      Advanced
+                    </button>
+                    {bindingAdvancedOpen && (
+                      <label className="text-sm">Advanced: Raw Path
+                        <input
+                          className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2 font-mono text-xs"
+                          value={selectedPrimary.dataBindingField}
+                          onChange={(event) => applyToSelected((layer) => layer.kind === 'text' ? ({ dataBindingField: event.target.value } as Partial<Layer>) : ({}))}
+                          placeholder="boxScore.homePlayers.Player Name.points"
+                        />
+                      </label>
                     )}
-                    {!bindingFieldOptions.length && (
-                      <p className="text-xs text-slate-500">No fields match for this sport/context. Start simulation or clear search.</p>
+                    <p className="text-xs text-slate-400">Preview value: {previewText}</p>
+                    {selectedPrimary.dataBindingField && previewText === 'N/A' && (
+                      <p className="text-xs text-amber-300">Not available for this sport/state.</p>
                     )}
                     <p className="text-xs text-slate-500">Active sport: {activeSport.toUpperCase()} · Context: {bindingContext.toUpperCase()}</p>
                   </div>
