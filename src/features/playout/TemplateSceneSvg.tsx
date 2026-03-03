@@ -3,7 +3,8 @@ import { useAssetStore } from '../../store/useAssetStore';
 import type { Layer } from '../../types/domain';
 import type { SavedTemplate } from '../../store/useTemplateStore';
 import { useDataEngineStore } from '../../store/useDataEngineStore';
-import { getLiveTextContent } from './liveBindings';
+import { resolveTextLayerBindingValue } from '../../components/design/dataBindingPaths';
+import { buildNormalizedPayload, buildTeamMetrics } from '../simulation/derived';
 
 type SceneTemplate = Pick<SavedTemplate, 'id' | 'name' | 'canvasWidth' | 'canvasHeight' | 'layers'>;
 
@@ -25,25 +26,47 @@ const DEFAULT_TRANSFORM = {
 export function TemplateSceneSvg({ template, className, assetResolver, debugLiveLabel }: Props) {
   const assets = useAssetStore((s) => s.assets);
   const game = useDataEngineStore((s) => s.game);
+  const historyLength = useDataEngineStore((s) => s.history.length);
   const assetById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets]);
+  const hasSimulationData = historyLength > 0;
+  const liveFeedPayload = hasSimulationData ? game : null;
+  const derivedPayload = useMemo(() => {
+    if (!hasSimulationData) return null;
+    return {
+      teamMetrics: buildTeamMetrics(game),
+      advancedMetrics: game.advancedMetrics,
+      consistencyIssues: game.consistencyIssues ?? [],
+      sport: game.sport,
+    };
+  }, [game, hasSimulationData]);
+  const scorebugPayload = useMemo(() => (
+    hasSimulationData ? buildNormalizedPayload(game, 'live-scorebug') : null
+  ), [game, hasSimulationData]);
 
   const showLiveOverlay = useMemo(() => {
     if (!import.meta.env.DEV || typeof window === 'undefined') return false;
     return window.localStorage.getItem('debug_live') === '1';
   }, []);
 
+  const getTextContent = (layer: Extract<Layer, { kind: 'text' }>) => resolveTextLayerBindingValue(layer, {
+    liveFeedPayload,
+    derivedPayload,
+    scorebugPayload,
+  });
+
   const sampleBindings = useMemo(() => {
     const textLayers = template.layers
       .filter((layer): layer is Extract<Layer, { kind: 'text' }> => layer.kind === 'text')
       .filter((layer) => layer.dataBindingSource !== 'manual' && Boolean(layer.dataBindingField))
-      .slice(0, 2);
+      .slice(0, 3);
 
     return textLayers.map((layer) => ({
       layerId: layer.id,
+      source: layer.dataBindingSource,
       field: layer.dataBindingField,
-      rendered: getLiveTextContent(layer, game),
+      rendered: getTextContent(layer),
     }));
-  }, [template.layers, game]);
+  }, [template.layers, liveFeedPayload, derivedPayload, scorebugPayload]);
 
   const renderLayer = (layer: Layer) => {
     const opacity = (layer.opacity ?? 100) / 100;
@@ -56,7 +79,7 @@ export function TemplateSceneSvg({ template, className, assetResolver, debugLive
     const transform = `translate(${layer.x} ${layer.y}) rotate(${rotation}) scale(${scaleX} ${scaleY}) translate(${-anchorX} ${-anchorY})`;
 
     if (layer.kind === 'text') {
-      const textValue = getLiveTextContent(layer, game) || ' ';
+      const textValue = getTextContent(layer) || ' ';
       const textAnchor = layer.textAlign === 'center' ? 'middle' : layer.textAlign === 'right' ? 'end' : 'start';
       const textX = layer.textAlign === 'center' ? anchorX : layer.textAlign === 'right' ? anchorX * 2 : 0;
       return (
@@ -136,7 +159,11 @@ export function TemplateSceneSvg({ template, className, assetResolver, debugLive
           <div xmlns="http://www.w3.org/1999/xhtml" className="pointer-events-none rounded border border-emerald-500/70 bg-black/70 px-2 py-1 text-[10px] leading-tight text-emerald-200">
             <p>{debugLiveLabel} · live feed connected: {String(Boolean(game))}</p>
             <p>clockSeconds: {String(game.clockSeconds)} · periodLabel: {String(game.periodLabel)}</p>
-            {sampleBindings.map((entry) => <p key={`${debugLiveLabel}-${entry.layerId}`}>{entry.field}: {entry.rendered || '(empty)'}</p>)}
+            {sampleBindings.map((entry) => (
+              <p key={`${debugLiveLabel}-${entry.layerId}`}>
+                {entry.source}.{entry.field}: {entry.rendered || '(empty)'}
+              </p>
+            ))}
           </div>
         </foreignObject>
       ) : null}
