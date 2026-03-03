@@ -192,9 +192,49 @@ export const getFieldCatalog = ({ sport, context }: FieldCatalogSelection): Fiel
   catalogRegistry.filter((entry) => entry.sport === sport && entry.context === context)
 );
 
-const PATH_TOKEN_REGEX = /\{([^}]+)\}/g;
+const escapeRegexLiteral = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const CHOICE_SEGMENT_REGEX = /^[^\\()[\]{}.*+?^$|]+$/;
+
+const buildPathMatcher = (pathTemplate: string): { regex: RegExp; tokenNames: string[] } => {
+  const tokenNames: string[] = [];
+  let pattern = '^';
+
+  for (let i = 0; i < pathTemplate.length;) {
+    const current = pathTemplate[i];
+
+    if (current === '{') {
+      const closeIndex = pathTemplate.indexOf('}', i + 1);
+      if (closeIndex > i + 1) {
+        const token = pathTemplate.slice(i + 1, closeIndex);
+        tokenNames.push(token);
+        pattern += '([^\\.]+)';
+        i = closeIndex + 1;
+        continue;
+      }
+    }
+
+    if (current === '(') {
+      const closeIndex = pathTemplate.indexOf(')', i + 1);
+      if (closeIndex > i + 1) {
+        const groupBody = pathTemplate.slice(i + 1, closeIndex);
+        const alternatives = groupBody.split('|').filter(Boolean);
+        const isSafeChoiceGroup = alternatives.length >= 2 && alternatives.every((segment) => CHOICE_SEGMENT_REGEX.test(segment));
+        if (isSafeChoiceGroup) {
+          pattern += `(?:${alternatives.map((segment) => escapeRegexLiteral(segment)).join('|')})`;
+          i = closeIndex + 1;
+          continue;
+        }
+      }
+    }
+
+    pattern += escapeRegexLiteral(current);
+    i += 1;
+  }
+
+  pattern += '$';
+  return { regex: new RegExp(pattern), tokenNames };
+};
 
 export const materializeFieldPath = (descriptor: FieldDescriptor, selections: PathSelections): string | null => {
   if (descriptor.requires.side && !selections.side) return null;
@@ -207,16 +247,18 @@ export const materializeFieldPath = (descriptor: FieldDescriptor, selections: Pa
 
 export const parseBindingPathToSelection = (catalog: FieldDescriptor[], path: string): { descriptor: FieldDescriptor; selections: PathSelections } | null => {
   for (const descriptor of catalog) {
-    const tokenNames: string[] = [];
-    const pattern = `^${escapeRegex(descriptor.pathTemplate).replace(PATH_TOKEN_REGEX, (_, token: string) => {
-      tokenNames.push(token);
-      return '([^\\.]+)';
-    })}$`;
-    const match = path.match(new RegExp(pattern));
+    let matcher: { regex: RegExp; tokenNames: string[] };
+    try {
+      matcher = buildPathMatcher(descriptor.pathTemplate);
+    } catch {
+      continue;
+    }
+
+    const match = path.match(matcher.regex);
     if (!match) continue;
 
     const selections: PathSelections = {};
-    tokenNames.forEach((token, index) => {
+    matcher.tokenNames.forEach((token, index) => {
       const value = match[index + 1];
       if (token === 'side' || token === 'team') {
         if (value === 'home' || value === 'away') selections.side = value;
