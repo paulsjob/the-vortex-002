@@ -18,11 +18,37 @@ export type TemplateSnapshot = {
   template: SavedTemplate;
 };
 
+const deepClone = <T>(value: T): T => {
+  if (typeof globalThis.structuredClone === 'function') {
+    return globalThis.structuredClone(value);
+  }
+  return JSON.parse(JSON.stringify(value)) as T;
+};
+
+const deepFreeze = <T>(value: T): T => {
+  if (!value || typeof value !== 'object') return value;
+  Object.freeze(value);
+  Object.values(value).forEach((entry) => {
+    if (entry && typeof entry === 'object' && !Object.isFrozen(entry)) {
+      deepFreeze(entry);
+    }
+  });
+  return value;
+};
+
+const createImmutableTemplate = (template: SavedTemplate): SavedTemplate => {
+  const cloned = deepClone(template);
+  if (import.meta.env.DEV) {
+    return deepFreeze(cloned);
+  }
+  return cloned;
+};
+
 export const createTemplateSnapshot = (template: SavedTemplate, revision = 1): TemplateSnapshot => ({
   templateId: template.id,
   revision,
   capturedAt: new Date().toISOString(),
-  template: structuredClone(template),
+  template: createImmutableTemplate(template),
 });
 
 interface PlayoutStore {
@@ -33,6 +59,9 @@ interface PlayoutStore {
   programTemplate: SavedTemplate | null;
   previewSponsor: string | null;
   programSponsor: string | null;
+  previewRevision: number;
+  programRevision: number;
+  outputRevision: number;
   transitionType: TransitionType;
   transitionDurationMs: number;
   lastTakeAt: string | null;
@@ -61,7 +90,7 @@ interface PlayoutStore {
   getBindingSchema: (templateId: string) => BindingSchema | undefined;
 }
 
-const cloneTemplate = (template: SavedTemplate): SavedTemplate => structuredClone(template);
+const cloneTemplate = (template: SavedTemplate): SavedTemplate => deepClone(template);
 
 const templatesMatch = (left: SavedTemplate | null, right: SavedTemplate | null): boolean => {
   if (!left || !right) return left === right;
@@ -73,6 +102,9 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
   programSponsor: null,
   transitionType: 'cut',
   transitionDurationMs: 300,
+  previewRevision: 0,
+  programRevision: 0,
+  outputRevision: 0,
   previewTemplate: null,
   previewSnapshot: null,
   vortexBindings: {},
@@ -83,42 +115,68 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
   vortexBindingSchemas: {},
   setPreviewTemplate: (template) => {
     if (!template) {
-      set({ previewTemplate: null, previewSnapshot: null });
+      set((state) => ({
+        previewTemplate: null,
+        previewSnapshot: null,
+        previewRevision: state.previewRevision + 1,
+      }));
       return;
     }
     const state = get();
-    const nextRevision = (state.previewSnapshot?.revision ?? 0) + 1;
+    const nextRevision = state.previewRevision + 1;
     const snapshot = createTemplateSnapshot(template, nextRevision);
     set({
       previewSnapshot: snapshot,
       previewTemplate: cloneTemplate(snapshot.template),
+      previewRevision: nextRevision,
     });
   },
   setPreviewSnapshot: (snapshot) => {
     if (!snapshot) {
-      set({ previewSnapshot: null, previewTemplate: null });
+      set((state) => ({
+        previewSnapshot: null,
+        previewTemplate: null,
+        previewRevision: state.previewRevision + 1,
+      }));
       return;
     }
+    const state = get();
+    const nextRevision = state.previewRevision + 1;
+    const immutableTemplate = createImmutableTemplate(snapshot.template);
     set({
       previewSnapshot: {
         ...snapshot,
-        template: cloneTemplate(snapshot.template),
+        revision: nextRevision,
+        template: immutableTemplate,
       },
-      previewTemplate: cloneTemplate(snapshot.template),
+      previewTemplate: cloneTemplate(immutableTemplate),
+      previewRevision: nextRevision,
     });
   },
   setProgramSnapshot: (snapshot) => {
     if (!snapshot) {
-      set({ programSnapshot: null, programTemplate: null, programSponsor: null });
+      set((state) => ({
+        programSnapshot: null,
+        programTemplate: null,
+        programSponsor: null,
+        programRevision: state.programRevision + 1,
+        outputRevision: state.outputRevision + 1,
+      }));
       return;
     }
+    const state = get();
+    const nextRevision = state.programRevision + 1;
+    const immutableTemplate = createImmutableTemplate(snapshot.template);
     set({
       programSnapshot: {
         ...snapshot,
-        template: cloneTemplate(snapshot.template),
+        revision: nextRevision,
+        template: immutableTemplate,
       },
-      programTemplate: cloneTemplate(snapshot.template),
+      programTemplate: cloneTemplate(immutableTemplate),
       lastTakeAt: snapshot.capturedAt,
+      programRevision: nextRevision,
+      outputRevision: state.outputRevision + 1,
     });
   },
   setPreviewSponsor: (sponsor) => set({ previewSponsor: sponsor }),
@@ -131,25 +189,36 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
     const previewSponsor = get().previewSponsor;
     if (!preview) return;
     if (templatesMatch(program, preview) && get().programSponsor === previewSponsor) return;
-    const nextRevision = (state.programSnapshot?.revision ?? 0) + 1;
+    const nextRevision = state.programRevision + 1;
     const snapshot = createTemplateSnapshot(preview, nextRevision);
     set({
       programSnapshot: snapshot,
       programTemplate: cloneTemplate(snapshot.template),
       programSponsor: previewSponsor,
       lastTakeAt: snapshot.capturedAt,
+      programRevision: nextRevision,
+      outputRevision: state.outputRevision + 1,
     });
   },
-  clearProgram: () => set({ programTemplate: null, programSnapshot: null, programSponsor: null }),
+  clearProgram: () => set((state) => ({
+    programTemplate: null,
+    programSnapshot: null,
+    programSponsor: null,
+    programRevision: state.programRevision + 1,
+    outputRevision: state.outputRevision + 1,
+  })),
   activateProgramTemplate: (template) => set((state) => {
     if (!template) return state;
     const nextProgram = cloneTemplate(template);
     if (templatesMatch(state.programTemplate, nextProgram)) return state;
-    const snapshot = createTemplateSnapshot(nextProgram, (state.programSnapshot?.revision ?? 0) + 1);
+    const nextRevision = state.programRevision + 1;
+    const snapshot = createTemplateSnapshot(nextProgram, nextRevision);
     return {
       programSnapshot: snapshot,
       programTemplate: cloneTemplate(snapshot.template),
       lastTakeAt: snapshot.capturedAt,
+      programRevision: nextRevision,
+      outputRevision: state.outputRevision + 1,
     };
   }),
   resetPlayoutState: () => set({
@@ -157,6 +226,9 @@ export const usePlayoutStore = create<PlayoutStore>((set, get) => ({
     previewSnapshot: null,
     programTemplate: null,
     programSnapshot: null,
+    previewRevision: 0,
+    programRevision: 0,
+    outputRevision: 0,
     previewSponsor: 'Renderless Sports',
     programSponsor: null,
     transitionType: 'cut',
