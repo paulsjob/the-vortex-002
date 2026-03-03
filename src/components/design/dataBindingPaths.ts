@@ -1,6 +1,7 @@
 import { buildNormalizedPayload, buildTeamMetrics } from '../../features/simulation/derived';
 import { simulatorRegistry } from '../../features/simulation/registry';
 import type { SportBoxScore, SportKey } from '../../features/simulation/types';
+import type { TextLayer } from '../../types/domain';
 
 export type BindingContext = 'live' | 'derived' | 'scorebug';
 export type FieldLevel = 'game' | 'team' | 'player';
@@ -103,8 +104,13 @@ const tokenizePath = (path: string): string[] => {
 };
 
 const toLabelFromPath = (path: string) => {
-  const tail = path.split('.').pop() ?? path;
-  return titleCase(tail.replace(/\{side\}/g, '').replace(/\{playerId\}/g, '').replace(/[\[\]"]+/g, ''));
+  const tokens = tokenizePath(path).map((token) => token.replace(/\{side\}|\{playerId\}/g, '').replace(/[\[\]"]+/g, '')).filter(Boolean);
+  const tail = tokens.length ? tokens[tokens.length - 1] : path;
+  const parent = tokens.length > 1 ? tokens[tokens.length - 2] : undefined;
+  if (parent && /^(home|away)$/i.test(tail) && /(score|goals?|runs?|clock|shots?|hits?|errors?|cards?|corners?|fouls?|timeouts?)/i.test(parent)) {
+    return `${titleCase(parent)} ${titleCase(tail)}`;
+  }
+  return titleCase(tail);
 };
 
 const groupFromPath = (path: string): FieldGroup => {
@@ -383,4 +389,52 @@ export const formatPreviewValue = (value: unknown): string => {
   if (value === null || value === undefined) return 'N/A';
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
+};
+
+const sourceToContext = (source: string): BindingContext => {
+  if (source === 'live-feed') return 'live';
+  if (source === 'stats-service') return 'derived';
+  return 'scorebug';
+};
+
+const formatBindingValue = (value: unknown): string => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return '';
+    if (Number.isInteger(value)) return String(value);
+    return String(Math.round(value * 100) / 100);
+  }
+  if (typeof value === 'string') return value;
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return '';
+  }
+};
+
+type BindingPayloads = {
+  liveFeedPayload: unknown;
+  derivedPayload: unknown;
+  scorebugPayload: unknown;
+};
+
+export const resolveTextLayerBindingValue = (
+  layer: TextLayer,
+  { liveFeedPayload, derivedPayload, scorebugPayload }: BindingPayloads,
+): string => {
+  if (layer.dataBindingSource === 'manual' || !layer.dataBindingField) return layer.text;
+
+  const context = sourceToContext(layer.dataBindingSource);
+  const payload = context === 'live'
+    ? liveFeedPayload
+    : context === 'derived'
+      ? derivedPayload
+      : scorebugPayload;
+
+  try {
+    return formatBindingValue(resolvePathValue(payload, layer.dataBindingField));
+  } catch {
+    return '';
+  }
 };
