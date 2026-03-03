@@ -73,11 +73,22 @@ export function AppRoutes() {
   const shouldPublishLiveFeed = !isEmbedRoute && !isPublicTemplateFeed && !isPublicOutputFeed;
 
   useEffect(() => {
-    if (!shouldPublishLiveFeed) return;
-    return createLiveFeedPublisher(() => {
+    const engine = useDataEngineStore.getState();
+    if (!shouldPublishLiveFeed) {
+      engine.setLivePublisherActive(false);
+      return;
+    }
+
+    engine.setLivePublisherActive(true);
+    const stopPublisher = createLiveFeedPublisher(() => {
       const { running, activeSport, game } = useDataEngineStore.getState();
       return { running, activeSport, game };
     }, 250);
+
+    return () => {
+      stopPublisher();
+      useDataEngineStore.getState().setLivePublisherActive(false);
+    };
   }, [shouldPublishLiveFeed]);
 
   const navStatusLabel = useMemo(() => {

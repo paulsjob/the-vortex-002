@@ -28,6 +28,9 @@ export function TemplateSceneSvg({ template, className, assetResolver, debugLive
   const game = useDataEngineStore((s) => s.game);
   const running = useDataEngineStore((s) => s.running);
   const activeSport = useDataEngineStore((s) => s.activeSport);
+  const externalMode = useDataEngineStore((s) => s.externalMode);
+  const livePublisherActive = useDataEngineStore((s) => s.livePublisherActive);
+  const lastBroadcastAt = useDataEngineStore((s) => s.lastBroadcastAt);
   const historyLength = useDataEngineStore((s) => s.history.length);
   const assetById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets]);
   const hasSimulationData = historyLength > 0;
@@ -163,8 +166,10 @@ export function TemplateSceneSvg({ template, className, assetResolver, debugLive
         <foreignObject x={8} y={8} width={Math.max(200, template.canvasWidth * 0.45)} height={90}>
           <div xmlns="http://www.w3.org/1999/xhtml" className="pointer-events-none rounded border border-emerald-500/70 bg-black/70 px-2 py-1 text-[10px] leading-tight text-emerald-200">
             <p>{debugLiveLabel} · running: {String(running)}</p>
-            <p>engine sport: {String(activeSport)} · game sport: {String(game.sport)}</p>
+            <p>publisherActive: {String(livePublisherActive)} · externalMode: {String(externalMode)}</p>
+            <p>activeSport: {String(activeSport)} · game sport: {String(game.sport)}</p>
             <p>clockSeconds: {String(game.clockSeconds)} · periodLabel: {String(game.periodLabel)}</p>
+            <p>lastBroadcastAgeMs: {lastBroadcastAt ? String(Math.max(0, Date.now() - lastBroadcastAt)) : 'Infinity'}</p>
             {sampleBindings.map((entry) => (
               <p key={`${debugLiveLabel}-${entry.layerId}`}>
                 {entry.source}.{entry.field}: {entry.rendered || '(empty)'}
