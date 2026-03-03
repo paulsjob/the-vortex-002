@@ -64,9 +64,10 @@ export function OutputRoute() {
   const [fontGateLoading, setFontGateLoading] = useState(false);
 
   const activeTemplateRef = useMemo(() => {
-    if (!programSnapshot?.template) return null;
-    return { source: programSnapshot.template.source, id: programSnapshot.template.id };
-  }, [programSnapshot]);
+    if (!programSnapshot?.templateId) return null;
+    const vortexPackage = templateStore.getVortexPackage(programSnapshot.templateId);
+    return { source: vortexPackage ? 'vortex' as const : 'native' as const, id: programSnapshot.templateId };
+  }, [programSnapshot?.templateId, templateStore.vortexPackages]);
 
   const vortexRenderState = useMemo(() => {
     if (!activeTemplateRef || activeTemplateRef.source !== 'vortex') return null;
@@ -149,7 +150,7 @@ export function OutputRoute() {
   const vortexSchema = vortexRenderState && 'template' in vortexRenderState ? vortexRenderState.schema : undefined;
   const bindingState = vortexTemplate ? getBindingState(vortexTemplate.id) : undefined;
   const transformedVortexTemplate = vortexTemplate && vortexSchema ? applyBindingsToScene(vortexTemplate, vortexSchema, bindingState) : undefined;
-  const activeTemplate = transformedVortexTemplate || programSnapshot?.template || null;
+  const activeTemplate = transformedVortexTemplate || programSnapshot?.sceneDefinition || null;
   const override = vortexTemplate ? fontOverrides[vortexTemplate.id] : undefined;
 
   const shouldBlockForFonts = Boolean(vortexRenderState?.template && fontGateResult && !fontGateResult.ok && !override?.enabled);
@@ -233,6 +234,7 @@ export function OutputRoute() {
                   template={activeTemplate}
                   className="absolute inset-0 h-full w-full"
                   assetResolver={vortexTemplate ? (path) => getVortexAssetUrl(vortexTemplate.id, path) : undefined}
+                  debugLiveLabel="output"
                 />
               )}
             </div>
