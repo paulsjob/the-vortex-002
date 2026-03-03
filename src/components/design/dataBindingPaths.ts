@@ -224,36 +224,41 @@ const markDisplayableDescriptors = (descriptors: FieldDescriptor[], samplePayloa
 );
 
 const buildCatalogRegistry = () => {
-  const byId = new Map<string, FieldDescriptor>();
-  const contexts: BindingContext[] = ['live', 'derived', 'scorebug'];
+  try {
+    const byId = new Map<string, FieldDescriptor>();
+    const contexts: BindingContext[] = ['live', 'derived', 'scorebug'];
 
-  (Object.keys(simulatorRegistry) as SportKey[]).forEach((sport) => {
-    const live = simulatorRegistry[sport].createInitialGame();
-    const payloadByContext: Record<BindingContext, unknown> = {
-      live,
-      derived: { teamMetrics: buildTeamMetrics(live), advancedMetrics: live.advancedMetrics, consistencyIssues: live.consistencyIssues ?? [], sport: live.sport },
-      scorebug: buildNormalizedPayload(live, 'live-scorebug'),
-    };
+    (Object.keys(simulatorRegistry) as SportKey[]).forEach((sport) => {
+      const live = simulatorRegistry[sport].createInitialGame();
+      const payloadByContext: Record<BindingContext, unknown> = {
+        live,
+        derived: { teamMetrics: buildTeamMetrics(live), advancedMetrics: live.advancedMetrics, consistencyIssues: live.consistencyIssues ?? [], sport: live.sport },
+        scorebug: buildNormalizedPayload(live, 'live-scorebug'),
+      };
 
-    contexts.forEach((context) => {
-      CORE_SCORE_METRICS(sport, context).forEach((descriptor) => {
-        if (!byId.has(descriptor.id)) byId.set(descriptor.id, descriptor);
-      });
+      contexts.forEach((context) => {
+        CORE_SCORE_METRICS(sport, context).forEach((descriptor) => {
+          if (!byId.has(descriptor.id)) byId.set(descriptor.id, descriptor);
+        });
 
-      const descriptors: FieldDescriptor[] = [];
-      extractBindingPaths(payloadByContext[context]).forEach((path) => {
-        buildDescriptorsForPath(sport, context, path).forEach((descriptor) => {
-          descriptors.push(descriptor);
+        const descriptors: FieldDescriptor[] = [];
+        extractBindingPaths(payloadByContext[context]).forEach((path) => {
+          buildDescriptorsForPath(sport, context, path).forEach((descriptor) => {
+            descriptors.push(descriptor);
+          });
+        });
+
+        markDisplayableDescriptors(descriptors, payloadByContext[context]).forEach((descriptor) => {
+          if (!byId.has(descriptor.id)) byId.set(descriptor.id, descriptor);
         });
       });
-
-      markDisplayableDescriptors(descriptors, payloadByContext[context]).forEach((descriptor) => {
-        if (!byId.has(descriptor.id)) byId.set(descriptor.id, descriptor);
-      });
     });
-  });
 
-  return [...byId.values()].sort((a, b) => a.label.localeCompare(b.label));
+    return [...byId.values()].sort((a, b) => a.label.localeCompare(b.label));
+  } catch (error) {
+    console.warn('Failed to build data binding catalog registry during module initialization.', error);
+    return [];
+  }
 };
 
 const catalogRegistry = buildCatalogRegistry();
@@ -306,7 +311,7 @@ const buildPathMatcher = (pathTemplate: string): { regex: RegExp; tokenNames: st
   return { regex: new RegExp(pattern), tokenNames };
 };
 
-export const materializeFieldPath = (descriptor: FieldDescriptor, selections: PathSelections): string | null => {
+export function materializeFieldPath(descriptor: FieldDescriptor, selections: PathSelections): string | null {
   if (descriptor.requires.side && !selections.side) return null;
   if (descriptor.requires.player && !selections.playerId) return null;
 
@@ -322,9 +327,8 @@ export const materializeFieldPath = (descriptor: FieldDescriptor, selections: Pa
       .replace(/\.\{playerId\}/g, playerAccess)
       .replace(/\{playerId\}/g, selections.playerId);
   }
-
   return materialized;
-};
+}
 
 export const parseBindingPathToSelection = (catalog: FieldDescriptor[], path: string): { descriptor: FieldDescriptor; selections: PathSelections } | null => {
   for (const descriptor of catalog) {
