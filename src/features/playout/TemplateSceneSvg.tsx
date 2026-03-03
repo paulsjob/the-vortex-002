@@ -79,7 +79,10 @@ export function TemplateSceneSvg({ template, className, assetResolver, debugLive
     const transform = `translate(${layer.x} ${layer.y}) rotate(${rotation}) scale(${scaleX} ${scaleY}) translate(${-anchorX} ${-anchorY})`;
 
     if (layer.kind === 'text') {
-      const textValue = getTextContent(layer) || ' ';
+      const resolved = getTextContent(layer);
+      const textValue = layer.dataBindingSource !== 'manual'
+        ? (resolved && resolved.trim().length > 0 ? resolved : (layer.text || ' '))
+        : (resolved || layer.text || ' ');
       const textAnchor = layer.textAlign === 'center' ? 'middle' : layer.textAlign === 'right' ? 'end' : 'start';
       const textX = layer.textAlign === 'center' ? anchorX : layer.textAlign === 'right' ? anchorX * 2 : 0;
       return (

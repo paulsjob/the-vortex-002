@@ -22,7 +22,6 @@ export function PublicTemplateRoute() {
   const { templateId = '' } = useParams();
   const [searchParams] = useSearchParams();
   const templateStore = useTemplateStore();
-  const startEngine = useDataEngineStore((s) => s.start);
   const fontOverrides = usePlayoutStore((s) => s.fontOverrides);
   const setFontOverride = usePlayoutStore((s) => s.setFontOverride);
   const [fontGateResult, setFontGateResult] = useState<FontLoadResult | null>(null);
@@ -34,8 +33,14 @@ export function PublicTemplateRoute() {
   const setBindingFontGateSatisfied = usePlayoutStore((s) => s.setBindingFontGateSatisfied);
 
   useEffect(() => {
-    startEngine();
-  }, [startEngine]);
+    const hasTplParam = Boolean(searchParams.get('tpl'));
+    const hasTemplateRouteId = Boolean(templateId);
+    if (!hasTplParam && !hasTemplateRouteId) return;
+    const { running, start } = useDataEngineStore.getState();
+    if (!running) {
+      start();
+    }
+  }, []);
 
   const renderState = useMemo(() => {
     const encoded = searchParams.get('tpl');

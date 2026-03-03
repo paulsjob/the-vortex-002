@@ -343,7 +343,7 @@ export function ControlRoomRoute() {
 
         <section className="h-full min-h-0 min-w-0 rounded-lg border border-slate-700 bg-slate-950 p-4">
           <div className="h-full min-h-0 min-w-0 flex flex-col gap-3">
-            <div className="min-h-0 flex-1 pb-1">
+            <div className="relative z-20 min-h-0 flex-1 pb-1">
               <div className="grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_minmax(220px,260px)_minmax(0,1fr)] gap-3 items-stretch">
                 <div className="min-h-0 min-w-0">
                   {renderViewportPanel({
@@ -441,7 +441,7 @@ export function ControlRoomRoute() {
               </div>
             </div>
 
-            <div className="min-h-0 overflow-hidden grid grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
+            <div className="relative z-0 min-h-0 overflow-hidden grid grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
               <div className="min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-2">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">FAVORITES</p>
