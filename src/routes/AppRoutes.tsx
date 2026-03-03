@@ -67,6 +67,7 @@ export function AppRoutes() {
   const isPublicTemplateFeed = location.pathname.startsWith('/template-feed/');
   const isPublicOutputFeed = location.pathname.startsWith('/output-feed');
   const isOutputRoute = location.pathname === '/output';
+  const isControlRoomRoute = location.pathname === '/control-room';
 
   const navStatusLabel = useMemo(() => {
     if (!programTemplate) return 'PROGRAM STANDBY';
@@ -139,7 +140,7 @@ export function AppRoutes() {
           </div>
         </div>
       </header>
-      <main className="min-h-0 flex-1 overflow-auto p-6">
+      <main className={`min-h-0 flex-1 p-6 ${isControlRoomRoute ? 'overflow-hidden' : 'overflow-auto'}`}>
         <Routes>
           <Route path="/" element={<DashboardRoute />} />
           <Route path="/design" element={<DesignRoute />} />

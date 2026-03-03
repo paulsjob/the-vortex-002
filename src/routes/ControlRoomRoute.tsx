@@ -19,8 +19,6 @@ const transitionOptions: Array<{ type: TransitionType; label: string }> = [
 
 const durationChoices = [150, 300, 500, 1000];
 const QUICK_LAUNCH_DEFAULT_COUNT = 4;
-const COLLAPSED_LAUNCHER_GRID_ROWS = '1fr';
-const EXPANDED_LAUNCHER_GRID_ROWS = 'repeat(2, minmax(0, 1fr))';
 const PANEL_STATUS_BADGE_CLASS = 'rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em]';
 
 export function ControlRoomRoute() {
@@ -223,7 +221,6 @@ export function ControlRoomRoute() {
     );
   };
 
-  const launcherGridRows = (expanded: boolean) => (expanded ? EXPANDED_LAUNCHER_GRID_ROWS : COLLAPSED_LAUNCHER_GRID_ROWS);
 
   const renderViewportPanel = (options: {
     title: 'PREVIEW' | 'PROGRAM';
@@ -247,7 +244,8 @@ export function ControlRoomRoute() {
             </div>
           </div>
         </div>
-        <StageViewportFrame className="relative w-full aspect-video rounded-md border-slate-700 bg-slate-900 p-3">
+        <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+          <StageViewportFrame className="relative h-full w-auto aspect-video max-w-full rounded-md border-slate-700 bg-slate-900 p-3">
           {options.blackout && (
             <div className="pointer-events-none absolute inset-0 z-10 border border-slate-800 bg-black/95 text-center text-sm font-semibold uppercase tracking-[0.25em] text-white">
               <div className="flex h-full items-center justify-center">Blackout</div>
@@ -256,7 +254,8 @@ export function ControlRoomRoute() {
           <div className="h-full w-full">
             <TemplatePreview template={options.template} sponsor={options.sponsor} tone={options.tone} />
           </div>
-        </StageViewportFrame>
+          </StageViewportFrame>
+        </div>
       </div>
     </div>
   );
@@ -310,7 +309,7 @@ export function ControlRoomRoute() {
 
         <section className="h-full min-h-0 min-w-0 rounded-lg border border-slate-700 bg-slate-950 p-4">
           <div className="h-full min-h-0 min-w-0 flex flex-col gap-3">
-            <div className="shrink-0">
+            <div className="min-h-0 flex-1">
               <div className="grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_minmax(220px,260px)_minmax(0,1fr)] gap-3 items-stretch">
                 <div className="min-h-0 min-w-0">
                   {renderViewportPanel({
@@ -420,14 +419,14 @@ export function ControlRoomRoute() {
                     {favoritesExpanded ? 'Show less' : 'Show more'}
                   </button>
                 </div>
-                <div className="mt-2 h-[calc(100%-2rem)] min-h-0 overflow-x-auto overflow-y-hidden pb-1 no-scrollbar">
-                  <div className="grid h-full auto-cols-max grid-flow-col gap-2" style={{ gridTemplateRows: launcherGridRows(favoritesExpanded) }}>
+                <div className={`mt-2 h-[calc(100%-2rem)] min-h-0 pb-1 ${favoritesExpanded ? 'overflow-y-auto overflow-x-hidden' : 'overflow-x-auto overflow-y-hidden no-scrollbar'}`}>
+                  <div className={`grid gap-2 ${favoritesExpanded ? 'grid-cols-[repeat(auto-fill,minmax(170px,1fr))] auto-rows-max' : 'h-full auto-cols-max grid-flow-col'}`}>
                   {favoriteTemplates.length === 0 ? (
                     <p className="text-sm text-slate-500">Star templates in the library to pin your favorites.</p>
                   ) : favoriteTemplates.map((template) => (
                     <button
                       key={template.id}
-                      className="group shrink-0 rounded-md border border-slate-700 bg-slate-950 p-2 text-left transition hover:border-amber-400/60 hover:shadow-[0_0_24px_rgba(251,191,36,0.15)]"
+                      className={`group rounded-md border border-slate-700 bg-slate-950 p-2 text-left transition hover:border-amber-400/60 hover:shadow-[0_0_24px_rgba(251,191,36,0.15)] ${favoritesExpanded ? 'w-full' : 'shrink-0'}`}
                       onClick={() => setPreviewTemplate(template)}
                     >
                       <div className="mb-1 h-[clamp(72px,10vh,110px)] w-auto aspect-video overflow-hidden rounded border border-slate-700 bg-slate-900 grid place-items-center text-[10px] uppercase tracking-[0.2em] text-slate-500">
@@ -450,12 +449,12 @@ export function ControlRoomRoute() {
                     {quickLaunchExpanded ? 'Show less' : 'Show more'}
                   </button>
                 </div>
-                <div className="mt-2 h-[calc(100%-2rem)] min-h-0 overflow-x-auto overflow-y-hidden pb-1 no-scrollbar">
-                  <div className="grid h-full auto-cols-max grid-flow-col gap-2" style={{ gridTemplateRows: launcherGridRows(quickLaunchExpanded) }}>
+                <div className={`mt-2 h-[calc(100%-2rem)] min-h-0 pb-1 ${quickLaunchExpanded ? 'overflow-y-auto overflow-x-hidden' : 'overflow-x-auto overflow-y-hidden no-scrollbar'}`}>
+                  <div className={`grid gap-2 ${quickLaunchExpanded ? 'grid-cols-[repeat(auto-fill,minmax(170px,1fr))] auto-rows-max' : 'h-full auto-cols-max grid-flow-col'}`}>
                   {quickLaunchTemplates.length === 0 ? (
                     <p className="text-sm text-slate-500">Add templates with 🚀 in the library for one-tap preloading.</p>
                   ) : quickLaunchTemplates.map((template) => (
-                    <div key={template.id} className="group relative shrink-0 rounded-md border border-slate-700 bg-slate-950 p-2 transition hover:border-cyan-400/60 hover:shadow-[0_0_24px_rgba(34,211,238,0.15)]">
+                    <div key={template.id} className={`group relative rounded-md border border-slate-700 bg-slate-950 p-2 transition hover:border-cyan-400/60 hover:shadow-[0_0_24px_rgba(34,211,238,0.15)] ${quickLaunchExpanded ? 'w-full' : 'shrink-0'}`}>
                       <button
                         type="button"
                         className="absolute right-2 top-2 rounded px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-800 hover:text-slate-200"
