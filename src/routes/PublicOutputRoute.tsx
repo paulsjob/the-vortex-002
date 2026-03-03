@@ -6,11 +6,12 @@ import { TemplateSceneSvg } from '../features/playout/TemplateSceneSvg';
 
 export function PublicOutputRoute() {
   const [searchParams] = useSearchParams();
-  const startEngine = useDataEngineStore((s) => s.start);
-
   useEffect(() => {
-    startEngine();
-  }, [startEngine]);
+    const { running, start } = useDataEngineStore.getState();
+    if (!running) {
+      start();
+    }
+  }, []);
 
   const template = useMemo(() => {
     const encoded = searchParams.get('tpl');

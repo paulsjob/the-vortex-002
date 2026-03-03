@@ -62,7 +62,6 @@ export function OutputRoute() {
   const setFontOverride = usePlayoutStore((s) => s.setFontOverride);
   const setBindingValues = usePlayoutStore((s) => s.setBindingValues);
   const activateProgramTemplate = usePlayoutStore((s) => s.activateProgramTemplate);
-  const startDataEngine = useDataEngineStore((s) => s.start);
 
   const selectedPlayer = useDemoSessionStore((s) => s.selectedPlayer);
   const selectedStat = useDemoSessionStore((s) => s.selectedStat);
@@ -126,9 +125,12 @@ export function OutputRoute() {
   }, [tpl, activateProgramTemplate, templateStore, initializeBindings]);
 
   useEffect(() => {
-    if (!tpl) return;
-    startDataEngine();
-  }, [tpl, startDataEngine]);
+    if (!embed && !tpl) return;
+    const { running, start } = useDataEngineStore.getState();
+    if (!running) {
+      start();
+    }
+  }, [embed, tpl]);
 
   useEffect(() => {
     if (!vortexRenderState || !('template' in vortexRenderState) || !vortexRenderState.template || !vortexRenderState.schema) return;
