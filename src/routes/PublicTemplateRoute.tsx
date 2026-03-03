@@ -35,32 +35,47 @@ export function PublicTemplateRoute() {
   const setBindingFontGateSatisfied = usePlayoutStore((s) => s.setBindingFontGateSatisfied);
 
   useEffect(() => {
+    const encoded = searchParams.get('tpl');
+    const payload = encoded ? decodeTemplateFeedPayload(encoded) : null;
+
     const engine = useDataEngineStore.getState();
     let receivedState = false;
+    let externalFeedEnabled = true;
 
     engine.setExternalMode(true);
     engine.clearExternalGame();
     setWaitingForLiveFeed(true);
 
-    const unsubscribe = createLiveFeedSubscriber(({ activeSport, game }) => {
+    const unsubscribe = createLiveFeedSubscriber(({ activeSport, game, ts }) => {
+      if (!externalFeedEnabled) return;
       receivedState = true;
       setWaitingForLiveFeed(false);
-      engine.setExternalGame(game, activeSport as SportKey);
+      const nextEngine = useDataEngineStore.getState();
+      nextEngine.markBroadcastReceived(ts);
+      nextEngine.setExternalGame(game, activeSport as SportKey);
     });
 
     const fallbackTimer = window.setTimeout(() => {
       if (receivedState) return;
-      setWaitingForLiveFeed(true);
-    }, 2000);
+      externalFeedEnabled = false;
+      setWaitingForLiveFeed(false);
+      const nextEngine = useDataEngineStore.getState();
+      nextEngine.setExternalMode(false);
+      nextEngine.clearExternalGame();
+      if (payload?.sport) nextEngine.setSport(payload.sport);
+      nextEngine.reset();
+      nextEngine.start();
+    }, 1500);
 
     return () => {
+      externalFeedEnabled = false;
       window.clearTimeout(fallbackTimer);
       unsubscribe();
       const nextEngine = useDataEngineStore.getState();
       nextEngine.setExternalMode(false);
       nextEngine.clearExternalGame();
     };
-  }, []);
+  }, [searchParams]);
 
   const renderState = useMemo(() => {
     const encoded = searchParams.get('tpl');

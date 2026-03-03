@@ -12,6 +12,8 @@ interface DataEngineStore {
   running: boolean;
   externalMode: boolean;
   externalGame: GameState | null;
+  livePublisherActive: boolean;
+  lastBroadcastAt: number | null;
   speed: Speed;
   history: SimulationEvent[];
   consistency: ConsistencyStatus;
@@ -24,6 +26,8 @@ interface DataEngineStore {
   setExternalMode: (enabled: boolean) => void;
   setExternalGame: (game: GameState, sport: SportKey) => void;
   clearExternalGame: () => void;
+  setLivePublisherActive: (active: boolean) => void;
+  markBroadcastReceived: (timestamp?: number) => void;
   forceActions: string[];
 }
 
@@ -45,6 +49,8 @@ export const useDataEngineStore = create<DataEngineStore>((set, get) => ({
   running: false,
   externalMode: false,
   externalGame: null,
+  livePublisherActive: false,
+  lastBroadcastAt: null,
   speed: 'normal',
   history: [],
   consistency: { corrected: false, corrections: 0 },
@@ -107,5 +113,11 @@ export const useDataEngineStore = create<DataEngineStore>((set, get) => ({
   },
   clearExternalGame: () => {
     set({ externalGame: null });
+  },
+  setLivePublisherActive: (active) => {
+    set({ livePublisherActive: active });
+  },
+  markBroadcastReceived: (timestamp) => {
+    set({ lastBroadcastAt: timestamp ?? Date.now() });
   },
 }));
