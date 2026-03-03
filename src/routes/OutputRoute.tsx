@@ -11,8 +11,9 @@ import { FontGateOverlay } from '../features/playout/FontGateOverlay';
 import { applyBindingsToScene, normalizeBindingSchema } from '../features/playout/vortexBindings';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { decodeOutputFeedPayload } from '../features/playout/publicUrl';
+import { createLiveFeedSubscriber } from '../features/liveFeed/liveFeedBus';
 import { useDemoSessionStore } from '../store/useDemoSessionStore';
-import { useDataEngineStore } from '../store/useDataEngineStore';
+import { useDataEngineStore, type SportKey } from '../store/useDataEngineStore';
 import { getCatalogRegistry, getCatalogRegistryHealth } from '../components/design/dataBindingPaths';
 
 const mapDemoBindingDefaults = (
@@ -69,6 +70,7 @@ export function OutputRoute() {
 
   const [fontGateResult, setFontGateResult] = useState<FontLoadResult | null>(null);
   const [fontGateLoading, setFontGateLoading] = useState(false);
+  const [waitingForLiveFeed, setWaitingForLiveFeed] = useState(false);
 
   const activeTemplateRef = useMemo(() => {
     const templateId = programTemplate?.id ?? programSnapshot?.templateId;
@@ -124,17 +126,38 @@ export function OutputRoute() {
       initializeBindings(payload.template.id, schema);
     }
 
-    if (embed) {
-      const engine = useDataEngineStore.getState();
-      if (payload.sport && engine.activeSport !== payload.sport) engine.setSport(payload.sport);
-      engine.reset();
-      engine.start();
-      return;
-    }
-
     const { running, start } = useDataEngineStore.getState();
-    if (!running) start();
+    if (!embed && !running) start();
   }, [tpl, embed, activateProgramTemplate, templateStore, initializeBindings]);
+
+  useEffect(() => {
+    if (!embed) return;
+
+    const engine = useDataEngineStore.getState();
+    let receivedState = false;
+    setWaitingForLiveFeed(true);
+    engine.setExternalMode(true);
+    engine.clearExternalGame();
+
+    const unsubscribe = createLiveFeedSubscriber(({ activeSport, game }) => {
+      receivedState = true;
+      setWaitingForLiveFeed(false);
+      engine.setExternalGame(game, activeSport as SportKey);
+    });
+
+    const fallbackTimer = window.setTimeout(() => {
+      if (receivedState) return;
+      setWaitingForLiveFeed(true);
+    }, 2000);
+
+    return () => {
+      window.clearTimeout(fallbackTimer);
+      unsubscribe();
+      const nextEngine = useDataEngineStore.getState();
+      nextEngine.setExternalMode(false);
+      nextEngine.clearExternalGame();
+    };
+  }, [embed]);
 
   useEffect(() => {
     if (!vortexRenderState || !('template' in vortexRenderState) || !vortexRenderState.template || !vortexRenderState.schema) return;
@@ -225,6 +248,8 @@ export function OutputRoute() {
 
         {vortexRenderState?.error ? (
           <div className="grid h-full place-items-center text-sm text-rose-300">{vortexRenderState.error}</div>
+        ) : waitingForLiveFeed && embed ? (
+          <div className="grid h-full place-items-center text-sm text-slate-400">Waiting for live feed...</div>
         ) : !activeTemplate ? (
           <div className="grid h-full place-items-center text-sm text-slate-500">No template on air.</div>
         ) : (

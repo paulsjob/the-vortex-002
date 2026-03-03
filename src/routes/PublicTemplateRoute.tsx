@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useTemplateStore } from '../store/useTemplateStore';
-import { useDataEngineStore } from '../store/useDataEngineStore';
+import { useDataEngineStore, type SportKey } from '../store/useDataEngineStore';
 import { decodeTemplateFeedPayload } from '../features/playout/publicUrl';
 import { TemplateSceneSvg } from '../features/playout/TemplateSceneSvg';
 import { sceneFromVortexPackage } from '../features/packages/vortexSceneAdapter';
@@ -13,6 +13,7 @@ import { FontGateOverlay } from '../features/playout/FontGateOverlay';
 import { usePlayoutStore } from '../store/usePlayoutStore';
 import { applyBindingsToScene, normalizeBindingSchema } from '../features/playout/vortexBindings';
 import { runVortexRenderValidation, type VortexRenderValidationReport } from '../features/playout/vortexRenderValidation';
+import { createLiveFeedSubscriber } from '../features/liveFeed/liveFeedBus';
 
 const meta = import.meta as ImportMeta & { env?: Record<string, unknown> };
 const env = meta.env ?? {};
@@ -28,26 +29,38 @@ export function PublicTemplateRoute() {
   const [validationReport, setValidationReport] = useState<VortexRenderValidationReport | null>(null);
   const [validationStatus, setValidationStatus] = useState<'idle' | 'running' | 'failed'>('idle');
   const [sourceSvgMarkup, setSourceSvgMarkup] = useState<string | null>(null);
+  const [waitingForLiveFeed, setWaitingForLiveFeed] = useState(false);
   const initializeBindings = usePlayoutStore((s) => s.initializeBindings);
   const getBindingState = usePlayoutStore((s) => s.getBindingState);
   const setBindingFontGateSatisfied = usePlayoutStore((s) => s.setBindingFontGateSatisfied);
 
   useEffect(() => {
-    const encoded = searchParams.get('tpl');
-    if (encoded) {
-      const payload = decodeTemplateFeedPayload(encoded);
-      if (!payload) return;
-      const engine = useDataEngineStore.getState();
-      if (payload.sport && engine.activeSport !== payload.sport) engine.setSport(payload.sport);
-      engine.reset();
-      engine.start();
-      return;
-    }
+    const engine = useDataEngineStore.getState();
+    let receivedState = false;
 
-    if (!templateId) return;
-    const { running, start } = useDataEngineStore.getState();
-    if (!running) start();
-  }, [searchParams, templateId]);
+    engine.setExternalMode(true);
+    engine.clearExternalGame();
+    setWaitingForLiveFeed(true);
+
+    const unsubscribe = createLiveFeedSubscriber(({ activeSport, game }) => {
+      receivedState = true;
+      setWaitingForLiveFeed(false);
+      engine.setExternalGame(game, activeSport as SportKey);
+    });
+
+    const fallbackTimer = window.setTimeout(() => {
+      if (receivedState) return;
+      setWaitingForLiveFeed(true);
+    }, 2000);
+
+    return () => {
+      window.clearTimeout(fallbackTimer);
+      unsubscribe();
+      const nextEngine = useDataEngineStore.getState();
+      nextEngine.setExternalMode(false);
+      nextEngine.clearExternalGame();
+    };
+  }, []);
 
   const renderState = useMemo(() => {
     const encoded = searchParams.get('tpl');
@@ -234,6 +247,14 @@ export function PublicTemplateRoute() {
 
     run();
   }, [renderState, sourceSvgMarkup, template, transformedTemplate, override]);
+
+  if (waitingForLiveFeed) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-black text-slate-300">
+        <p className="text-sm">Waiting for live feed...</p>
+      </main>
+    );
+  }
 
   if (renderState.error) {
     return (
