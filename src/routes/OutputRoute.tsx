@@ -30,11 +30,20 @@ const mapDemoBindingDefaults = (
   return next;
 };
 
+const shouldShowDebugOverlay = (): boolean => {
+  if (!import.meta.env.DEV || typeof window === 'undefined') return false;
+  // Toggle in dev by setting localStorage.setItem('debug_output_overlay', '1').
+  return window.localStorage.getItem('debug_output_overlay') === '1';
+};
+
 export function OutputRoute() {
   const navigate = useNavigate();
   const templateStore = useTemplateStore();
-  const programTemplate = usePlayoutStore((s) => s.programTemplate);
+  const previewSnapshot = usePlayoutStore((s) => s.previewSnapshot);
   const programSnapshot = usePlayoutStore((s) => s.programSnapshot);
+  const previewRevision = usePlayoutStore((s) => s.previewRevision);
+  const programRevision = usePlayoutStore((s) => s.programRevision);
+  const outputRevision = usePlayoutStore((s) => s.outputRevision);
   const fontOverrides = usePlayoutStore((s) => s.fontOverrides);
   const initializeBindings = usePlayoutStore((s) => s.initializeBindings);
   const getBindingState = usePlayoutStore((s) => s.getBindingState);
@@ -51,7 +60,7 @@ export function OutputRoute() {
 
   const activeTemplateRef = useMemo(() => {
     if (!programSnapshot?.template) return null;
-    return { source: 'native' as const, id: programSnapshot.template.id };
+    return { source: programSnapshot.template.source, id: programSnapshot.template.id };
   }, [programSnapshot]);
 
   const vortexRenderState = useMemo(() => {
@@ -135,12 +144,13 @@ export function OutputRoute() {
   const vortexSchema = vortexRenderState && 'template' in vortexRenderState ? vortexRenderState.schema : undefined;
   const bindingState = vortexTemplate ? getBindingState(vortexTemplate.id) : undefined;
   const transformedVortexTemplate = vortexTemplate && vortexSchema ? applyBindingsToScene(vortexTemplate, vortexSchema, bindingState) : undefined;
-  const activeTemplate = transformedVortexTemplate || programSnapshot?.template || programTemplate;
+  const activeTemplate = transformedVortexTemplate || programSnapshot?.template || null;
   const override = vortexTemplate ? fontOverrides[vortexTemplate.id] : undefined;
 
   const shouldBlockForFonts = Boolean(vortexRenderState?.template && fontGateResult && !fontGateResult.ok && !override?.enabled);
   const shouldBlockForBindings = Boolean(vortexRenderState?.template && bindingState && !bindingState.readyToAir);
-  const missing = bindingState?.validation.missingRequired ?? [];
+
+  const showDebugOverlay = shouldShowDebugOverlay();
 
   return (
     <section className="relative h-screen overflow-hidden bg-slate-950 text-slate-100">
@@ -150,6 +160,15 @@ export function OutputRoute() {
           {activeTemplate ? <StatusBadge tone="on-air">ON AIR</StatusBadge> : <StatusBadge tone="not-ready">NOT READY</StatusBadge>}
           {vortexTemplate && bindingState?.readyToAir ? <StatusBadge tone="ready">READY</StatusBadge> : null}
         </div>
+
+        {showDebugOverlay ? (
+          <div className="pointer-events-none absolute bottom-3 right-3 z-30 rounded border border-slate-600/80 bg-black/70 px-2 py-1 text-[10px] leading-tight text-slate-200">
+            <p>preview: {previewSnapshot?.templateId ?? 'none'}</p>
+            <p>program: {programSnapshot?.templateId ?? 'none'}</p>
+            <p>output: {programSnapshot?.templateId ?? 'none'}</p>
+            <p>rev pvw:{previewRevision} pgm:{programRevision} out:{outputRevision}</p>
+          </div>
+        ) : null}
 
         {vortexRenderState?.error ? (
           <div className="grid h-full place-items-center text-sm text-rose-300">{vortexRenderState.error}</div>
