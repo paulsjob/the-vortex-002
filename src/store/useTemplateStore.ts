@@ -9,6 +9,8 @@ import { usePlayoutStore } from './usePlayoutStore';
 const STORAGE_KEY = 'renderless.savedDesignTemplates.v1';
 const FAVORITES_STORAGE_KEY = 'renderless.templates.favorites.v1';
 const QUICK_LAUNCH_STORAGE_KEY = 'renderless.templates.quickLaunch.v1';
+const MAX_PERSISTED_TEMPLATES = 25;
+const QUOTA_PERSIST_MESSAGE = 'Local storage is full. Could not save template. Clear browser storage or reduce template size.';
 
 type TemplateFolder = {
   id: string;
@@ -54,6 +56,12 @@ type PersistedTemplateState = {
   rootId: string;
   folders: TemplateFolder[];
   templates: SavedTemplate[];
+};
+
+type PersistResult = {
+  ok: boolean;
+  error: 'quota' | null;
+  message: string | null;
 };
 
 const defaultState = (): PersistedTemplateState => ({
@@ -145,13 +153,53 @@ const load = (): PersistedTemplateState => {
   }
 };
 
-const persist = (state: PersistedTemplateState) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+const isQuotaExceededError = (error: unknown) => (
+  error instanceof DOMException
+  && (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED')
+);
+
+const buildPersistableState = (state: PersistedTemplateState, templateLimit = MAX_PERSISTED_TEMPLATES): PersistedTemplateState => {
+  const templates = [...state.templates]
+    .sort((left, right) => Date.parse(right.updatedAt ?? right.createdAt) - Date.parse(left.updatedAt ?? left.createdAt))
+    .slice(0, templateLimit);
+  const persistedTemplateIds = new Set(templates.map((template) => template.id));
+  const folders = state.folders.map((folder) => ({
+    ...folder,
+    childrenTemplateIds: folder.childrenTemplateIds.filter((templateId) => persistedTemplateIds.has(templateId)),
+  }));
+  return { ...state, folders, templates };
+};
+
+const persist = (state: PersistedTemplateState): PersistResult => {
+  const primaryState = buildPersistableState(state);
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(primaryState));
+    return { ok: true, error: null, message: null };
+  } catch (error) {
+    if (!isQuotaExceededError(error)) {
+      console.error('Failed to persist templates.', error);
+      return { ok: false, error: null, message: null };
+    }
+  }
+
+  const fallbackState = buildPersistableState(state, Math.max(5, Math.floor(MAX_PERSISTED_TEMPLATES / 2)));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(fallbackState));
+    return { ok: true, error: null, message: null };
+  } catch (error) {
+    if (!isQuotaExceededError(error)) {
+      console.error('Failed to persist templates after fallback pruning.', error);
+      return { ok: false, error: null, message: null };
+    }
+    return { ok: false, error: 'quota', message: QUOTA_PERSIST_MESSAGE };
+  }
 };
 
 const uniqueIds = (ids: string[]) => [...new Set(ids)];
 
 interface TemplateStore extends PersistedTemplateState {
+  lastPersistError: 'quota' | null;
+  lastPersistMessage: string | null;
   favoriteTemplateIds: string[];
   quickLaunchTemplateIds: string[];
   expanded: Record<string, boolean>;
@@ -211,7 +259,13 @@ const loadIdList = (key: string): string[] => {
 };
 
 const persistIdList = (key: string, ids: string[]) => {
-  localStorage.setItem(key, JSON.stringify(uniqueIds(ids)));
+  try {
+    localStorage.setItem(key, JSON.stringify(uniqueIds(ids)));
+  } catch (error) {
+    if (!isQuotaExceededError(error)) {
+      console.error('Failed to persist template id list.', error);
+    }
+  }
 };
 
 const removeUnknownTemplateIds = (ids: string[], templates: SavedTemplate[]) => {
@@ -229,8 +283,23 @@ const resolveFolderId = (rootId: string, folderId: string | null) => folderId ??
 
 const syncLegacyChildren = (folders: TemplateFolder[]) => folders.map((folder) => ({ ...folder, children: [...folder.childrenFolderIds] }));
 
-export const useTemplateStore = create<TemplateStore>((set, get) => ({
+export const useTemplateStore = create<TemplateStore>((set, get) => {
+  const persistState = (state: PersistedTemplateState) => {
+    const result = persist(state);
+    if (result.ok) {
+      set({ lastPersistError: null, lastPersistMessage: null });
+      return true;
+    }
+    if (result.error === 'quota') {
+      set({ lastPersistError: 'quota', lastPersistMessage: result.message });
+    }
+    return false;
+  };
+
+  return {
   ...initial,
+  lastPersistError: null,
+  lastPersistMessage: null,
   favoriteTemplateIds: initialFavoriteTemplateIds,
   quickLaunchTemplateIds: initialQuickLaunchTemplateIds,
   expanded: { [initial.rootId]: true },
@@ -250,7 +319,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     parent.children = [...parent.childrenFolderIds];
     folders.push({ id, name: trimmed, parentId, children: [], childrenFolderIds: [], childrenTemplateIds: [], createdAt: new Date().toISOString() });
     const next = { rootId: get().rootId, folders: syncLegacyChildren(folders), templates: get().templates };
-    persist(next);
+    persistState(next);
     set({ folders: syncLegacyChildren(folders) });
   },
   renameFolder: (folderId, name) => {
@@ -261,7 +330,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     if (!folder) return;
     folder.name = trimmed;
     const next = { rootId: get().rootId, folders: syncLegacyChildren(folders), templates: get().templates };
-    persist(next);
+    persistState(next);
     set({ folders: syncLegacyChildren(folders) });
   },
   deleteFolder: (folderId) => {
@@ -287,7 +356,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     const nextFavoriteTemplateIds = removeUnknownTemplateIds(get().favoriteTemplateIds, nextTemplates);
     const nextQuickLaunchTemplateIds = removeUnknownTemplateIds(get().quickLaunchTemplateIds, nextTemplates);
     const next = { rootId: get().rootId, folders: nextFolders, templates: nextTemplates };
-    persist(next);
+    persistState(next);
     persistIdList(FAVORITES_STORAGE_KEY, nextFavoriteTemplateIds);
     persistIdList(QUICK_LAUNCH_STORAGE_KEY, nextQuickLaunchTemplateIds);
     set({
@@ -320,7 +389,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       folder.childrenTemplateIds.push(id);
     }
     const next = { rootId: get().rootId, folders: syncLegacyChildren(folders), templates };
-    persist(next);
+    persistState(next);
     set({ templates, folders: syncLegacyChildren(folders) });
     useAssetStore.getState().upsertTemplateAsset(templateWithFolder);
     return id;
@@ -347,7 +416,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       nextFolder.childrenTemplateIds.push(templateId);
     }
     const next = { rootId: get().rootId, folders: syncLegacyChildren(folders), templates };
-    persist(next);
+    persistState(next);
     set({ templates, folders: syncLegacyChildren(folders) });
     if (updatedTemplate) useAssetStore.getState().upsertTemplateAsset(updatedTemplate);
   },
@@ -360,7 +429,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     const next = { rootId: get().rootId, folders: syncLegacyChildren(folders), templates };
     const nextFavoriteTemplateIds = get().favoriteTemplateIds.filter((id) => id !== templateId);
     const nextQuickLaunchTemplateIds = get().quickLaunchTemplateIds.filter((id) => id !== templateId);
-    persist(next);
+    persistState(next);
     persistIdList(FAVORITES_STORAGE_KEY, nextFavoriteTemplateIds);
     persistIdList(QUICK_LAUNCH_STORAGE_KEY, nextQuickLaunchTemplateIds);
     set({
@@ -494,7 +563,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     });
     const syncedFolders = syncLegacyChildren(folders);
     const next = { rootId: get().rootId, folders: syncedFolders, templates };
-    persist(next);
+    persistState(next);
     set({ templates, folders: syncedFolders });
     templates.filter((template) => selectedIds.includes(template.id)).forEach((template) => useAssetStore.getState().upsertTemplateAsset(template));
   },
@@ -546,7 +615,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     folder.parentId = resolvedTargetParentId;
     const syncedFolders = syncLegacyChildren(folders);
     const next = { rootId, folders: syncedFolders, templates: get().templates };
-    persist(next);
+    persistState(next);
     set({ folders: syncedFolders });
   },
 
@@ -561,7 +630,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     if (folderIds) folder.childrenFolderIds = uniqueIds(folderIds);
     const syncedFolders = syncLegacyChildren(folders);
     const next = { rootId: get().rootId, folders: syncedFolders, templates: get().templates };
-    persist(next);
+    persistState(next);
     set({ folders: syncedFolders });
   },
   toggleFavoriteTemplate: (templateId) => set((state) => {
@@ -593,4 +662,5 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
   }),
   isTemplateQuickLaunch: (templateId) => get().quickLaunchTemplateIds.includes(templateId),
   selectTemplate: (selection) => set({ selectedTemplate: selection }),
-}));
+  };
+});
