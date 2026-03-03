@@ -1,35 +1,61 @@
 import { buildNormalizedPayload, buildTeamMetrics } from '../../features/simulation/derived';
 import { simulatorRegistry } from '../../features/simulation/registry';
-import type { SportKey } from '../../features/simulation/types';
-
-const PRIMITIVE_TYPES = new Set(['string', 'number', 'boolean']);
+import type { SportBoxScore, SportKey } from '../../features/simulation/types';
 
 export type BindingContext = 'live' | 'derived' | 'scorebug';
 export type FieldLevel = 'game' | 'team' | 'player';
-export type FieldGroup = 'core' | 'pbp' | 'advanced' | 'state';
+export type FieldGroup =
+  | 'Score/Clock'
+  | 'Possession/State'
+  | 'Team Totals'
+  | 'Leaders'
+  | 'Advanced Metrics'
+  | 'Player Boxscore';
+export type FieldSide = 'home' | 'away';
 
-export type DataBindingFieldMetadata = {
+export type FieldDescriptor = {
+  id: string;
+  label: string;
+  pathTemplate: string;
+  level: FieldLevel;
+  group: FieldGroup;
+  sport: SportKey;
+  context: BindingContext;
+  requires: { side?: boolean; team?: boolean; player?: boolean };
+};
+
+export type FieldCatalogSelection = {
+  sport: SportKey;
+  context: BindingContext;
+};
+
+export type PathSelections = {
+  side?: FieldSide;
+  playerId?: string;
+};
+
+export type MaterializedMetricOption = {
+  descriptor: FieldDescriptor;
   path: string;
   label: string;
-  level: FieldLevel;
   group: FieldGroup;
-  sports: SportKey[];
-  contexts: BindingContext[];
 };
 
-export type GroupedFieldOptions = {
-  level: FieldLevel;
-  group: FieldGroup;
+export type PlayerOption = {
+  id: string;
   label: string;
-  fields: DataBindingFieldMetadata[];
 };
 
-const LEVEL_ORDER: FieldLevel[] = ['game', 'team', 'player'];
-const GROUP_ORDER: FieldGroup[] = ['core', 'pbp', 'advanced', 'state'];
+const GROUP_ORDER: FieldGroup[] = [
+  'Score/Clock',
+  'Possession/State',
+  'Team Totals',
+  'Leaders',
+  'Advanced Metrics',
+  'Player Boxscore',
+];
 
-const LEVEL_LABEL: Record<FieldLevel, string> = { game: 'Game', team: 'Team', player: 'Player' };
-const GROUP_LABEL: Record<FieldGroup, string> = { core: 'Core', pbp: 'Play-by-play', advanced: 'Advanced', state: 'Situation/State' };
-
+const hasPrimitive = (value: unknown) => value === null || value === undefined || ['string', 'number', 'boolean'].includes(typeof value);
 const isIdentifier = (segment: string) => /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(segment);
 
 const appendPath = (base: string, segment: string) => {
@@ -37,184 +63,238 @@ const appendPath = (base: string, segment: string) => {
   return isIdentifier(segment) ? `${base}.${segment}` : `${base}[${JSON.stringify(segment)}]`;
 };
 
-const shouldTreatAsLeaf = (value: unknown) => (
-  value === null || value === undefined || PRIMITIVE_TYPES.has(typeof value)
-);
-
-const toLabel = (path: string) => {
-  const tail = path.split('.').pop() ?? path;
-  const normalized = tail.replace(/\[\d+\]/g, '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]/g, ' ').trim();
-  if (!normalized) return path;
-  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
-};
-
-const classifyLevel = (path: string): FieldLevel => {
-  if (/(player|batter|pitcher|shooter|passer|rusher|receiver|goalie|assister|target|leader|homePlayers|awayPlayers)/i.test(path)) return 'player';
-  if (/(homeTeam|awayTeam|team|scoreHome|scoreAway|teamMetrics|teamLeaders|teamFouls|timeouts|home|away)/i.test(path)) return 'team';
-  return 'game';
-};
-
-const classifyGroup = (path: string): FieldGroup => {
-  if (/(lastPlay|lastPitch|lastEvent|playType|shotResult|shotType)/i.test(path)) return 'pbp';
-  if (/(advancedMetrics|winProbability|pace|rating|xg|xwoba|epa|corsi|fenwick|ppda|barrel|usage|trueShooting|astToRatio)/i.test(path)) return 'advanced';
-  if (/(clock|period|inning|half|down|distance|yardLine|outs|strikes|balls|possession|powerPlay|strengthState|stoppage|shotClock|redZone|bonus)/i.test(path)) return 'state';
-  return 'core';
-};
-
-const SPORT_CONTEXT_OVERRIDES: Array<Partial<Pick<DataBindingFieldMetadata, 'label' | 'level' | 'group'>> & {
-  path: string;
-  sports?: SportKey[];
-  contexts?: BindingContext[];
-}> = [
-  { path: 'homeTeam', label: 'Home Team', level: 'team', group: 'core' },
-  { path: 'awayTeam', label: 'Away Team', level: 'team', group: 'core' },
-  { path: 'scoreHome', label: 'Home Score', level: 'team', group: 'core', contexts: ['live'] },
-  { path: 'scoreAway', label: 'Away Score', level: 'team', group: 'core', contexts: ['live'] },
-  { path: 'periodLabel', label: 'Period Label', level: 'game', group: 'state', contexts: ['live'] },
-  { path: 'clockSeconds', label: 'Clock Seconds', level: 'game', group: 'state', contexts: ['live'] },
-  { path: 'lastEvent', label: 'Last Event', level: 'game', group: 'pbp', contexts: ['live', 'scorebug'] },
-  { path: 'advancedMetrics.epa', label: 'EPA', level: 'game', group: 'advanced', sports: ['nfl'] },
-  { path: 'advancedMetrics.netRating', label: 'Net Rating', level: 'game', group: 'advanced', sports: ['nba'] },
-  { path: 'advancedMetrics.xG', label: 'Expected Goals', level: 'game', group: 'advanced', sports: ['nhl', 'mls'] },
-  { path: 'advancedMetrics.exitVelocity', label: 'Exit Velocity', level: 'game', group: 'advanced', sports: ['mlb'] },
-  { path: 'lastPlay.description', label: 'Last Play Description', level: 'game', group: 'pbp', contexts: ['live'] },
-  { path: 'teamMetrics', label: 'Team Metrics', level: 'team', group: 'core', contexts: ['derived', 'scorebug'] },
-  { path: 'teamLeaders.home', label: 'Home Team Leaders', level: 'team', group: 'core', contexts: ['live', 'scorebug'] },
-  { path: 'teamLeaders.away', label: 'Away Team Leaders', level: 'team', group: 'core', contexts: ['live', 'scorebug'] },
-  { path: 'pitcher', label: 'Pitcher', level: 'player', group: 'core', sports: ['mlb'], contexts: ['live'] },
-  { path: 'batter', label: 'Batter', level: 'player', group: 'core', sports: ['mlb'], contexts: ['live'] },
-  { path: 'pointsLeader', label: 'Points Leader', level: 'player', group: 'core', sports: ['nba'], contexts: ['live'] },
-  { path: 'passerName', label: 'Passer', level: 'player', group: 'core', sports: ['nfl'], contexts: ['live'] },
-  { path: 'lastPlay.shooter', label: 'Shooter', level: 'player', group: 'pbp', sports: ['nba', 'nhl'], contexts: ['live'] },
-  { path: 'lastPlay.player', label: 'Player', level: 'player', group: 'pbp', sports: ['mls'], contexts: ['live'] },
-];
-
-const isOverrideMatch = (override: (typeof SPORT_CONTEXT_OVERRIDES)[number], sport: SportKey, context: BindingContext) => {
-  const sportMatch = !override.sports || override.sports.includes(sport);
-  const contextMatch = !override.contexts || override.contexts.includes(context);
-  return sportMatch && contextMatch;
-};
-
-export const extractBindingPaths = (value: unknown, path = ''): string[] => {
-  if (Array.isArray(value)) {
-    if (!value.length) return path ? [path] : [];
-    return path ? [path] : [];
-  }
-
-  if (shouldTreatAsLeaf(value)) {
-    return path ? [path] : [];
-  }
-
-  if (!value || typeof value !== 'object') {
-    return path ? [path] : [];
-  }
+const extractBindingPaths = (value: unknown, path = ''): string[] => {
+  if (Array.isArray(value)) return path ? [path] : [];
+  if (hasPrimitive(value)) return path ? [path] : [];
+  if (!value || typeof value !== 'object') return path ? [path] : [];
 
   const entries = Object.entries(value as Record<string, unknown>);
-  if (!entries.length) {
-    return path ? [path] : [];
-  }
+  if (!entries.length) return path ? [path] : [];
 
   const paths = path ? [path] : [];
-  entries.forEach(([key, nextValue]) => {
-    paths.push(...extractBindingPaths(nextValue, appendPath(path, key)));
+  entries.forEach(([key, next]) => {
+    paths.push(...extractBindingPaths(next, appendPath(path, key)));
   });
-
   return paths;
 };
 
-export const buildFieldOptions = (value: unknown): string[] => {
-  const deduped = new Set(extractBindingPaths(value));
-  return [...deduped].sort((a, b) => a.localeCompare(b));
+const titleCase = (value: string) => value.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]/g, ' ').replace(/\s+/g, ' ').trim().replace(/^./, (c) => c.toUpperCase());
+
+const toLabelFromPath = (path: string) => {
+  const tail = path.split('.').pop() ?? path;
+  return titleCase(tail.replace(/\{side\}/g, '').replace(/\{playerId\}/g, '').replace(/[\[\]"]+/g, ''));
 };
 
-const buildRegistry = (): DataBindingFieldMetadata[] => {
-  const byPath = new Map<string, { label: string; level: FieldLevel; group: FieldGroup; sports: Set<SportKey>; contexts: Set<BindingContext> }>();
+const groupFromPath = (path: string): FieldGroup => {
+  if (/(score|clock|period|inning|matchClock)/i.test(path)) return 'Score/Clock';
+  if (/(possession|down|distance|yardLine|outs|strikes|balls|shotClock|strengthState|stoppage|half|playClock|bonus|redZone)/i.test(path)) return 'Possession/State';
+  if (/teamTotals|teamMetrics|fouls|turnovers|shotsHome|shotsAway|corners|cards|saves|hits|timeouts/i.test(path)) return 'Team Totals';
+  if (/leaders|Leader|gameLeaders|teamLeaders/i.test(path)) return 'Leaders';
+  if (/advancedMetrics|xg|xwoba|epa|netRating|corsi|fenwick|ppda|usage|trueShooting|astToRatio|pace|rating/i.test(path)) return 'Advanced Metrics';
+  if (/boxScore\.(homePlayers|awayPlayers)/.test(path)) return 'Player Boxscore';
+  return 'Score/Clock';
+};
+
+const levelFromPath = (path: string): FieldLevel => {
+  if (/boxScore\.(homePlayers|awayPlayers)|\{playerId\}|pitcher|batter|passerName|pointsLeader|assistsLeader|reboundsLeader|lastPlay\.(shooter|player|passer|rusher|target)/i.test(path)) return 'player';
+  if (/home|away|team|teamTotals|teamMetrics|teamLeaders/i.test(path)) return 'team';
+  return 'game';
+};
+
+const buildDescriptorsForPath = (sport: SportKey, context: BindingContext, path: string): FieldDescriptor[] => {
+  if (/^boxScore\.homePlayers\./.test(path)) {
+    const statKey = path.slice('boxScore.homePlayers.'.length);
+    return [{
+      id: `${sport}:${context}:player:${statKey}`,
+      label: titleCase(statKey),
+      pathTemplate: `boxScore.{side}Players.{playerId}.${statKey}`,
+      level: 'player',
+      group: 'Player Boxscore',
+      sport,
+      context,
+      requires: { side: true, player: true },
+    }];
+  }
+
+  if (/^boxScore\.awayPlayers\./.test(path)) return [];
+
+  if (/^boxScore\.teamTotals\.home\./.test(path)) {
+    const statKey = path.slice('boxScore.teamTotals.home.'.length);
+    return [{
+      id: `${sport}:${context}:teamtotals:${statKey}`,
+      label: titleCase(statKey),
+      pathTemplate: `boxScore.teamTotals.{side}.${statKey}`,
+      level: 'team',
+      group: 'Team Totals',
+      sport,
+      context,
+      requires: { side: true },
+    }];
+  }
+
+  if (/^boxScore\.teamTotals\.away\./.test(path)) return [];
+
+  if (/^teamLeaders\.home\./.test(path)) {
+    const tail = path.slice('teamLeaders.home.'.length);
+    return [{
+      id: `${sport}:${context}:leaders:${tail}`,
+      label: `${titleCase(tail.split('.')[0] ?? tail)} ${titleCase(tail.split('.')[1] ?? '')}`.trim(),
+      pathTemplate: `teamLeaders.{side}.${tail}`,
+      level: 'team',
+      group: 'Leaders',
+      sport,
+      context,
+      requires: { side: true },
+    }];
+  }
+
+  if (/^teamLeaders\.away\./.test(path)) return [];
+
+  return [{
+    id: `${sport}:${context}:${path}`,
+    label: toLabelFromPath(path),
+    pathTemplate: path,
+    level: levelFromPath(path),
+    group: groupFromPath(path),
+    sport,
+    context,
+    requires: {},
+  }];
+};
+
+const buildCatalogRegistry = () => {
+  const byId = new Map<string, FieldDescriptor>();
   const contexts: BindingContext[] = ['live', 'derived', 'scorebug'];
 
   (Object.keys(simulatorRegistry) as SportKey[]).forEach((sport) => {
     const live = simulatorRegistry[sport].createInitialGame();
     const payloadByContext: Record<BindingContext, unknown> = {
       live,
-      derived: {
-        teamMetrics: buildTeamMetrics(live),
-        advancedMetrics: live.advancedMetrics,
-        consistencyIssues: live.consistencyIssues ?? [],
-        sport: live.sport,
-      },
+      derived: { teamMetrics: buildTeamMetrics(live), advancedMetrics: live.advancedMetrics, consistencyIssues: live.consistencyIssues ?? [], sport: live.sport },
       scorebug: buildNormalizedPayload(live, 'live-scorebug'),
     };
 
     contexts.forEach((context) => {
-      const paths = extractBindingPaths(payloadByContext[context]);
-      paths.forEach((path) => {
-        const override = SPORT_CONTEXT_OVERRIDES.find((candidate) => candidate.path === path && isOverrideMatch(candidate, sport, context));
-        const existing = byPath.get(path);
-        if (!existing) {
-          byPath.set(path, {
-            label: override?.label ?? toLabel(path),
-            level: override?.level ?? classifyLevel(path),
-            group: override?.group ?? classifyGroup(path),
-            sports: new Set([sport]),
-            contexts: new Set([context]),
-          });
-          return;
-        }
-
-        existing.sports.add(sport);
-        existing.contexts.add(context);
+      extractBindingPaths(payloadByContext[context]).forEach((path) => {
+        buildDescriptorsForPath(sport, context, path).forEach((descriptor) => {
+          if (!byId.has(descriptor.id)) byId.set(descriptor.id, descriptor);
+        });
       });
     });
   });
 
-  return [...byPath.entries()]
-    .map(([path, value]) => ({
-      path,
-      label: value.label,
-      level: value.level,
-      group: value.group,
-      sports: [...value.sports].sort(),
-      contexts: [...value.contexts].sort(),
-    }))
-    .sort((a, b) => a.path.localeCompare(b.path));
+  return [...byId.values()].sort((a, b) => a.label.localeCompare(b.label));
 };
 
-const registry = buildRegistry();
+const catalogRegistry = buildCatalogRegistry();
 
-export const getDataBindingFieldRegistry = () => registry;
+export const getFieldCatalog = ({ sport, context }: FieldCatalogSelection): FieldDescriptor[] => (
+  catalogRegistry.filter((entry) => entry.sport === sport && entry.context === context)
+);
 
-export const getFieldsForSportContext = (sport: SportKey, context: BindingContext, query = '') => {
+const PATH_TOKEN_REGEX = /\{([^}]+)\}/g;
+
+const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+export const materializeFieldPath = (descriptor: FieldDescriptor, selections: PathSelections): string | null => {
+  if (descriptor.requires.side && !selections.side) return null;
+  if (descriptor.requires.player && !selections.playerId) return null;
+  return descriptor.pathTemplate
+    .replace(/\{side\}/g, selections.side ?? '')
+    .replace(/\{team\}/g, selections.side ?? '')
+    .replace(/\{playerId\}/g, selections.playerId ?? '');
+};
+
+export const parseBindingPathToSelection = (catalog: FieldDescriptor[], path: string): { descriptor: FieldDescriptor; selections: PathSelections } | null => {
+  for (const descriptor of catalog) {
+    const tokenNames: string[] = [];
+    const pattern = `^${escapeRegex(descriptor.pathTemplate).replace(PATH_TOKEN_REGEX, (_, token: string) => {
+      tokenNames.push(token);
+      return '([^\\.]+)';
+    })}$`;
+    const match = path.match(new RegExp(pattern));
+    if (!match) continue;
+
+    const selections: PathSelections = {};
+    tokenNames.forEach((token, index) => {
+      const value = match[index + 1];
+      if (token === 'side' || token === 'team') {
+        if (value === 'home' || value === 'away') selections.side = value;
+      }
+      if (token === 'playerId') selections.playerId = value;
+    });
+    return { descriptor, selections };
+  }
+  return null;
+};
+
+const getBoxScorePlayers = (boxScore: SportBoxScore | undefined, side: FieldSide): PlayerOption[] => {
+  const map = side === 'home' ? boxScore?.homePlayers : boxScore?.awayPlayers;
+  if (!map) return [];
+  return Object.keys(map).map((name) => ({ id: name, label: name })).sort((a, b) => a.label.localeCompare(b.label));
+};
+
+export const getPlayersForSide = (payload: unknown, side: FieldSide): PlayerOption[] => {
+  if (!payload || typeof payload !== 'object') return [];
+  const boxScore = (payload as { boxScore?: SportBoxScore }).boxScore;
+  return getBoxScorePlayers(boxScore, side);
+};
+
+export const getMetricOptions = (catalog: FieldDescriptor[], level: FieldLevel, query: string, selections: PathSelections): MaterializedMetricOption[] => {
   const normalized = query.trim().toLowerCase();
-  return registry.filter((field) => {
-    if (!field.sports.includes(sport) || !field.contexts.includes(context)) return false;
-    if (!normalized) return true;
-    return `${field.path} ${field.label}`.toLowerCase().includes(normalized);
+  return catalog
+    .filter((descriptor) => descriptor.level === level)
+    .map((descriptor) => {
+      const path = materializeFieldPath(descriptor, selections);
+      if (!path) return null;
+      const sidePrefix = descriptor.requires.side && selections.side ? `${selections.side === 'home' ? 'Home' : 'Away'} · ` : '';
+      return {
+        descriptor,
+        path,
+        label: `${sidePrefix}${descriptor.label}`,
+        group: descriptor.group,
+      };
+    })
+    .filter((entry): entry is MaterializedMetricOption => Boolean(entry))
+    .filter((entry) => !normalized || `${entry.label} ${entry.path}`.toLowerCase().includes(normalized))
+    .sort((a, b) => a.label.localeCompare(b.label));
+};
+
+export const groupMetricOptions = (options: MaterializedMetricOption[]) => (
+  GROUP_ORDER
+    .map((group) => ({ group, fields: options.filter((option) => option.group === group) }))
+    .filter((entry) => entry.fields.length > 0)
+);
+
+const tokenizePath = (path: string): string[] => {
+  const tokens: string[] = [];
+  const regex = /([^.[\]]+)|\[(\d+|"[^"]+")\]/g;
+  path.match(regex)?.forEach((part) => {
+    if (part.startsWith('[')) {
+      const inner = part.slice(1, -1);
+      tokens.push(inner.startsWith('"') ? inner.slice(1, -1) : inner);
+      return;
+    }
+    tokens.push(part);
   });
+  return tokens;
 };
 
-export const getGroupedFieldsForSportContext = (sport: SportKey, context: BindingContext, query = ''): GroupedFieldOptions[] => {
-  const fields = getFieldsForSportContext(sport, context, query);
-  return LEVEL_ORDER.flatMap((level) => GROUP_ORDER.map((group) => {
-    const matches = fields
-      .filter((field) => field.level === level && field.group === group)
-      .sort((a, b) => a.label.localeCompare(b.label));
-    if (!matches.length) return null;
-    return {
-      level,
-      group,
-      label: `${LEVEL_LABEL[level]} · ${GROUP_LABEL[group]}`,
-      fields: matches,
-    };
-  }).filter(Boolean) as GroupedFieldOptions[]);
+export const resolvePathValue = (source: unknown, path: string): unknown => {
+  if (!path) return source;
+  return tokenizePath(path).reduce<unknown>((acc, token) => {
+    if (acc == null) return undefined;
+    if (Array.isArray(acc)) {
+      const index = Number(token);
+      return Number.isNaN(index) ? undefined : acc[index];
+    }
+    if (typeof acc !== 'object') return undefined;
+    return (acc as Record<string, unknown>)[token];
+  }, source);
 };
 
-export const isFieldAvailableForSportContext = (path: string, sport: SportKey, context: BindingContext) => {
-  const field = registry.find((entry) => entry.path === path);
-  if (!field) return false;
-  return field.sports.includes(sport) && field.contexts.includes(context);
-};
-
-export const getFieldBreadcrumb = (path: string, sport: SportKey, context: BindingContext) => {
-  const field = registry.find((entry) => entry.path === path && entry.sports.includes(sport) && entry.contexts.includes(context));
-  if (!field) return null;
-  return `${LEVEL_LABEL[field.level]} › ${GROUP_LABEL[field.group]} › ${field.label}`;
+export const formatPreviewValue = (value: unknown): string => {
+  if (value === null || value === undefined) return 'N/A';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
 };
