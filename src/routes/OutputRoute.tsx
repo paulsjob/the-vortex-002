@@ -11,6 +11,7 @@ import { FontGateOverlay } from '../features/playout/FontGateOverlay';
 import { applyBindingsToScene, normalizeBindingSchema } from '../features/playout/vortexBindings';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { useDemoSessionStore } from '../store/useDemoSessionStore';
+import { getCatalogRegistry, getCatalogRegistryHealth } from '../components/design/dataBindingPaths';
 
 const mapDemoBindingDefaults = (
   keys: string[],
@@ -36,12 +37,16 @@ const shouldShowDebugOverlay = (): boolean => {
   return window.localStorage.getItem('debug_output_overlay') === '1';
 };
 
+const shouldShowCatalogOverlay = (): boolean => {
+  if (!import.meta.env.DEV || typeof window === 'undefined') return false;
+  // Toggle in dev by setting localStorage.setItem('debug_catalog', '1').
+  return window.localStorage.getItem('debug_catalog') === '1';
+};
+
 export function OutputRoute() {
   const navigate = useNavigate();
   const templateStore = useTemplateStore();
-  const previewSnapshot = usePlayoutStore((s) => s.previewSnapshot);
   const programSnapshot = usePlayoutStore((s) => s.programSnapshot);
-  const previewRevision = usePlayoutStore((s) => s.previewRevision);
   const programRevision = usePlayoutStore((s) => s.programRevision);
   const outputRevision = usePlayoutStore((s) => s.outputRevision);
   const fontOverrides = usePlayoutStore((s) => s.fontOverrides);
@@ -151,6 +156,12 @@ export function OutputRoute() {
   const shouldBlockForBindings = Boolean(vortexRenderState?.template && bindingState && !bindingState.readyToAir);
 
   const showDebugOverlay = shouldShowDebugOverlay();
+  const showCatalogOverlay = shouldShowCatalogOverlay();
+  const catalogHealth = useMemo(() => {
+    if (!showCatalogOverlay) return null;
+    getCatalogRegistry();
+    return getCatalogRegistryHealth();
+  }, [showCatalogOverlay]);
 
   return (
     <section className="relative h-screen overflow-hidden bg-slate-950 text-slate-100">
@@ -163,10 +174,16 @@ export function OutputRoute() {
 
         {showDebugOverlay ? (
           <div className="pointer-events-none absolute bottom-3 right-3 z-30 rounded border border-slate-600/80 bg-black/70 px-2 py-1 text-[10px] leading-tight text-slate-200">
-            <p>preview: {previewSnapshot?.templateId ?? 'none'}</p>
             <p>program: {programSnapshot?.templateId ?? 'none'}</p>
             <p>output: {programSnapshot?.templateId ?? 'none'}</p>
-            <p>rev pvw:{previewRevision} pgm:{programRevision} out:{outputRevision}</p>
+            <p>rev pgm:{programRevision} out:{outputRevision}</p>
+          </div>
+        ) : null}
+
+        {showCatalogOverlay && catalogHealth ? (
+          <div className="pointer-events-none absolute bottom-3 left-3 z-30 rounded border border-emerald-500/80 bg-black/70 px-2 py-1 text-[10px] leading-tight text-emerald-200">
+            <p>catalog built: {String(catalogHealth.built)}</p>
+            <p>catalog entries: {catalogHealth.entryCount}</p>
           </div>
         ) : null}
 

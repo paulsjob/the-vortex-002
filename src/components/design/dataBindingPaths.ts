@@ -223,48 +223,73 @@ const markDisplayableDescriptors = (descriptors: FieldDescriptor[], samplePayloa
   })
 );
 
-const buildCatalogRegistry = () => {
-  try {
-    const byId = new Map<string, FieldDescriptor>();
-    const contexts: BindingContext[] = ['live', 'derived', 'scorebug'];
+let catalogRegistryCache: FieldDescriptor[] | null = null;
+let catalogRegistryStatus = {
+  built: false,
+  entryCount: 0,
+};
+let hasLoggedCatalogRegistryFailure = false;
 
-    (Object.keys(simulatorRegistry) as SportKey[]).forEach((sport) => {
-      const live = simulatorRegistry[sport].createInitialGame();
-      const payloadByContext: Record<BindingContext, unknown> = {
-        live,
-        derived: { teamMetrics: buildTeamMetrics(live), advancedMetrics: live.advancedMetrics, consistencyIssues: live.consistencyIssues ?? [], sport: live.sport },
-        scorebug: buildNormalizedPayload(live, 'live-scorebug'),
-      };
+const buildCatalogRegistry = (): FieldDescriptor[] => {
+  const byId = new Map<string, FieldDescriptor>();
+  const contexts: BindingContext[] = ['live', 'derived', 'scorebug'];
 
-      contexts.forEach((context) => {
-        CORE_SCORE_METRICS(sport, context).forEach((descriptor) => {
-          if (!byId.has(descriptor.id)) byId.set(descriptor.id, descriptor);
-        });
+  (Object.keys(simulatorRegistry) as SportKey[]).forEach((sport) => {
+    const live = simulatorRegistry[sport].createInitialGame();
+    const payloadByContext: Record<BindingContext, unknown> = {
+      live,
+      derived: { teamMetrics: buildTeamMetrics(live), advancedMetrics: live.advancedMetrics, consistencyIssues: live.consistencyIssues ?? [], sport: live.sport },
+      scorebug: buildNormalizedPayload(live, 'live-scorebug'),
+    };
 
-        const descriptors: FieldDescriptor[] = [];
-        extractBindingPaths(payloadByContext[context]).forEach((path) => {
-          buildDescriptorsForPath(sport, context, path).forEach((descriptor) => {
-            descriptors.push(descriptor);
-          });
-        });
+    contexts.forEach((context) => {
+      CORE_SCORE_METRICS(sport, context).forEach((descriptor) => {
+        if (!byId.has(descriptor.id)) byId.set(descriptor.id, descriptor);
+      });
 
-        markDisplayableDescriptors(descriptors, payloadByContext[context]).forEach((descriptor) => {
-          if (!byId.has(descriptor.id)) byId.set(descriptor.id, descriptor);
+      const descriptors: FieldDescriptor[] = [];
+      extractBindingPaths(payloadByContext[context]).forEach((path) => {
+        buildDescriptorsForPath(sport, context, path).forEach((descriptor) => {
+          descriptors.push(descriptor);
         });
       });
-    });
 
-    return [...byId.values()].sort((a, b) => a.label.localeCompare(b.label));
-  } catch (error) {
-    console.warn('Failed to build data binding catalog registry during module initialization.', error);
-    return [];
-  }
+      markDisplayableDescriptors(descriptors, payloadByContext[context]).forEach((descriptor) => {
+        if (!byId.has(descriptor.id)) byId.set(descriptor.id, descriptor);
+      });
+    });
+  });
+
+  return [...byId.values()].sort((a, b) => a.label.localeCompare(b.label));
 };
 
-const catalogRegistry = buildCatalogRegistry();
+export const getCatalogRegistry = (): FieldDescriptor[] => {
+  if (catalogRegistryCache) return catalogRegistryCache;
+  try {
+    const registry = buildCatalogRegistry();
+    catalogRegistryCache = registry;
+    catalogRegistryStatus = {
+      built: true,
+      entryCount: registry.length,
+    };
+  } catch (error) {
+    if (import.meta.env.DEV && !hasLoggedCatalogRegistryFailure) {
+      hasLoggedCatalogRegistryFailure = true;
+      console.error('Failed to build data binding catalog registry.', error);
+    }
+    catalogRegistryCache = [];
+    catalogRegistryStatus = {
+      built: false,
+      entryCount: 0,
+    };
+  }
+  return catalogRegistryCache;
+};
+
+export const getCatalogRegistryHealth = () => ({ ...catalogRegistryStatus });
 
 export const getFieldCatalog = ({ sport, context }: FieldCatalogSelection): FieldDescriptor[] => (
-  catalogRegistry.filter((entry) => entry.sport === sport && entry.context === context)
+  getCatalogRegistry().filter((entry) => entry.sport === sport && entry.context === context)
 );
 
 const escapeRegexLiteral = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -417,7 +442,7 @@ export const groupMetricOptions = (options: MaterializedMetricOption[]) => (
     .filter((entry) => entry.fields.length > 0)
 );
 
-export const resolvePathValue = (source: unknown, path: string): unknown => {
+export function resolvePathValue(source: unknown, path: string): unknown {
   if (!path) return source;
   return tokenizePath(path).reduce<unknown>((acc, token) => {
     if (acc == null) return undefined;
@@ -428,7 +453,7 @@ export const resolvePathValue = (source: unknown, path: string): unknown => {
     if (typeof acc !== 'object') return undefined;
     return (acc as Record<string, unknown>)[token];
   }, source);
-};
+}
 
 export const formatPreviewValue = (value: unknown): string => {
   if (value === null || value === undefined) return 'N/A';
