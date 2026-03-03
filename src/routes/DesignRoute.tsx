@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { useAssetStore } from '../store/useAssetStore';
 import { useDataEngineStore } from '../store/useDataEngineStore';
 import { useLayerStore } from '../store/useLayerStore';
@@ -166,6 +167,8 @@ export function DesignRoute() {
   const [fontStatusByFamily, setFontStatusByFamily] = useState<Record<string, 'loading' | 'ready' | 'error'>>({});
   const [currentFormatId, setCurrentFormatId] = useState<TemplateFormatId>(() => getFormatBySize(1920, 1080)?.id ?? '16:9');
   const [layoutVariants, setLayoutVariants] = useState<Partial<Record<TemplateFormatId, FormatLayoutVariant>>>({});
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [exportMenuRect, setExportMenuRect] = useState<{ top: number; left: number; width: number } | null>(null);
 
   const stageViewportRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -184,6 +187,7 @@ export function DesignRoute() {
   } | null>(null);
   const guideDragRef = useRef<{ id: string; axis: 'x' | 'y' } | null>(null);
   const measureCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const exportButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const assetById = useMemo(() => new Map(assetStore.assets.map((a) => [a.id, a])), [assetStore.assets]);
   const layerById = useMemo(() => new Map(layers.map((l) => [l.id, l])), [layers]);
@@ -1123,6 +1127,46 @@ export function DesignRoute() {
     );
   };
 
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+
+    const updatePosition = () => {
+      const trigger = exportButtonRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      setExportMenuRect({
+        top: rect.bottom + 6,
+        left: Math.max(8, rect.right - Math.max(rect.width, 192)),
+        width: Math.max(rect.width, 192),
+      });
+    };
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (exportButtonRef.current?.contains(target)) return;
+      const menu = document.getElementById('design-export-menu');
+      if (menu?.contains(target)) return;
+      setExportMenuOpen(false);
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setExportMenuOpen(false);
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('keydown', handleEscape);
+
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [exportMenuOpen]);
+
   return (
     <section className="h-full min-h-0">
       <section className="grid h-full min-h-0 grid-cols-1 gap-3 rounded-xl border border-slate-800 bg-slate-900 p-4 xl:grid-cols-[360px_minmax(0,1fr)_320px] 2xl:grid-cols-[400px_minmax(0,1fr)_360px] overflow-hidden">
@@ -1243,15 +1287,29 @@ export function DesignRoute() {
               </select>
               <button className="rounded bg-blue-700 px-3 py-1 text-xs font-semibold" onClick={() => saveCurrentTemplate('new')}>Save Template</button>
               <button className="rounded border border-blue-700 px-3 py-1 text-xs font-semibold text-blue-300 disabled:opacity-50" disabled={!loadedTemplateId} onClick={() => saveCurrentTemplate('update')}>Update</button>
-              <details className="group relative">
-                <summary className="list-none rounded border border-slate-700 px-3 py-1 text-xs font-semibold text-slate-200 marker:content-none">Export</summary>
-                <div className="absolute right-0 z-20 mt-1 flex min-w-44 flex-col gap-1 rounded border border-slate-700 bg-slate-900 p-2 text-xs shadow-lg shadow-black/40">
-                  <button className="rounded border border-slate-700 px-2 py-1 text-left" onClick={() => exportTemplateImage('png')}>Export</button>
-                  <button className="rounded border border-slate-700 px-2 py-1 text-left" onClick={() => exportTemplateImage('jpg')}>Export JPG</button>
-                  <button className="rounded border border-slate-700 px-2 py-1 text-left" onClick={() => exportTemplateImage('png')}>Export PNG</button>
-                  <button className="rounded bg-emerald-700 px-2 py-1 text-left font-semibold" onClick={copyTemplatePublicUrl}>Copy Public URL</button>
-                </div>
-              </details>
+              <button
+                ref={exportButtonRef}
+                type="button"
+                className="rounded border border-slate-700 px-3 py-1 text-xs font-semibold text-slate-200"
+                onClick={() => setExportMenuOpen((open) => !open)}
+                aria-haspopup="menu"
+                aria-expanded={exportMenuOpen}
+              >
+                Export
+              </button>
+              {exportMenuOpen && exportMenuRect && typeof document !== 'undefined' && createPortal(
+                <div
+                  id="design-export-menu"
+                  role="menu"
+                  className="fixed z-[80] flex max-h-72 min-w-[12rem] flex-col gap-1 overflow-y-auto rounded border border-slate-700 bg-slate-900 p-2 text-xs shadow-2xl shadow-black/60"
+                  style={{ top: `${exportMenuRect.top}px`, left: `${exportMenuRect.left}px`, width: `${exportMenuRect.width}px` }}
+                >
+                  <button className="rounded border border-slate-700 px-2 py-1 text-left" onClick={() => { exportTemplateImage('jpg'); setExportMenuOpen(false); }}>Export JPG</button>
+                  <button className="rounded border border-slate-700 px-2 py-1 text-left" onClick={() => { exportTemplateImage('png'); setExportMenuOpen(false); }}>Export PNG</button>
+                  <button className="rounded bg-emerald-700 px-2 py-1 text-left font-semibold" onClick={() => { copyTemplatePublicUrl(); setExportMenuOpen(false); }}>Copy Public URL</button>
+                </div>,
+                document.body,
+              )}
               <button className="shrink-0 rounded bg-emerald-700 px-3 py-1 text-xs font-semibold" onClick={copyTemplatePublicUrl}>Copy Public URL</button>
             </div>
           </div>

@@ -76,14 +76,13 @@ export function AppRoutes() {
 
   const handleResetDemo = () => {
     resetEngine();
-    resetPlayoutState();
     resetDemoSession();
+    resetPlayoutState();
 
     const firstTemplate = templateStore.templates[0];
-    if (firstTemplate) {
-      setPreviewTemplate(firstTemplate);
-      selectTemplate({ source: 'native', id: firstTemplate.id });
-    }
+    if (!firstTemplate) return;
+    setPreviewTemplate(firstTemplate);
+    selectTemplate({ source: 'native', id: firstTemplate.id });
   };
 
   if (isPublicTemplateFeed || isPublicOutputFeed) {
