@@ -1,4 +1,5 @@
 import { buildNormalizedPayload, buildTeamMetrics } from '../../features/simulation/derived';
+import { formatBoundValue } from '../../features/dataBinding/formatBoundValue';
 import { simulatorRegistry } from '../../features/simulation/registry';
 import type { SportBoxScore, SportKey } from '../../features/simulation/types';
 import type { TextLayer } from '../../types/domain';
@@ -23,6 +24,9 @@ export type FieldDescriptor = {
   sport: SportKey;
   context: BindingContext;
   requires: { side?: boolean; team?: boolean; player?: boolean };
+  getValue?: (payload: unknown, selections: PathSelections) => unknown;
+  format?: (value: unknown, context: BindingFilterContext & PathSelections) => string;
+  displayableForText?: boolean;
 };
 
 export type FieldCatalogSelection = {
@@ -143,6 +147,8 @@ const buildDescriptorsForPath = (sport: SportKey, context: BindingContext, path:
       sport,
       context,
       requires: { side: true, player: true },
+      displayableForText: true,
+      getValue: (payload, selections) => resolvePathValue(payload, `boxScore.${selections.side ?? 'home'}Players.${isIdentifier(selections.playerId ?? '') ? selections.playerId : `[${JSON.stringify(selections.playerId ?? '')}]`}.${statKey}`),
     }];
   }
 
@@ -159,6 +165,8 @@ const buildDescriptorsForPath = (sport: SportKey, context: BindingContext, path:
       sport,
       context,
       requires: { side: true },
+      displayableForText: true,
+      getValue: (payload, selections) => resolvePathValue(payload, `boxScore.teamTotals.${selections.side ?? 'home'}.${statKey}`),
     }];
   }
 
@@ -175,6 +183,8 @@ const buildDescriptorsForPath = (sport: SportKey, context: BindingContext, path:
       sport,
       context,
       requires: { side: true },
+      displayableForText: false,
+      getValue: (payload, selections) => resolvePathValue(payload, `teamLeaders.${selections.side ?? 'home'}.${tail}`),
     }];
   }
 
@@ -189,8 +199,29 @@ const buildDescriptorsForPath = (sport: SportKey, context: BindingContext, path:
     sport,
     context,
     requires: {},
+    displayableForText: false,
+    getValue: (payload) => resolvePathValue(payload, path),
   }];
 };
+
+const CORE_SCORE_METRICS = (sport: SportKey, context: BindingContext): FieldDescriptor[] => ([
+  { id: `${sport}:${context}:core:scoreHome`, label: 'Score Home', pathTemplate: 'scoreHome', level: 'game', group: 'Score/Clock', sport, context, requires: {}, displayableForText: true, getValue: (payload) => resolvePathValue(payload, 'scoreHome') },
+  { id: `${sport}:${context}:core:scoreAway`, label: 'Score Away', pathTemplate: 'scoreAway', level: 'game', group: 'Score/Clock', sport, context, requires: {}, displayableForText: true, getValue: (payload) => resolvePathValue(payload, 'scoreAway') },
+  { id: `${sport}:${context}:core:clock`, label: 'Clock', pathTemplate: 'clockSeconds', level: 'game', group: 'Score/Clock', sport, context, requires: {}, displayableForText: true, getValue: (payload) => resolvePathValue(payload, 'clockSeconds') },
+  { id: `${sport}:${context}:core:period`, label: 'Period', pathTemplate: 'periodLabel', level: 'game', group: 'Score/Clock', sport, context, requires: {}, displayableForText: true, getValue: (payload) => resolvePathValue(payload, 'periodLabel') },
+]);
+
+const markDisplayableDescriptors = (descriptors: FieldDescriptor[], samplePayload: unknown): FieldDescriptor[] => (
+  descriptors.map((descriptor) => {
+    if (descriptor.displayableForText) return descriptor;
+    const samplePath = materializeFieldPath(descriptor, { side: 'home', playerId: 'sample' }) ?? descriptor.pathTemplate;
+    const sampleValue = resolvePathValue(samplePayload, samplePath);
+    const displayable = sampleValue === null
+      || sampleValue === undefined
+      || ['string', 'number', 'boolean'].includes(typeof sampleValue);
+    return { ...descriptor, displayableForText: displayable };
+  })
+);
 
 const buildCatalogRegistry = () => {
   const byId = new Map<string, FieldDescriptor>();
@@ -205,10 +236,19 @@ const buildCatalogRegistry = () => {
     };
 
     contexts.forEach((context) => {
+      CORE_SCORE_METRICS(sport, context).forEach((descriptor) => {
+        if (!byId.has(descriptor.id)) byId.set(descriptor.id, descriptor);
+      });
+
+      const descriptors: FieldDescriptor[] = [];
       extractBindingPaths(payloadByContext[context]).forEach((path) => {
         buildDescriptorsForPath(sport, context, path).forEach((descriptor) => {
-          if (!byId.has(descriptor.id)) byId.set(descriptor.id, descriptor);
+          descriptors.push(descriptor);
         });
+      });
+
+      markDisplayableDescriptors(descriptors, payloadByContext[context]).forEach((descriptor) => {
+        if (!byId.has(descriptor.id)) byId.set(descriptor.id, descriptor);
       });
     });
   });
@@ -349,6 +389,7 @@ export const getMetricOptions = (catalog: FieldDescriptor[], level: FieldLevel, 
   const normalized = query.trim().toLowerCase();
   return catalog
     .filter((descriptor) => descriptor.level === level)
+    .filter((descriptor) => descriptor.displayableForText !== false)
     .map((descriptor) => {
       const path = materializeFieldPath(descriptor, selections);
       if (!path) return null;
@@ -387,7 +428,7 @@ export const resolvePathValue = (source: unknown, path: string): unknown => {
 
 export const formatPreviewValue = (value: unknown): string => {
   if (value === null || value === undefined) return 'N/A';
-  if (typeof value === 'object') return JSON.stringify(value);
+  if (typeof value === 'object') return '';
   return String(value);
 };
 
@@ -397,26 +438,57 @@ const sourceToContext = (source: string): BindingContext => {
   return 'scorebug';
 };
 
-const formatBindingValue = (value: unknown): string => {
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) return '';
-    if (Number.isInteger(value)) return String(value);
-    return String(Math.round(value * 100) / 100);
-  }
-  if (typeof value === 'string') return value;
-  if (typeof value === 'boolean') return value ? 'true' : 'false';
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return '';
-  }
-};
-
 type BindingPayloads = {
   liveFeedPayload: unknown;
   derivedPayload: unknown;
   scorebugPayload: unknown;
+};
+
+export const resolveTextBinding = (
+  layer: TextLayer,
+  { liveFeedPayload, derivedPayload, scorebugPayload }: BindingPayloads,
+): string => {
+  const source = sourceToContext(layer.dataBindingSource);
+  const payload = source === 'live'
+    ? liveFeedPayload
+    : source === 'derived'
+      ? derivedPayload
+      : scorebugPayload;
+  const payloadSport = (payload && typeof payload === 'object' && 'sport' in (payload as Record<string, unknown>))
+    ? ((payload as { sport?: SportKey }).sport ?? 'nba')
+    : 'nba';
+  const catalog = getFieldCatalog({ sport: payloadSport, context: source });
+  const matched = parseBindingPathToSelection(catalog, layer.dataBindingField);
+  const selectedMetric = matched?.descriptor;
+  const selections = matched?.selections ?? {};
+
+  const context: BindingFilterContext & PathSelections = {
+    source,
+    sport: payloadSport,
+    level: selectedMetric?.level ?? 'game',
+    side: selections.side,
+    playerId: selections.playerId,
+    ...selections,
+  };
+
+  try {
+    const rawValue = selectedMetric?.getValue
+      ? selectedMetric.getValue(payload, selections)
+      : resolvePathValue(payload, layer.dataBindingField);
+    if (selectedMetric?.format) return selectedMetric.format(rawValue, context);
+    return formatBoundValue(rawValue, {
+      sport: payloadSport,
+      source,
+      level: context.level,
+      scope: selections.side,
+      selectedPlayerId: selections.playerId,
+      selectedPlayerName: selections.playerId,
+      selectedMetricKey: selectedMetric?.id,
+      selectedMetricPath: layer.dataBindingField,
+    });
+  } catch {
+    return '';
+  }
 };
 
 export const resolveTextLayerBindingValue = (
@@ -424,16 +496,8 @@ export const resolveTextLayerBindingValue = (
   { liveFeedPayload, derivedPayload, scorebugPayload }: BindingPayloads,
 ): string => {
   if (layer.dataBindingSource === 'manual' || !layer.dataBindingField) return layer.text;
-
-  const context = sourceToContext(layer.dataBindingSource);
-  const payload = context === 'live'
-    ? liveFeedPayload
-    : context === 'derived'
-      ? derivedPayload
-      : scorebugPayload;
-
   try {
-    return formatBindingValue(resolvePathValue(payload, layer.dataBindingField));
+    return resolveTextBinding(layer, { liveFeedPayload, derivedPayload, scorebugPayload });
   } catch {
     return '';
   }
