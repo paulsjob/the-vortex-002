@@ -19,19 +19,19 @@ import { getCatalogRegistry, getCatalogRegistryHealth } from '../components/desi
 const FOLLOW_PREVIEW_STORAGE_KEY = 'renderless.output.follow.preview.v1';
 const FOLLOW_PROGRAM_STORAGE_KEY = 'renderless.output.follow.program.v1';
 
-type FollowFeedPayload = {
-  template: NonNullable<ReturnType<typeof usePlayoutStore.getState>['programTemplate']>;
+type FollowTemplatePointer = {
+  templateId: string;
   sport?: SportKey | null;
   sponsor?: string | null;
+  ts: number;
 };
 
-const parseFollowFeedPayload = (value: string | null): FollowFeedPayload | null => {
+const parseFollowTemplatePointer = (value: string | null): FollowTemplatePointer | null => {
   if (!value) return null;
   try {
-    const parsed = JSON.parse(value) as FollowFeedPayload;
+    const parsed = JSON.parse(value) as FollowTemplatePointer;
     if (!parsed || typeof parsed !== 'object') return null;
-    if (!parsed.template || typeof parsed.template !== 'object') return null;
-    if (typeof parsed.template.id !== 'string' || !Array.isArray(parsed.template.layers)) return null;
+    if (typeof parsed.templateId !== 'string' || parsed.templateId.length === 0) return null;
     return parsed;
   } catch {
     return null;
@@ -87,7 +87,8 @@ export function OutputRoute() {
   const setFontOverride = usePlayoutStore((s) => s.setFontOverride);
   const setBindingValues = usePlayoutStore((s) => s.setBindingValues);
   const activateProgramTemplate = usePlayoutStore((s) => s.activateProgramTemplate);
-  const [externalTemplate, setExternalTemplate] = useState<FollowFeedPayload['template'] | null>(null);
+  const [externalTemplateId, setExternalTemplateId] = useState<string | null>(null);
+  const [externalTemplate, setExternalTemplate] = useState<NonNullable<ReturnType<typeof usePlayoutStore.getState>['programTemplate']> | null>(null);
 
   const selectedPlayer = useDemoSessionStore((s) => s.selectedPlayer);
   const selectedStat = useDemoSessionStore((s) => s.selectedStat);
@@ -98,11 +99,11 @@ export function OutputRoute() {
   const [waitingForLiveFeed, setWaitingForLiveFeed] = useState(false);
 
   const activeTemplateRef = useMemo(() => {
-    const templateId = externalTemplate?.id ?? programTemplate?.id ?? programSnapshot?.templateId;
+    const templateId = externalTemplateId ?? externalTemplate?.id ?? programTemplate?.id ?? programSnapshot?.templateId;
     if (!templateId) return null;
     const vortexPackage = templateStore.getVortexPackage(templateId);
     return { source: vortexPackage ? 'vortex' as const : 'native' as const, id: templateId };
-  }, [externalTemplate?.id, programTemplate?.id, programSnapshot?.templateId, templateStore.vortexPackages]);
+  }, [externalTemplateId, externalTemplate?.id, programTemplate?.id, programSnapshot?.templateId, templateStore.vortexPackages]);
 
   const vortexRenderState = useMemo(() => {
     if (!activeTemplateRef || activeTemplateRef.source !== 'vortex') return null;
@@ -157,31 +158,53 @@ export function OutputRoute() {
 
   useEffect(() => {
     if (!embed || !followKey) {
+      setExternalTemplateId(null);
       setExternalTemplate(null);
       return;
     }
 
-    const applyPayload = (rawPayload: string | null) => {
-      const payload = parseFollowFeedPayload(rawPayload);
-      if (!payload) {
+    const applyPointer = (rawPayload: string | null) => {
+      const pointer = parseFollowTemplatePointer(rawPayload);
+      if (!pointer) {
+        setExternalTemplateId(null);
         setExternalTemplate(null);
         return;
       }
-      setExternalTemplate(payload.template);
-      activateProgramTemplate(payload.template);
 
-      const pkg = templateStore.getVortexPackage(payload.template.id);
+      setExternalTemplateId(pointer.templateId);
+      const pkg = templateStore.getVortexPackage(pointer.templateId);
       if (pkg) {
+        setExternalTemplate(null);
         const schema = normalizeBindingSchema(pkg.bindings);
-        initializeBindings(payload.template.id, schema);
+        initializeBindings(pointer.templateId, schema);
+        return;
+      }
+
+      const storedTemplate = templateStore.getTemplateById(pointer.templateId);
+      if (!storedTemplate) {
+        setExternalTemplate(null);
+        return;
+      }
+
+      setExternalTemplate(storedTemplate);
+      activateProgramTemplate(storedTemplate);
+    };
+
+    const loadPointerFromStorage = () => {
+      try {
+        applyPointer(window.localStorage.getItem(followKey));
+      } catch (error) {
+        console.warn('[output] Failed to read follow pointer from localStorage.', error);
+        setExternalTemplateId(null);
+        setExternalTemplate(null);
       }
     };
 
-    applyPayload(window.localStorage.getItem(followKey));
+    loadPointerFromStorage();
 
     const onStorage = (event: StorageEvent) => {
       if (event.key !== followKey) return;
-      applyPayload(event.newValue);
+      applyPointer(event.newValue);
     };
 
     window.addEventListener('storage', onStorage);
