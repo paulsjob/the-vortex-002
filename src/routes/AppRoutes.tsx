@@ -12,7 +12,8 @@ import { StatusBadge } from '../components/ui/StatusBadge';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useDemoSessionStore } from '../store/useDemoSessionStore';
 import { useDataEngineStore } from '../store/useDataEngineStore';
-import { createLiveFeedPublisher, createProgramFeedPublisher } from '../features/liveFeed/liveFeedBus';
+import { createProgramFeedPublisher } from '../features/liveFeed/liveFeedBus';
+import { LiveFeedPublisher } from '../features/liveFeed/LiveFeedPublisher';
 
 const tabs = [
   { to: '/', label: 'Dashboard' },
@@ -70,27 +71,7 @@ export function AppRoutes() {
   const isOutputRoute = location.pathname === '/output';
   const isControlRoomRoute = location.pathname === '/control-room';
   const isEmbedRoute = location.search.includes('embed=1');
-  const shouldPublishLiveFeed = !isEmbedRoute && !isPublicTemplateFeed && !isPublicOutputFeed;
-
-  useEffect(() => {
-    const engine = useDataEngineStore.getState();
-    if (!shouldPublishLiveFeed) {
-      engine.setLivePublisherActive(false);
-      return;
-    }
-
-    engine.setLivePublisherActive(true);
-    const stopPublisher = createLiveFeedPublisher(() => {
-      const { running, activeSport, game } = useDataEngineStore.getState();
-      return { running, activeSport, game };
-    }, 250);
-
-    return () => {
-      stopPublisher();
-      useDataEngineStore.getState().setLivePublisherActive(false);
-    };
-  }, [shouldPublishLiveFeed]);
-
+  const shouldPublishLiveFeed = (isControlRoomRoute || isOutputRoute) && !isEmbedRoute && !isPublicTemplateFeed && !isPublicOutputFeed;
 
   useEffect(() => {
     if (!shouldPublishLiveFeed) return;
@@ -127,16 +108,20 @@ export function AppRoutes() {
 
   if (isPublicTemplateFeed || isPublicOutputFeed) {
     return (
-      <Routes>
-        <Route path="/template-feed/:templateId" element={<PublicTemplateRoute />} />
-        <Route path="/output-feed" element={<PublicOutputRoute />} />
-      </Routes>
+      <>
+        <LiveFeedPublisher enabled={false} />
+        <Routes>
+          <Route path="/template-feed/:templateId" element={<PublicTemplateRoute />} />
+          <Route path="/output-feed" element={<PublicOutputRoute />} />
+        </Routes>
+      </>
     );
   }
 
   if (isOutputRoute) {
     return (
       <div className="h-screen overflow-hidden bg-slate-950 text-slate-100">
+        <LiveFeedPublisher enabled={shouldPublishLiveFeed} />
         <Routes>
           <Route path="/output" element={<OutputRoute />} />
         </Routes>
@@ -146,6 +131,7 @@ export function AppRoutes() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-slate-950 text-slate-100">
+      <LiveFeedPublisher enabled={shouldPublishLiveFeed} />
       <header className="shrink-0 border-b border-slate-800 bg-slate-900 px-6 py-5">
         <div className="flex items-center justify-between gap-6">
           <h1 className="text-2xl font-bold tracking-wide text-slate-100">Renderless</h1>

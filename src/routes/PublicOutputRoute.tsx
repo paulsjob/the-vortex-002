@@ -17,37 +17,19 @@ export function PublicOutputRoute() {
     if (!payload) return;
 
     const engine = useDataEngineStore.getState();
-    let receivedState = false;
-    let externalFeedEnabled = true;
-
+    // Public/embed output subscribes to the live feed and keeps externalMode enabled.
     engine.setExternalMode(true);
     engine.clearExternalGame();
     setWaitingForLiveFeed(true);
 
     const unsubscribe = createLiveFeedSubscriber(({ activeSport, game, ts }) => {
-      if (!externalFeedEnabled) return;
-      receivedState = true;
       setWaitingForLiveFeed(false);
       const nextEngine = useDataEngineStore.getState();
       nextEngine.markBroadcastReceived(ts);
       nextEngine.setExternalGame(game, activeSport as SportKey);
     });
 
-    const fallbackTimer = window.setTimeout(() => {
-      if (receivedState) return;
-      externalFeedEnabled = false;
-      setWaitingForLiveFeed(false);
-      const nextEngine = useDataEngineStore.getState();
-      nextEngine.setExternalMode(false);
-      nextEngine.clearExternalGame();
-      if (payload.sport) nextEngine.setSport(payload.sport);
-      nextEngine.reset();
-      nextEngine.start();
-    }, 1500);
-
     return () => {
-      externalFeedEnabled = false;
-      window.clearTimeout(fallbackTimer);
       unsubscribe();
       const nextEngine = useDataEngineStore.getState();
       nextEngine.setExternalMode(false);
@@ -71,7 +53,7 @@ export function PublicOutputRoute() {
   if (waitingForLiveFeed) {
     return (
       <main className="grid min-h-screen place-items-center bg-black text-slate-300">
-        <p className="text-sm">Waiting for live feed...</p>
+        <p className="text-sm">Waiting for program…</p>
       </main>
     );
   }
