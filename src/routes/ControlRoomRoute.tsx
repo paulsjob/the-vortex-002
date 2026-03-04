@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { usePlayoutStore, type TransitionType } from '../store/usePlayoutStore';
 import { TemplatePreview } from '../features/playout/TemplatePreview';
@@ -12,6 +12,13 @@ import { applyBindingsToScene, normalizeBindingSchema } from '../features/playou
 
 const FOLLOW_PREVIEW_STORAGE_KEY = 'renderless.output.follow.preview.v1';
 const FOLLOW_PROGRAM_STORAGE_KEY = 'renderless.output.follow.program.v1';
+
+type FollowTemplatePointer = {
+  templateId: string;
+  sport: string | null;
+  sponsor: string | null;
+  ts: number;
+};
 
 type TreeNode = { id: string; type: 'folder'; name: string; children: TreeNode[] } | { id: string; type: 'template'; name: string };
 
@@ -56,6 +63,23 @@ export function ControlRoomRoute() {
   const [favoritesExpanded, setFavoritesExpanded] = useState(false);
   const [quickLaunchExpanded, setQuickLaunchExpanded] = useState(false);
   const transitionTimeoutRef = useRef<number | null>(null);
+  const localStorageWarnedRef = useRef<{ preview: boolean; program: boolean }>({ preview: false, program: false });
+
+  const writeFollowPointer = useCallback((mode: 'preview' | 'program', pointer: FollowTemplatePointer | null) => {
+    const key = mode === 'preview' ? FOLLOW_PREVIEW_STORAGE_KEY : FOLLOW_PROGRAM_STORAGE_KEY;
+    try {
+      if (!pointer) {
+        window.localStorage.removeItem(key);
+        return;
+      }
+      window.localStorage.setItem(key, JSON.stringify(pointer));
+    } catch (error) {
+      if (!localStorageWarnedRef.current[mode]) {
+        localStorageWarnedRef.current[mode] = true;
+        console.warn(`[control-room] Failed to persist ${mode} follow pointer.`, error);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (templateStore.quickLaunchTemplateIds.length > 0 || templateStore.templates.length === 0) return;
@@ -161,27 +185,29 @@ export function ControlRoomRoute() {
 
   useEffect(() => {
     if (!previewTemplate) {
-      window.localStorage.removeItem(FOLLOW_PREVIEW_STORAGE_KEY);
+      writeFollowPointer('preview', null);
       return;
     }
-    window.localStorage.setItem(FOLLOW_PREVIEW_STORAGE_KEY, JSON.stringify({
-      template: previewTemplate,
+    writeFollowPointer('preview', {
+      templateId: previewTemplate.id,
       sport: activeSport ?? null,
       sponsor: previewSponsor ?? null,
-    }));
-  }, [previewTemplate, activeSport, previewSponsor]);
+      ts: Date.now(),
+    });
+  }, [previewTemplate, activeSport, previewSponsor, writeFollowPointer]);
 
   useEffect(() => {
     if (!programTemplate) {
-      window.localStorage.removeItem(FOLLOW_PROGRAM_STORAGE_KEY);
+      writeFollowPointer('program', null);
       return;
     }
-    window.localStorage.setItem(FOLLOW_PROGRAM_STORAGE_KEY, JSON.stringify({
-      template: programTemplate,
+    writeFollowPointer('program', {
+      templateId: programTemplate.id,
       sport: activeSport ?? null,
       sponsor: programSponsor ?? null,
-    }));
-  }, [programTemplate, activeSport, programSponsor]);
+      ts: Date.now(),
+    });
+  }, [programTemplate, activeSport, programSponsor, writeFollowPointer]);
 
 
   const takeTime = lastTakeAt ? new Date(lastTakeAt).toLocaleTimeString() : 'No take yet';
