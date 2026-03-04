@@ -26,6 +26,8 @@ export function LiveFeedPublisher({ enabled }: Props) {
         game,
         programTemplateId: programTemplate?.id ?? null,
         previewTemplateId: previewTemplate?.id ?? null,
+        programTemplate,
+        previewTemplate,
       };
     }, 250);
 

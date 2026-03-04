@@ -7,6 +7,7 @@ import { TemplateSceneSvg } from '../features/playout/TemplateSceneSvg';
 import { createLiveFeedSubscriber } from '../features/liveFeed/liveFeedBus';
 import { sceneFromVortexPackage } from '../features/packages/vortexSceneAdapter';
 import { getVortexAssetUrl } from '../features/packages/vortexAssetResolver';
+import type { SavedTemplate } from '../store/useTemplateStore';
 
 type FollowMode = 'program' | 'preview';
 
@@ -20,6 +21,7 @@ export function PublicOutputRoute() {
   const templateStore = useTemplateStore();
   const [waitingForLiveFeed, setWaitingForLiveFeed] = useState(false);
   const [liveTemplateId, setLiveTemplateId] = useState<string | null>(null);
+  const [liveTemplate, setLiveTemplate] = useState<SavedTemplate | null>(null);
 
   const payload = useMemo(() => {
     const encoded = searchParams.get('tpl');
@@ -34,19 +36,22 @@ export function PublicOutputRoute() {
     if (!follow && !payload) return;
 
     setLiveTemplateId(null);
+    setLiveTemplate(null);
 
     const engine = useDataEngineStore.getState();
     engine.setExternalMode(true);
     engine.clearExternalGame();
     setWaitingForLiveFeed(true);
 
-    const unsubscribe = createLiveFeedSubscriber(({ activeSport, game, ts, programTemplateId, previewTemplateId }) => {
+    const unsubscribe = createLiveFeedSubscriber(({ activeSport, game, ts, programTemplateId, previewTemplateId, programTemplate, previewTemplate }) => {
       const nextEngine = useDataEngineStore.getState();
       nextEngine.markBroadcastReceived(ts);
       nextEngine.setExternalGame(game, activeSport as SportKey);
 
       if (follow) {
-        setLiveTemplateId(follow === 'program' ? programTemplateId : previewTemplateId);
+        const followedTemplate = follow === 'program' ? programTemplate : previewTemplate;
+        setLiveTemplateId(followedTemplate?.id ?? (follow === 'program' ? programTemplateId : previewTemplateId));
+        setLiveTemplate(followedTemplate ?? null);
       }
 
       setWaitingForLiveFeed(false);
@@ -61,10 +66,33 @@ export function PublicOutputRoute() {
   }, [follow, payload]);
 
   const effectiveTemplateId = follow
-    ? (liveTemplateId ?? '')
+    ? (liveTemplate?.id ?? liveTemplateId ?? '')
     : (templateIdParam ?? payload?.template.id ?? '');
 
   const renderState = useMemo(() => {
+    if (liveTemplate) {
+      const pkg = templateStore.getVortexPackage(liveTemplate.id);
+      if (pkg) {
+        try {
+          const scene = sceneFromVortexPackage(pkg);
+          return {
+            template: {
+              id: pkg.manifest.templateId,
+              name: pkg.manifest.templateName,
+              canvasWidth: scene.canvas.width,
+              canvasHeight: scene.canvas.height,
+              layers: scene.layers,
+            },
+            assetResolver: (path: string) => getVortexAssetUrl(pkg.manifest.templateId, path),
+          };
+        } catch {
+          return { template: liveTemplate, assetResolver: undefined as ((path: string) => string) | undefined };
+        }
+      }
+
+      return { template: liveTemplate, assetResolver: undefined as ((path: string) => string) | undefined };
+    }
+
     if (!effectiveTemplateId) {
       return { template: follow ? null : (payload?.template ?? null), assetResolver: undefined as ((path: string) => string) | undefined };
     }
@@ -90,7 +118,7 @@ export function PublicOutputRoute() {
     } catch {
       return { template: follow ? null : (payload?.template ?? null), assetResolver: undefined as ((path: string) => string) | undefined };
     }
-  }, [effectiveTemplateId, follow, payload?.template, templateStore]);
+  }, [effectiveTemplateId, follow, liveTemplate, payload?.template, templateStore]);
 
   const template = renderState.template;
   const showDebugWatermark = shouldShowDebugWatermark();

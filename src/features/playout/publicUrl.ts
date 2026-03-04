@@ -97,8 +97,8 @@ export const buildOutputFeedUrl = (
 ): string => {
   const payload = isSavedTemplate(payloadOrTemplate) ? { template: payloadOrTemplate } : payloadOrTemplate;
   const encoded = encodeOutputFeedPayload(payload);
-  // Keep template id in the URL so embed output can always resolve the current program template on refresh.
-  return `${origin}/output?embed=1&templateId=${encodeURIComponent(payload.template.id)}&tpl=${encoded}`;
+  // Keep template id in the URL so output-feed can always resolve the current template on refresh.
+  return `${origin}/output-feed?embed=1&templateId=${encodeURIComponent(payload.template.id)}&tpl=${encoded}`;
 };
 
 export const buildFollowOutputUrl = (origin: string, follow: 'program' | 'preview'): string => `${origin}/output-feed?embed=1&follow=${follow}`;

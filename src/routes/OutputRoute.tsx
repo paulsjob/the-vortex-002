@@ -153,24 +153,26 @@ export function OutputRoute() {
     engine.clearExternalGame();
     setWaitingForLiveFeed(true);
 
-    const unsubscribe = createLiveFeedSubscriber(({ activeSport, game, ts, programTemplateId, previewTemplateId }) => {
+    const unsubscribe = createLiveFeedSubscriber(({ activeSport, game, ts, programTemplateId, previewTemplateId, programTemplate, previewTemplate }) => {
       setWaitingForLiveFeed(false);
       const nextEngine = useDataEngineStore.getState();
       nextEngine.markBroadcastReceived(ts);
       nextEngine.setExternalGame(game as GameState, activeSport as SportKey);
 
       if (followMode) {
-        const nextTemplateId = followMode === 'program' ? programTemplateId : previewTemplateId;
-        setExternalTemplateId(nextTemplateId);
-        if (!nextTemplateId) {
-          setExternalTemplate(null);
-        } else {
-          const storedTemplate = templateStore.getTemplateById(nextTemplateId);
-          setExternalTemplate(storedTemplate ?? null);
-          if (storedTemplate) {
-            activateProgramTemplate(storedTemplate);
-          }
+        const followedTemplate = followMode === 'program'
+          ? (programTemplate ?? (programTemplateId ? templateStore.getTemplateById(programTemplateId) : null))
+          : (previewTemplate ?? (previewTemplateId ? templateStore.getTemplateById(previewTemplateId) : null));
+        const nextTemplateId = followedTemplate?.id ?? (followMode === 'program' ? programTemplateId : previewTemplateId);
 
+        setExternalTemplateId(nextTemplateId ?? null);
+        setExternalTemplate(followedTemplate ?? null);
+
+        if (followedTemplate) {
+          activateProgramTemplate(followedTemplate);
+        }
+
+        if (nextTemplateId) {
           const pkg = templateStore.getVortexPackage(nextTemplateId);
           if (pkg) {
             const schema = normalizeBindingSchema(pkg.bindings);

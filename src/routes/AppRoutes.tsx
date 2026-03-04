@@ -1,4 +1,4 @@
-import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useEffect, useMemo } from 'react';
 import { DashboardRoute } from './DashboardRoute';
 import { DesignRoute } from './DesignRoute';
@@ -71,6 +71,14 @@ export function AppRoutes() {
   const isOutputRoute = location.pathname === '/output';
   const isControlRoomRoute = location.pathname === '/control-room';
   const isEmbedRoute = location.search.includes('embed=1');
+  const isLegacyEmbedOutputRoute = isOutputRoute && isEmbedRoute;
+  const legacyOutputRedirectTarget = useMemo(() => {
+    if (!isLegacyEmbedOutputRoute) return null;
+    const params = new URLSearchParams(location.search);
+    params.set('embed', '1');
+    const query = params.toString();
+    return query.length > 0 ? `/output-feed?${query}` : '/output-feed?embed=1';
+  }, [isLegacyEmbedOutputRoute, location.search]);
   const shouldPublishLiveFeed = (isControlRoomRoute || isOutputRoute) && !isEmbedRoute && !isPublicTemplateFeed && !isPublicOutputFeed;
 
   useEffect(() => {
@@ -116,6 +124,10 @@ export function AppRoutes() {
         </Routes>
       </>
     );
+  }
+
+  if (legacyOutputRedirectTarget) {
+    return <Navigate to={legacyOutputRedirectTarget} replace />;
   }
 
   if (isOutputRoute) {

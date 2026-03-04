@@ -1,3 +1,5 @@
+import type { SavedTemplate } from '../../store/useTemplateStore';
+
 const CHANNEL = 'renderless-live-feed-v1';
 const LIVE_FEED_LAST_STORAGE_KEY = 'renderless_live_feed_last';
 const PROGRAM_CHANNEL = 'renderless:program';
@@ -13,6 +15,8 @@ export type LiveFeedMessage =
     game: any;
     programTemplateId: string | null;
     previewTemplateId: string | null;
+    programTemplate: SavedTemplate | null;
+    previewTemplate: SavedTemplate | null;
   }
   | { type: 'bye'; from: string };
 
@@ -41,6 +45,8 @@ type PublisherState = {
   game: unknown;
   programTemplateId?: string | null;
   previewTemplateId?: string | null;
+  programTemplate?: SavedTemplate | null;
+  previewTemplate?: SavedTemplate | null;
 };
 
 const createSourceId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -51,7 +57,7 @@ export function createLiveFeedPublisher(getStateFn: () => PublisherState, interv
   channel?.postMessage({ type: 'hello', from } as LiveFeedMessage);
 
   const timer = setInterval(() => {
-    const { running, activeSport, game, programTemplateId, previewTemplateId } = getStateFn();
+    const { running, activeSport, game, programTemplateId, previewTemplateId, programTemplate, previewTemplate } = getStateFn();
     if (!game) return;
 
     const message = {
@@ -62,6 +68,8 @@ export function createLiveFeedPublisher(getStateFn: () => PublisherState, interv
       game,
       programTemplateId: programTemplateId ?? null,
       previewTemplateId: previewTemplateId ?? null,
+      programTemplate: programTemplate ?? null,
+      previewTemplate: previewTemplate ?? null,
     } as LiveFeedMessage;
 
     // Persist the latest live payload so embed/public output tabs can catch up instantly on refresh.
@@ -105,6 +113,8 @@ export function createLiveFeedSubscriber(
     ts: number;
     programTemplateId: string | null;
     previewTemplateId: string | null;
+    programTemplate: SavedTemplate | null;
+    previewTemplate: SavedTemplate | null;
   }) => void,
 ) {
   let lastSeenTs = 0;
@@ -119,6 +129,8 @@ export function createLiveFeedSubscriber(
     ts: number;
     programTemplateId: string | null;
     previewTemplateId: string | null;
+    programTemplate: SavedTemplate | null;
+    previewTemplate: SavedTemplate | null;
   }) => {
     if (typeof state.ts !== 'number' || state.ts <= lastSeenTs) return;
     lastSeenTs = state.ts;
@@ -139,6 +151,8 @@ export function createLiveFeedSubscriber(
             ts: parsed.ts,
             programTemplateId: parsed.programTemplateId ?? null,
             previewTemplateId: parsed.previewTemplateId ?? null,
+            programTemplate: parsed.programTemplate ?? null,
+            previewTemplate: parsed.previewTemplate ?? null,
           });
         }
       }
@@ -166,6 +180,8 @@ export function createLiveFeedSubscriber(
               ts: message.ts,
               programTemplateId: message.programTemplateId ?? null,
               previewTemplateId: message.previewTemplateId ?? null,
+              programTemplate: message.programTemplate ?? null,
+              previewTemplate: message.previewTemplate ?? null,
             });
           })
           .catch(() => {
@@ -197,6 +213,8 @@ export function createLiveFeedSubscriber(
       ts: message.ts,
       programTemplateId: message.programTemplateId ?? null,
       previewTemplateId: message.previewTemplateId ?? null,
+      programTemplate: message.programTemplate ?? null,
+      previewTemplate: message.previewTemplate ?? null,
     });
   };
 
