@@ -10,6 +10,9 @@ import { StageViewportFrame } from '../components/stage/StageViewportFrame';
 import { sceneFromVortexPackage } from '../features/packages/vortexSceneAdapter';
 import { applyBindingsToScene, normalizeBindingSchema } from '../features/playout/vortexBindings';
 
+const FOLLOW_PREVIEW_STORAGE_KEY = 'renderless.output.follow.preview.v1';
+const FOLLOW_PROGRAM_STORAGE_KEY = 'renderless.output.follow.program.v1';
+
 type TreeNode = { id: string; type: 'folder'; name: string; children: TreeNode[] } | { id: string; type: 'template'; name: string };
 
 const transitionOptions: Array<{ type: TransitionType; label: string }> = [
@@ -43,6 +46,7 @@ export function ControlRoomRoute() {
   const clearProgram = usePlayoutStore((s) => s.clearProgram);
 
   const engineRunning = useDataEngineStore((s) => s.running);
+  const activeSport = useDataEngineStore((s) => s.activeSport);
   const sponsorChoices = useDemoSessionStore((s) => s.sponsorChoices);
   const updateSelections = useDemoSessionStore((s) => s.updateSelections);
 
@@ -154,6 +158,30 @@ export function ControlRoomRoute() {
       window.prompt('Copy Control Room output URL', url);
     }
   };
+
+  useEffect(() => {
+    if (!previewTemplate) {
+      window.localStorage.removeItem(FOLLOW_PREVIEW_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(FOLLOW_PREVIEW_STORAGE_KEY, JSON.stringify({
+      template: previewTemplate,
+      sport: activeSport ?? null,
+      sponsor: previewSponsor ?? null,
+    }));
+  }, [previewTemplate, activeSport, previewSponsor]);
+
+  useEffect(() => {
+    if (!programTemplate) {
+      window.localStorage.removeItem(FOLLOW_PROGRAM_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(FOLLOW_PROGRAM_STORAGE_KEY, JSON.stringify({
+      template: programTemplate,
+      sport: activeSport ?? null,
+      sponsor: programSponsor ?? null,
+    }));
+  }, [programTemplate, activeSport, programSponsor]);
 
 
   const takeTime = lastTakeAt ? new Date(lastTakeAt).toLocaleTimeString() : 'No take yet';
@@ -414,7 +442,6 @@ export function ControlRoomRoute() {
                       <button
                         className="rounded border border-emerald-700 px-3 py-1 text-xs font-semibold text-emerald-300 disabled:opacity-50 hover:bg-emerald-900/30"
                         onClick={copyAggregateOutputUrl}
-                        disabled={!programTemplate}
                       >
                         Copy Program URL
                       </button>

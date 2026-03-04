@@ -16,6 +16,28 @@ import { useDemoSessionStore } from '../store/useDemoSessionStore';
 import { useDataEngineStore, type GameState, type SportKey } from '../store/useDataEngineStore';
 import { getCatalogRegistry, getCatalogRegistryHealth } from '../components/design/dataBindingPaths';
 
+const FOLLOW_PREVIEW_STORAGE_KEY = 'renderless.output.follow.preview.v1';
+const FOLLOW_PROGRAM_STORAGE_KEY = 'renderless.output.follow.program.v1';
+
+type FollowFeedPayload = {
+  template: NonNullable<ReturnType<typeof usePlayoutStore.getState>['programTemplate']>;
+  sport?: SportKey | null;
+  sponsor?: string | null;
+};
+
+const parseFollowFeedPayload = (value: string | null): FollowFeedPayload | null => {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as FollowFeedPayload;
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (!parsed.template || typeof parsed.template !== 'object') return null;
+    if (typeof parsed.template.id !== 'string' || !Array.isArray(parsed.template.layers)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
 const mapDemoBindingDefaults = (
   keys: string[],
   session: { player: string; stat: string; sponsor: string },
@@ -51,6 +73,8 @@ export function OutputRoute() {
   const [searchParams] = useSearchParams();
   const embed = searchParams.get('embed') === '1';
   const tpl = searchParams.get('tpl');
+  const follow = searchParams.get('follow');
+  const followKey = follow === 'preview' ? FOLLOW_PREVIEW_STORAGE_KEY : follow === 'program' ? FOLLOW_PROGRAM_STORAGE_KEY : null;
   const templateStore = useTemplateStore();
   const programSnapshot = usePlayoutStore((s) => s.programSnapshot);
   const programTemplate = usePlayoutStore((s) => s.programTemplate);
@@ -63,6 +87,7 @@ export function OutputRoute() {
   const setFontOverride = usePlayoutStore((s) => s.setFontOverride);
   const setBindingValues = usePlayoutStore((s) => s.setBindingValues);
   const activateProgramTemplate = usePlayoutStore((s) => s.activateProgramTemplate);
+  const [externalTemplate, setExternalTemplate] = useState<FollowFeedPayload['template'] | null>(null);
 
   const selectedPlayer = useDemoSessionStore((s) => s.selectedPlayer);
   const selectedStat = useDemoSessionStore((s) => s.selectedStat);
@@ -73,11 +98,11 @@ export function OutputRoute() {
   const [waitingForLiveFeed, setWaitingForLiveFeed] = useState(false);
 
   const activeTemplateRef = useMemo(() => {
-    const templateId = programTemplate?.id ?? programSnapshot?.templateId;
+    const templateId = externalTemplate?.id ?? programTemplate?.id ?? programSnapshot?.templateId;
     if (!templateId) return null;
     const vortexPackage = templateStore.getVortexPackage(templateId);
     return { source: vortexPackage ? 'vortex' as const : 'native' as const, id: templateId };
-  }, [programTemplate?.id, programSnapshot?.templateId, templateStore.vortexPackages]);
+  }, [externalTemplate?.id, programTemplate?.id, programSnapshot?.templateId, templateStore.vortexPackages]);
 
   const vortexRenderState = useMemo(() => {
     if (!activeTemplateRef || activeTemplateRef.source !== 'vortex') return null;
@@ -131,11 +156,43 @@ export function OutputRoute() {
   }, [tpl, embed, activateProgramTemplate, templateStore, initializeBindings]);
 
   useEffect(() => {
-    if (!embed) return;
-    if (!tpl) return;
+    if (!embed || !followKey) {
+      setExternalTemplate(null);
+      return;
+    }
 
-    const payload = decodeOutputFeedPayload(tpl);
-    if (!payload) return;
+    const applyPayload = (rawPayload: string | null) => {
+      const payload = parseFollowFeedPayload(rawPayload);
+      if (!payload) {
+        setExternalTemplate(null);
+        return;
+      }
+      setExternalTemplate(payload.template);
+      activateProgramTemplate(payload.template);
+
+      const pkg = templateStore.getVortexPackage(payload.template.id);
+      if (pkg) {
+        const schema = normalizeBindingSchema(pkg.bindings);
+        initializeBindings(payload.template.id, schema);
+      }
+    };
+
+    applyPayload(window.localStorage.getItem(followKey));
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== followKey) return;
+      applyPayload(event.newValue);
+    };
+
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [embed, followKey, activateProgramTemplate, templateStore, initializeBindings]);
+
+  useEffect(() => {
+    if (!embed) return;
+    if (!tpl && !followKey) return;
 
     const debugProgram = typeof window !== 'undefined' && window.localStorage.getItem('debug_program') === '1';
     const engine = useDataEngineStore.getState();
@@ -163,7 +220,7 @@ export function OutputRoute() {
       nextEngine.setExternalMode(false);
       nextEngine.clearExternalGame();
     };
-  }, [embed, tpl]);
+  }, [embed, tpl, followKey]);
 
   useEffect(() => {
     if (!vortexRenderState || !('template' in vortexRenderState) || !vortexRenderState.template || !vortexRenderState.schema) return;
@@ -212,7 +269,7 @@ export function OutputRoute() {
   const vortexSchema = vortexRenderState && 'template' in vortexRenderState ? vortexRenderState.schema : undefined;
   const bindingState = vortexTemplate ? getBindingState(vortexTemplate.id) : undefined;
   const transformedVortexTemplate = vortexTemplate && vortexSchema ? applyBindingsToScene(vortexTemplate, vortexSchema, bindingState) : undefined;
-  const activeTemplate = transformedVortexTemplate || programTemplate || programSnapshot?.sceneDefinition || null;
+  const activeTemplate = transformedVortexTemplate || externalTemplate || programTemplate || programSnapshot?.sceneDefinition || null;
   const override = vortexTemplate ? fontOverrides[vortexTemplate.id] : undefined;
 
   const shouldBlockForFonts = Boolean(vortexRenderState?.template && fontGateResult && !fontGateResult.ok && !override?.enabled);
