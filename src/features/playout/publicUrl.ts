@@ -97,5 +97,6 @@ export const buildOutputFeedUrl = (
 ): string => {
   const payload = isSavedTemplate(payloadOrTemplate) ? { template: payloadOrTemplate } : payloadOrTemplate;
   const encoded = encodeOutputFeedPayload(payload);
-  return `${origin}/output?embed=1&tpl=${encoded}`;
+  // Keep template id in the URL so embed output can always resolve the current program template on refresh.
+  return `${origin}/output?embed=1&templateId=${encodeURIComponent(payload.template.id)}&tpl=${encoded}`;
 };

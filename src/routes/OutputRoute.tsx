@@ -11,7 +11,7 @@ import { FontGateOverlay } from '../features/playout/FontGateOverlay';
 import { applyBindingsToScene, normalizeBindingSchema } from '../features/playout/vortexBindings';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { decodeOutputFeedPayload } from '../features/playout/publicUrl';
-import { createProgramFeedSubscriber, readPersistedProgramSnapshot } from '../features/liveFeed/liveFeedBus';
+import { createLiveFeedSubscriber } from '../features/liveFeed/liveFeedBus';
 import { useDemoSessionStore } from '../store/useDemoSessionStore';
 import { useDataEngineStore, type GameState, type SportKey } from '../store/useDataEngineStore';
 import { getCatalogRegistry, getCatalogRegistryHealth } from '../components/design/dataBindingPaths';
@@ -139,34 +139,20 @@ export function OutputRoute() {
 
     const debugProgram = typeof window !== 'undefined' && window.localStorage.getItem('debug_program') === '1';
     const engine = useDataEngineStore.getState();
+    // Embed output must always consume the externally published live feed, never local simulation.
     engine.setExternalMode(true);
     engine.clearExternalGame();
+    setWaitingForLiveFeed(true);
 
-    const persistedSnapshot = readPersistedProgramSnapshot();
-    if (persistedSnapshot) {
-      setWaitingForLiveFeed(false);
-      engine.markBroadcastReceived(persistedSnapshot.ts);
-      engine.setExternalGame(persistedSnapshot.state.game as GameState, persistedSnapshot.state.activeSport as SportKey);
-      if (debugProgram) {
-        console.debug('[program] snapshot loaded from storage', {
-          ts: persistedSnapshot.ts,
-          ageMs: Date.now() - persistedSnapshot.ts,
-        });
-      }
-    } else {
-      setWaitingForLiveFeed(true);
-    }
-
-    const unsubscribe = createProgramFeedSubscriber((message) => {
-      if (message.type === 'PROGRAM_PATCH') return;
+    const unsubscribe = createLiveFeedSubscriber(({ activeSport, game, ts }) => {
       setWaitingForLiveFeed(false);
       const nextEngine = useDataEngineStore.getState();
-      nextEngine.markBroadcastReceived(message.ts);
-      nextEngine.setExternalGame(message.state.game as GameState, message.state.activeSport as SportKey);
+      nextEngine.markBroadcastReceived(ts);
+      nextEngine.setExternalGame(game as GameState, activeSport as SportKey);
       if (debugProgram) {
-        console.debug('[program] broadcast received', {
-          ts: message.ts,
-          deltaMs: Date.now() - message.ts,
+        console.debug('[program] live feed received', {
+          ts,
+          deltaMs: Date.now() - ts,
         });
       }
     });

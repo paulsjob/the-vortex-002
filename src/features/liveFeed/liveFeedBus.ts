@@ -1,4 +1,5 @@
 const CHANNEL = 'renderless-live-feed-v1';
+const LIVE_FEED_LAST_STORAGE_KEY = 'renderless_live_feed_last';
 const PROGRAM_CHANNEL = 'renderless:program';
 const PROGRAM_SNAPSHOT_STORAGE_KEY = 'renderless:program:snapshot';
 
@@ -43,14 +44,29 @@ export function createLiveFeedPublisher(getStateFn: () => PublisherState, interv
 
   const timer = setInterval(() => {
     const { running, activeSport, game } = getStateFn();
-    if (!running || !game) return;
-    channel.postMessage({
+    if (!game) return;
+
+    const message = {
       type: 'state',
       from,
       ts: Date.now(),
       activeSport,
       game,
-    } as LiveFeedMessage);
+    } as LiveFeedMessage;
+
+    // Persist the latest live payload so embed/public output tabs can catch up instantly on refresh.
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem(LIVE_FEED_LAST_STORAGE_KEY, JSON.stringify(message));
+      } catch {
+        // Ignore persistence failures and keep broadcasting current live values.
+      }
+    }
+
+    // Only broadcast when the in-app runtime is active, but still keep the snapshot fresh in storage.
+    if (running) {
+      channel.postMessage(message);
+    }
   }, intervalMs);
 
   return () => {
@@ -61,6 +77,21 @@ export function createLiveFeedPublisher(getStateFn: () => PublisherState, interv
 }
 
 export function createLiveFeedSubscriber(onState: (payload: { activeSport: string; game: any; ts: number }) => void) {
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = window.localStorage.getItem(LIVE_FEED_LAST_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as LiveFeedMessage;
+        if (parsed && parsed.type === 'state') {
+          // Instant catch-up for refreshes before the next BroadcastChannel tick arrives.
+          onState({ activeSport: parsed.activeSport, game: parsed.game, ts: parsed.ts });
+        }
+      }
+    } catch {
+      // Ignore invalid snapshots and continue with channel updates.
+    }
+  }
+
   if (typeof BroadcastChannel === 'undefined') return () => undefined;
 
   const channel = new BroadcastChannel(CHANNEL);
