@@ -26,6 +26,7 @@ const DEFAULT_TRANSFORM = {
 export function TemplateSceneSvg({ template, className, assetResolver, debugLiveLabel }: Props) {
   const assets = useAssetStore((s) => s.assets);
   const game = useDataEngineStore((s) => s.game);
+  const externalGame = useDataEngineStore((s) => s.externalGame);
   const running = useDataEngineStore((s) => s.running);
   const activeSport = useDataEngineStore((s) => s.activeSport);
   const externalMode = useDataEngineStore((s) => s.externalMode);
@@ -33,20 +34,21 @@ export function TemplateSceneSvg({ template, className, assetResolver, debugLive
   const lastBroadcastAt = useDataEngineStore((s) => s.lastBroadcastAt);
   const historyLength = useDataEngineStore((s) => s.history.length);
   const assetById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets]);
-  const hasSimulationData = historyLength > 0;
-  const liveFeedPayload = hasSimulationData ? game : null;
+  const hasLiveData = externalMode ? Boolean(externalGame) : historyLength > 0;
+  const engineGame = externalMode && externalGame ? externalGame : game;
+  const liveFeedPayload = hasLiveData ? engineGame : null;
   const derivedPayload = useMemo(() => {
-    if (!hasSimulationData) return null;
+    if (!hasLiveData) return null;
     return {
-      teamMetrics: buildTeamMetrics(game),
-      advancedMetrics: game.advancedMetrics,
-      consistencyIssues: game.consistencyIssues ?? [],
-      sport: game.sport,
+      teamMetrics: buildTeamMetrics(engineGame),
+      advancedMetrics: engineGame.advancedMetrics,
+      consistencyIssues: engineGame.consistencyIssues ?? [],
+      sport: engineGame.sport,
     };
-  }, [game, hasSimulationData]);
+  }, [engineGame, hasLiveData]);
   const scorebugPayload = useMemo(() => (
-    hasSimulationData ? buildNormalizedPayload(game, 'live-scorebug') : null
-  ), [game, hasSimulationData]);
+    hasLiveData ? buildNormalizedPayload(engineGame, 'live-scorebug') : null
+  ), [engineGame, hasLiveData]);
 
   const showLiveOverlay = useMemo(() => {
     if (!import.meta.env.DEV || typeof window === 'undefined') return false;
@@ -163,12 +165,13 @@ export function TemplateSceneSvg({ template, className, assetResolver, debugLive
     >
 
       {showLiveOverlay && debugLiveLabel ? (
-        <foreignObject x={8} y={8} width={Math.max(200, template.canvasWidth * 0.45)} height={90}>
+        <foreignObject x={8} y={8} width={Math.max(200, template.canvasWidth * 0.45)} height={120}>
           <div xmlns="http://www.w3.org/1999/xhtml" className="pointer-events-none rounded border border-emerald-500/70 bg-black/70 px-2 py-1 text-[10px] leading-tight text-emerald-200">
             <p>{debugLiveLabel} · running: {String(running)}</p>
             <p>publisherActive: {String(livePublisherActive)} · externalMode: {String(externalMode)}</p>
-            <p>activeSport: {String(activeSport)} · game sport: {String(game.sport)}</p>
-            <p>clockSeconds: {String(game.clockSeconds)} · periodLabel: {String(game.periodLabel)}</p>
+            <p>externalGame: {String(Boolean(externalGame))} · historyLength: {String(historyLength)} · hasLiveData: {String(hasLiveData)}</p>
+            <p>activeSport: {String(activeSport)} · engineGame sport: {String(engineGame.sport)}</p>
+            <p>clockSeconds: {String(engineGame.clockSeconds)} · periodLabel: {String(engineGame.periodLabel)}</p>
             <p>lastBroadcastAgeMs: {lastBroadcastAt ? String(Math.max(0, Date.now() - lastBroadcastAt)) : 'Infinity'}</p>
             {sampleBindings.map((entry) => (
               <p key={`${debugLiveLabel}-${entry.layerId}`}>
