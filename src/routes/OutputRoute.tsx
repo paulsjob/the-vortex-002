@@ -11,9 +11,9 @@ import { FontGateOverlay } from '../features/playout/FontGateOverlay';
 import { applyBindingsToScene, normalizeBindingSchema } from '../features/playout/vortexBindings';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { decodeOutputFeedPayload } from '../features/playout/publicUrl';
-import { createLiveFeedSubscriber } from '../features/liveFeed/liveFeedBus';
+import { createProgramFeedSubscriber, readPersistedProgramSnapshot } from '../features/liveFeed/liveFeedBus';
 import { useDemoSessionStore } from '../store/useDemoSessionStore';
-import { useDataEngineStore, type SportKey } from '../store/useDataEngineStore';
+import { useDataEngineStore, type GameState, type SportKey } from '../store/useDataEngineStore';
 import { getCatalogRegistry, getCatalogRegistryHealth } from '../components/design/dataBindingPaths';
 
 const mapDemoBindingDefaults = (
@@ -137,37 +137,41 @@ export function OutputRoute() {
     const payload = decodeOutputFeedPayload(tpl);
     if (!payload) return;
 
+    const debugProgram = typeof window !== 'undefined' && window.localStorage.getItem('debug_program') === '1';
     const engine = useDataEngineStore.getState();
-    let receivedState = false;
-    let externalFeedEnabled = true;
-    setWaitingForLiveFeed(true);
     engine.setExternalMode(true);
     engine.clearExternalGame();
 
-    const unsubscribe = createLiveFeedSubscriber(({ activeSport, game, ts }) => {
-      if (!externalFeedEnabled) return;
-      receivedState = true;
+    const persistedSnapshot = readPersistedProgramSnapshot();
+    if (persistedSnapshot) {
+      setWaitingForLiveFeed(false);
+      engine.markBroadcastReceived(persistedSnapshot.ts);
+      engine.setExternalGame(persistedSnapshot.state.game as GameState, persistedSnapshot.state.activeSport as SportKey);
+      if (debugProgram) {
+        console.debug('[program] snapshot loaded from storage', {
+          ts: persistedSnapshot.ts,
+          ageMs: Date.now() - persistedSnapshot.ts,
+        });
+      }
+    } else {
+      setWaitingForLiveFeed(true);
+    }
+
+    const unsubscribe = createProgramFeedSubscriber((message) => {
+      if (message.type === 'PROGRAM_PATCH') return;
       setWaitingForLiveFeed(false);
       const nextEngine = useDataEngineStore.getState();
-      nextEngine.markBroadcastReceived(ts);
-      nextEngine.setExternalGame(game, activeSport as SportKey);
+      nextEngine.markBroadcastReceived(message.ts);
+      nextEngine.setExternalGame(message.state.game as GameState, message.state.activeSport as SportKey);
+      if (debugProgram) {
+        console.debug('[program] broadcast received', {
+          ts: message.ts,
+          deltaMs: Date.now() - message.ts,
+        });
+      }
     });
 
-    const fallbackTimer = window.setTimeout(() => {
-      if (receivedState) return;
-      externalFeedEnabled = false;
-      setWaitingForLiveFeed(false);
-      const nextEngine = useDataEngineStore.getState();
-      nextEngine.setExternalMode(false);
-      nextEngine.clearExternalGame();
-      if (payload.sport) nextEngine.setSport(payload.sport);
-      nextEngine.reset();
-      nextEngine.start();
-    }, 1500);
-
     return () => {
-      externalFeedEnabled = false;
-      window.clearTimeout(fallbackTimer);
       unsubscribe();
       const nextEngine = useDataEngineStore.getState();
       nextEngine.setExternalMode(false);
@@ -265,7 +269,7 @@ export function OutputRoute() {
         {vortexRenderState?.error ? (
           <div className="grid h-full place-items-center text-sm text-rose-300">{vortexRenderState.error}</div>
         ) : waitingForLiveFeed && embed ? (
-          <div className="grid h-full place-items-center text-sm text-slate-400">Waiting for live feed...</div>
+          <div className="grid h-full place-items-center text-sm text-slate-400">Waiting for Program…</div>
         ) : !activeTemplate ? (
           <div className="grid h-full place-items-center text-sm text-slate-500">No template on air.</div>
         ) : (
