@@ -100,3 +100,5 @@ export const buildOutputFeedUrl = (
   // Keep template id in the URL so embed output can always resolve the current program template on refresh.
   return `${origin}/output?embed=1&templateId=${encodeURIComponent(payload.template.id)}&tpl=${encoded}`;
 };
+
+export const buildFollowOutputUrl = (origin: string, follow: 'program' | 'preview'): string => `${origin}/output?embed=1&follow=${follow}`;
