@@ -12,7 +12,7 @@ import { StatusBadge } from '../components/ui/StatusBadge';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useDemoSessionStore } from '../store/useDemoSessionStore';
 import { useDataEngineStore } from '../store/useDataEngineStore';
-import { createLiveFeedPublisher } from '../features/liveFeed/liveFeedBus';
+import { createLiveFeedPublisher, createProgramFeedPublisher } from '../features/liveFeed/liveFeedBus';
 
 const tabs = [
   { to: '/', label: 'Dashboard' },
@@ -88,6 +88,23 @@ export function AppRoutes() {
     return () => {
       stopPublisher();
       useDataEngineStore.getState().setLivePublisherActive(false);
+    };
+  }, [shouldPublishLiveFeed]);
+
+
+  useEffect(() => {
+    if (!shouldPublishLiveFeed) return;
+
+    const stopProgramPublisher = createProgramFeedPublisher(
+      () => {
+        const { activeSport, game } = useDataEngineStore.getState();
+        return { running: true, activeSport, game };
+      },
+      (listener) => useDataEngineStore.subscribe((state, previousState) => listener({ running: state.running, activeSport: state.activeSport, game: state.game }, { running: previousState.running, activeSport: previousState.activeSport, game: previousState.game })),
+    );
+
+    return () => {
+      stopProgramPublisher();
     };
   }, [shouldPublishLiveFeed]);
 
