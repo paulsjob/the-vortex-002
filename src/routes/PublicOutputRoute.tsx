@@ -10,27 +10,9 @@ import { getVortexAssetUrl } from '../features/packages/vortexAssetResolver';
 
 type FollowMode = 'program' | 'preview';
 
-const FOLLOW_PREVIEW_STORAGE_KEY = 'renderless.output.follow.preview.v1';
-const FOLLOW_PROGRAM_STORAGE_KEY = 'renderless.output.follow.program.v1';
-
-type FollowTemplatePointer = {
-  templateId: string;
-  sport: string | null;
-  sponsor: string | null;
-  ts: number;
-};
-
-const readFollowPointer = (follow: FollowMode): FollowTemplatePointer | null => {
-  const key = follow === 'preview' ? FOLLOW_PREVIEW_STORAGE_KEY : FOLLOW_PROGRAM_STORAGE_KEY;
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as FollowTemplatePointer;
-    if (!parsed || typeof parsed !== 'object' || typeof parsed.templateId !== 'string' || parsed.templateId.length === 0) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
+const shouldShowDebugWatermark = (): boolean => {
+  if (!import.meta.env.DEV || typeof window === 'undefined') return false;
+  return window.localStorage.getItem('debug_output_watermark') === '1';
 };
 
 export function PublicOutputRoute() {
@@ -117,16 +99,21 @@ export function PublicOutputRoute() {
   }, [effectiveTemplateId, follow, payload?.template, templateStore]);
 
   const template = renderState.template;
-
-  if (waitingForLiveFeed || !template) {
-    return <main className="min-h-screen bg-black" />;
-  }
+  const showDebugWatermark = shouldShowDebugWatermark();
 
   return (
-    <main className="grid min-h-screen place-items-center bg-black p-4">
-      <div className="w-full" style={{ maxWidth: '100vw', maxHeight: '100vh', aspectRatio: `${template.canvasWidth} / ${template.canvasHeight}` }}>
-        <TemplateSceneSvg template={template} className="h-full w-full" assetResolver={renderState.assetResolver} />
-      </div>
+    <main className="relative min-h-screen overflow-hidden bg-transparent">
+      {template ? (
+        <div className="h-screen w-screen" style={{ aspectRatio: `${template.canvasWidth} / ${template.canvasHeight}` }}>
+          <TemplateSceneSvg template={template} className="h-full w-full" assetResolver={renderState.assetResolver} />
+        </div>
+      ) : null}
+
+      {showDebugWatermark ? (
+        <div className="pointer-events-none absolute bottom-2 right-2 rounded border border-slate-500/70 bg-black/60 px-2 py-1 text-[10px] uppercase tracking-wider text-slate-200">
+          {follow ?? 'template'} · {waitingForLiveFeed ? 'warming' : 'live'}
+        </div>
+      ) : null}
     </main>
   );
 }
