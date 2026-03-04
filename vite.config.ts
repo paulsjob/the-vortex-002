@@ -4,6 +4,11 @@ import react from '@vitejs/plugin-react';
 let lastLiveFeedState: any = null;
 
 export default defineConfig({
+  server: {
+    host: true,
+    port: 5173,
+    strictPort: true,
+  },
   plugins: [
     react(),
     {
