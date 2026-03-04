@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { createLiveFeedPublisher } from './liveFeedBus';
 import { useDataEngineStore } from '../../store/useDataEngineStore';
+import { usePlayoutStore } from '../../store/usePlayoutStore';
 
 type Props = {
   enabled: boolean;
@@ -18,7 +19,14 @@ export function LiveFeedPublisher({ enabled }: Props) {
     engine.setLivePublisherActive(true);
     const stopPublisher = createLiveFeedPublisher(() => {
       const { running, activeSport, game } = useDataEngineStore.getState();
-      return { running, activeSport, game };
+      const { programTemplate, previewTemplate } = usePlayoutStore.getState();
+      return {
+        running,
+        activeSport,
+        game,
+        programTemplateId: programTemplate?.id ?? null,
+        previewTemplateId: previewTemplate?.id ?? null,
+      };
     }, 250);
 
     return () => {
