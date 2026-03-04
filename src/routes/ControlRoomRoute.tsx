@@ -4,7 +4,7 @@ import { usePlayoutStore, type TransitionType } from '../store/usePlayoutStore';
 import { TemplatePreview } from '../features/playout/TemplatePreview';
 import { useDataEngineStore } from '../store/useDataEngineStore';
 import { useDemoSessionStore } from '../store/useDemoSessionStore';
-import { buildOutputFeedUrl, buildTemplateFeedUrl } from '../features/playout/publicUrl';
+import { buildFollowOutputUrl } from '../features/playout/publicUrl';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { StageViewportFrame } from '../components/stage/StageViewportFrame';
 import { sceneFromVortexPackage } from '../features/packages/vortexSceneAdapter';
@@ -43,7 +43,6 @@ export function ControlRoomRoute() {
   const clearProgram = usePlayoutStore((s) => s.clearProgram);
 
   const engineRunning = useDataEngineStore((s) => s.running);
-  const activeSport = useDataEngineStore((s) => s.activeSport);
   const sponsorChoices = useDemoSessionStore((s) => s.sponsorChoices);
   const updateSelections = useDemoSessionStore((s) => s.updateSelections);
 
@@ -138,20 +137,17 @@ export function ControlRoomRoute() {
     }, schema, vortexBindings[programTemplate.id]);
   }, [programTemplate, templateStore, vortexBindings]);
 
-  const copyTemplateUrl = async (templateId: string) => {
-    const template = templateStore.getTemplateById(templateId);
-    if (!template) return;
-    const url = buildTemplateFeedUrl(window.location.origin, { template, sport: activeSport });
+  const copyPreviewOutputUrl = async () => {
+    const url = buildFollowOutputUrl(window.location.origin, 'preview');
     try {
       await navigator.clipboard.writeText(url);
     } catch {
-      window.prompt('Copy template URL', url);
+      window.prompt('Copy preview output URL', url);
     }
   };
 
   const copyAggregateOutputUrl = async () => {
-    if (!programTemplate) return;
-    const url = buildOutputFeedUrl(window.location.origin, { template: programTemplate, sport: activeSport });
+    const url = buildFollowOutputUrl(window.location.origin, 'program');
     try {
       await navigator.clipboard.writeText(url);
     } catch {
@@ -411,8 +407,7 @@ export function ControlRoomRoute() {
                       <div className="grid grid-cols-2 gap-2">
                       <button
                         className="rounded border border-emerald-700 px-3 py-1 text-xs font-semibold text-emerald-300 disabled:opacity-50 hover:bg-emerald-900/30"
-                        onClick={() => previewTemplate && copyTemplateUrl(previewTemplate.id)}
-                        disabled={!previewTemplate}
+                        onClick={copyPreviewOutputUrl}
                       >
                         Copy Preview URL
                       </button>
