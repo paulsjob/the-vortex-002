@@ -60,6 +60,8 @@ export function ControlRoomRoute() {
   const [treeOpen, setTreeOpen] = useState<Record<string, boolean>>({ [templateStore.rootId]: true });
   const [blackoutActive, setBlackoutActive] = useState(false);
   const [transitionActive, setTransitionActive] = useState(false);
+  const [favoritesExpanded, setFavoritesExpanded] = useState(false);
+  const [quickLaunchExpanded, setQuickLaunchExpanded] = useState(false);
   const transitionTimeoutRef = useRef<number | null>(null);
   const localStorageWarnedRef = useRef<{ preview: boolean; program: boolean }>({ preview: false, program: false });
 
@@ -328,7 +330,7 @@ export function ControlRoomRoute() {
           </div>
         </div>
         <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
-          <StageViewportFrame className="relative w-full aspect-video max-h-full rounded-md border-slate-700 bg-black p-3">
+          <StageViewportFrame className="relative h-full w-auto aspect-video max-w-full rounded-md border-slate-700 bg-slate-900 p-3">
           {options.blackout && (
             <div className="pointer-events-none absolute inset-0 z-10 border border-slate-800 bg-black/95 text-center text-sm font-semibold uppercase tracking-[0.25em] text-white">
               <div className="flex h-full items-center justify-center">Blackout</div>
@@ -344,15 +346,15 @@ export function ControlRoomRoute() {
   );
 
   return (
-    <section className="flex h-screen min-h-0 flex-col gap-3 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-4">
+    <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-4">
       <div>
         <h2 className="text-lg font-semibold text-slate-100">Control Room</h2>
       </div>
-      <div className="grid min-h-0 flex-1 gap-4 overflow-hidden xl:grid-cols-[300px_minmax(0,1fr)]">
-        <aside className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto_auto] gap-3 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-3">
+      <div className="grid min-h-0 gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
+        <aside className="grid h-full grid-rows-[minmax(0,1fr)_auto_auto] gap-3 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-3">
           <div className="min-h-0 rounded-md border border-slate-700 bg-slate-900 p-3">
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Template Library</p>
-            <div className="mt-2 h-full overflow-hidden pr-1">{renderTreeNode(tree)}</div>
+            <div className="mt-2 h-full overflow-auto pr-1">{renderTreeNode(tree)}</div>
           </div>
 
           <div className="space-y-2 rounded-md border border-slate-700 bg-slate-900 p-3">
@@ -390,10 +392,10 @@ export function ControlRoomRoute() {
           </div>
         </aside>
 
-        <section className="min-h-0 min-w-0 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-4">
-          <div className="flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-hidden">
-            <div className="relative z-20 min-h-0 flex-1 overflow-hidden pb-1">
-              <div className="grid h-full min-h-0 min-w-0 grid-cols-2 gap-3 items-stretch">
+        <section className="h-full min-h-0 min-w-0 rounded-lg border border-slate-700 bg-slate-950 p-4">
+          <div className="h-full min-h-0 min-w-0 flex flex-col gap-3">
+            <div className="relative z-20 min-h-0 flex-1 pb-1">
+              <div className="grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_minmax(220px,260px)_minmax(0,1fr)] gap-3 items-stretch">
                 <div className="min-h-0 min-w-0">
                   {renderViewportPanel({
                     title: 'PREVIEW',
@@ -403,6 +405,75 @@ export function ControlRoomRoute() {
                     tone: 'preview',
                     lockLabel: 'EDITABLE',
                   })}
+                </div>
+
+                <div className="relative z-20 flex min-h-0 min-w-0 flex-col rounded-md border border-slate-700 bg-slate-900 p-3 pb-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Transitions</p>
+                  <div className="h-full flex flex-col">
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      {transitionOptions.map((option) => (
+                        <button
+                          key={option.type}
+                          className={`rounded border px-2 py-2 text-xs font-semibold uppercase tracking-wide transition ${transitionType === option.type ? 'border-blue-400 bg-blue-900/40 text-blue-100' : 'border-slate-600 bg-slate-950 text-slate-200 hover:bg-slate-800'}`}
+                          onClick={() => setTransitionType(option.type)}
+                          disabled={transitionActive}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="mt-4 rounded border border-slate-700 bg-slate-950 p-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <label htmlFor="transition-duration" className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Transition Duration</label>
+                        <span className="text-xs text-slate-300">{transitionDurationMs}ms</span>
+                      </div>
+                      <input
+                        id="transition-duration"
+                        type="range"
+                        min={0}
+                        max={durationChoices.length - 1}
+                        step={1}
+                        value={durationChoices.indexOf(transitionDurationMs)}
+                        onChange={(e) => setTransitionDurationMs(durationChoices[Number(e.target.value)] ?? 300)}
+                        className="w-full accent-blue-400"
+                        disabled={transitionType === 'cut' || transitionActive}
+                      />
+                    </div>
+
+                    <button
+                      className="mt-4 w-full rounded-md border border-red-500 bg-red-600 px-6 py-3 text-base font-black tracking-[0.24em] text-white shadow-lg shadow-red-950/60 transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+                      onClick={runTransitionTake}
+                      disabled={!previewReady || transitionActive}
+                    >
+                      {transitionActive ? 'TRANSITIONING' : 'TAKE'}
+                    </button>
+
+                    <button
+                      className="mt-2 w-full rounded-md border border-amber-500/70 bg-amber-700/70 px-6 py-2 text-sm font-bold tracking-[0.2em] text-amber-100 transition hover:bg-amber-600/80 disabled:cursor-not-allowed disabled:opacity-40"
+                      onClick={clearProgram}
+                      disabled={transitionActive}
+                    >
+                      CLEAR
+                    </button>
+
+                    <div className="mt-auto pt-2">
+                      <div className="grid grid-cols-2 gap-2">
+                      <button
+                        className="rounded border border-emerald-700 px-3 py-1 text-xs font-semibold text-emerald-300 disabled:opacity-50 hover:bg-emerald-900/30"
+                        onClick={copyPreviewOutputUrl}
+                      >
+                        Copy Preview URL
+                      </button>
+                      <button
+                        className="rounded border border-emerald-700 px-3 py-1 text-xs font-semibold text-emerald-300 disabled:opacity-50 hover:bg-emerald-900/30"
+                        onClick={copyAggregateOutputUrl}
+                      >
+                        Copy Program URL
+                      </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="min-h-0 min-w-0">
@@ -419,92 +490,29 @@ export function ControlRoomRoute() {
               </div>
             </div>
 
-            <div className="flex-none rounded-md border border-slate-700 bg-slate-900 p-3">
-              <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_220px]">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Transitions</p>
-                  <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
-                    {transitionOptions.map((option) => (
-                      <button
-                        key={option.type}
-                        className={`rounded border px-2 py-2 text-xs font-semibold uppercase tracking-wide transition ${transitionType === option.type ? 'border-blue-400 bg-blue-900/40 text-blue-100' : 'border-slate-600 bg-slate-950 text-slate-200 hover:bg-slate-800'}`}
-                        onClick={() => setTransitionType(option.type)}
-                        disabled={transitionActive}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="mt-3 rounded border border-slate-700 bg-slate-950 p-3">
-                    <div className="mb-2 flex items-center justify-between">
-                      <label htmlFor="transition-duration" className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Transition Duration</label>
-                      <span className="text-xs text-slate-300">{transitionDurationMs}ms</span>
-                    </div>
-                    <input
-                      id="transition-duration"
-                      type="range"
-                      min={0}
-                      max={durationChoices.length - 1}
-                      step={1}
-                      value={durationChoices.indexOf(transitionDurationMs)}
-                      onChange={(e) => setTransitionDurationMs(durationChoices[Number(e.target.value)] ?? 300)}
-                      className="w-full accent-blue-400"
-                      disabled={transitionType === 'cut' || transitionActive}
-                    />
-                  </div>
-                </div>
-                <div className="flex min-h-0 flex-col justify-end gap-2">
-                  <button
-                    className="w-full rounded-md border border-red-500 bg-red-600 px-6 py-3 text-base font-black tracking-[0.24em] text-white shadow-lg shadow-red-950/60 transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40"
-                    onClick={runTransitionTake}
-                    disabled={!previewReady || transitionActive}
-                  >
-                    {transitionActive ? 'TRANSITIONING' : 'TAKE'}
-                  </button>
-
-                  <button
-                    className="w-full rounded-md border border-amber-500/70 bg-amber-700/70 px-6 py-2 text-sm font-bold tracking-[0.2em] text-amber-100 transition hover:bg-amber-600/80 disabled:cursor-not-allowed disabled:opacity-40"
-                    onClick={clearProgram}
-                    disabled={transitionActive}
-                  >
-                    CLEAR
-                  </button>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      className="rounded border border-emerald-700 px-3 py-1 text-xs font-semibold text-emerald-300 disabled:opacity-50 hover:bg-emerald-900/30"
-                      onClick={copyPreviewOutputUrl}
-                    >
-                      Copy Preview URL
-                    </button>
-                    <button
-                      className="rounded border border-emerald-700 px-3 py-1 text-xs font-semibold text-emerald-300 disabled:opacity-50 hover:bg-emerald-900/30"
-                      onClick={copyAggregateOutputUrl}
-                    >
-                      Copy Program URL
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="relative z-0 grid flex-none grid-rows-2 gap-3">
-              <div className="h-[140px] min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-2">
+            <div className="relative z-0 min-h-0 overflow-hidden grid grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
+              <div className="min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-2">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">FAVORITES</p>
+                  <button
+                    type="button"
+                    className="rounded border border-slate-600 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-200 hover:bg-slate-800"
+                    onClick={() => setFavoritesExpanded((current) => !current)}
+                  >
+                    {favoritesExpanded ? 'Show less' : 'Show more'}
+                  </button>
                 </div>
-                <div className="mt-2 h-[calc(100%-2rem)] min-h-0 overflow-x-auto overflow-y-hidden pb-1 no-scrollbar">
-                  <div className="flex h-full gap-2">
+                <div className={`mt-2 h-[calc(100%-2rem)] min-h-0 pb-1 ${favoritesExpanded ? 'overflow-y-auto overflow-x-hidden' : 'overflow-x-auto overflow-y-hidden no-scrollbar'}`}>
+                  <div className={`grid gap-2 ${favoritesExpanded ? 'grid-cols-[repeat(auto-fill,minmax(170px,1fr))] auto-rows-max' : 'h-full auto-cols-max grid-flow-col'}`}>
                   {favoriteTemplates.length === 0 ? (
                     <p className="text-sm text-slate-500">Star templates in the library to pin your favorites.</p>
                   ) : favoriteTemplates.map((template) => (
                     <button
                       key={template.id}
-                      className="group w-[220px] shrink-0 rounded-md border border-slate-700 bg-slate-950 p-2 text-left transition hover:border-amber-400/60 hover:shadow-[0_0_24px_rgba(251,191,36,0.15)]"
+                      className={`group rounded-md border border-slate-700 bg-slate-950 p-2 text-left transition hover:border-amber-400/60 hover:shadow-[0_0_24px_rgba(251,191,36,0.15)] ${favoritesExpanded ? 'w-full' : 'shrink-0'}`}
                       onClick={() => setPreviewTemplate(template)}
                     >
-                      <div className="mb-1 w-full aspect-video overflow-hidden rounded border border-slate-700 bg-slate-900 grid place-items-center text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                      <div className="mb-1 h-[clamp(72px,10vh,110px)] w-auto aspect-video overflow-hidden rounded border border-slate-700 bg-slate-900 grid place-items-center text-[10px] uppercase tracking-[0.2em] text-slate-500">
                         16:9
                       </div>
                       <p className="truncate text-xs font-semibold text-slate-100">{template.name}</p>
@@ -513,16 +521,23 @@ export function ControlRoomRoute() {
                   </div>
                 </div>
               </div>
-              <div className="h-[140px] min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-2">
+              <div className="min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-2">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">QUICK LAUNCH</p>
+                  <button
+                    type="button"
+                    className="rounded border border-slate-600 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-200 hover:bg-slate-800"
+                    onClick={() => setQuickLaunchExpanded((current) => !current)}
+                  >
+                    {quickLaunchExpanded ? 'Show less' : 'Show more'}
+                  </button>
                 </div>
-                <div className="mt-2 h-[calc(100%-2rem)] min-h-0 overflow-x-auto overflow-y-hidden pb-1 no-scrollbar">
-                  <div className="flex h-full gap-2">
+                <div className={`mt-2 h-[calc(100%-2rem)] min-h-0 pb-1 ${quickLaunchExpanded ? 'overflow-y-auto overflow-x-hidden' : 'overflow-x-auto overflow-y-hidden no-scrollbar'}`}>
+                  <div className={`grid gap-2 ${quickLaunchExpanded ? 'grid-cols-[repeat(auto-fill,minmax(170px,1fr))] auto-rows-max' : 'h-full auto-cols-max grid-flow-col'}`}>
                   {quickLaunchTemplates.length === 0 ? (
                     <p className="text-sm text-slate-500">Add templates with 🚀 in the library for one-tap preloading.</p>
                   ) : quickLaunchTemplates.map((template) => (
-                    <div key={template.id} className="group relative w-[220px] shrink-0 rounded-md border border-slate-700 bg-slate-950 p-2 transition hover:border-cyan-400/60 hover:shadow-[0_0_24px_rgba(34,211,238,0.15)]">
+                    <div key={template.id} className={`group relative rounded-md border border-slate-700 bg-slate-950 p-2 transition hover:border-cyan-400/60 hover:shadow-[0_0_24px_rgba(34,211,238,0.15)] ${quickLaunchExpanded ? 'w-full' : 'shrink-0'}`}>
                       <button
                         type="button"
                         className="absolute right-2 top-2 rounded px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-800 hover:text-slate-200"
@@ -531,8 +546,8 @@ export function ControlRoomRoute() {
                       >
                         ✕
                       </button>
-                      <button className="w-full text-left" onClick={() => setPreviewTemplate(template)}>
-                        <div className="mb-1 w-full aspect-video overflow-hidden rounded border border-slate-700 bg-slate-900 grid place-items-center text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                      <button className="text-left" onClick={() => setPreviewTemplate(template)}>
+                        <div className="mb-1 h-[clamp(72px,10vh,110px)] w-auto aspect-video overflow-hidden rounded border border-slate-700 bg-slate-900 grid place-items-center text-[10px] uppercase tracking-[0.2em] text-slate-500">
                           Quick
                         </div>
                         <p className="truncate text-xs font-semibold text-slate-100">{template.name}</p>
