@@ -33,12 +33,18 @@ export function PublicOutputRoute() {
   useEffect(() => {
     if (!follow && !payload) return;
 
-    setLiveTemplateId(null);
+    if (follow) {
+      const pointer = readFollowPointer(follow);
+      setLiveTemplateId(pointer?.templateId ?? null);
+      setWaitingForLiveFeed(!pointer?.templateId);
+    } else {
+      setLiveTemplateId(null);
+      setWaitingForLiveFeed(false);
+    }
 
     const engine = useDataEngineStore.getState();
     engine.setExternalMode(true);
     engine.clearExternalGame();
-    setWaitingForLiveFeed(true);
 
     const unsubscribe = createLiveFeedSubscriber(({ activeSport, game, ts, programTemplateId, previewTemplateId }) => {
       const nextEngine = useDataEngineStore.getState();
