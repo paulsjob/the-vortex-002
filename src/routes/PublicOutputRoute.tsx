@@ -10,6 +10,29 @@ import { getVortexAssetUrl } from '../features/packages/vortexAssetResolver';
 
 type FollowMode = 'program' | 'preview';
 
+const FOLLOW_PREVIEW_STORAGE_KEY = 'renderless.output.follow.preview.v1';
+const FOLLOW_PROGRAM_STORAGE_KEY = 'renderless.output.follow.program.v1';
+
+type FollowTemplatePointer = {
+  templateId: string;
+  sport: string | null;
+  sponsor: string | null;
+  ts: number;
+};
+
+const readFollowPointer = (follow: FollowMode): FollowTemplatePointer | null => {
+  const key = follow === 'preview' ? FOLLOW_PREVIEW_STORAGE_KEY : FOLLOW_PROGRAM_STORAGE_KEY;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as FollowTemplatePointer;
+    if (!parsed || typeof parsed !== 'object' || typeof parsed.templateId !== 'string' || parsed.templateId.length === 0) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
 export function PublicOutputRoute() {
   const [searchParams] = useSearchParams();
   const templateStore = useTemplateStore();
@@ -28,12 +51,18 @@ export function PublicOutputRoute() {
   useEffect(() => {
     if (!follow && !payload) return;
 
-    setLiveTemplateId(null);
+    if (follow) {
+      const pointer = readFollowPointer(follow);
+      setLiveTemplateId(pointer?.templateId ?? null);
+      setWaitingForLiveFeed(!pointer?.templateId);
+    } else {
+      setLiveTemplateId(null);
+      setWaitingForLiveFeed(false);
+    }
 
     const engine = useDataEngineStore.getState();
     engine.setExternalMode(true);
     engine.clearExternalGame();
-    setWaitingForLiveFeed(true);
 
     const unsubscribe = createLiveFeedSubscriber(({ activeSport, game, ts, programTemplateId, previewTemplateId }) => {
       const nextEngine = useDataEngineStore.getState();
@@ -89,29 +118,14 @@ export function PublicOutputRoute() {
 
   const template = renderState.template;
 
-  if (waitingForLiveFeed) {
-    return (
-      <main className="grid min-h-screen place-items-center bg-black text-slate-300">
-        <p className="text-sm">Waiting for program...</p>
-      </main>
-    );
-  }
-
-  if (!template) {
-    return (
-      <main className="grid min-h-screen place-items-center bg-black text-slate-300">
-        <div className="text-center">
-          <h1 className="text-lg font-semibold">No template on air</h1>
-          {!follow ? <p className="text-sm text-slate-500">No output template payload was provided.</p> : null}
-        </div>
-      </main>
-    );
+  if (waitingForLiveFeed || !template) {
+    return <main className="min-h-screen bg-black" />;
   }
 
   return (
     <main className="grid min-h-screen place-items-center bg-black p-4">
       <div className="w-full" style={{ maxWidth: '100vw', maxHeight: '100vh', aspectRatio: `${template.canvasWidth} / ${template.canvasHeight}` }}>
-        <TemplateSceneSvg template={template} className="h-full w-full" assetResolver={renderState.assetResolver} debugLiveLabel="output" />
+        <TemplateSceneSvg template={template} className="h-full w-full" assetResolver={renderState.assetResolver} />
       </div>
     </main>
   );
