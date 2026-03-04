@@ -129,6 +129,17 @@ export function AppRoutes() {
     );
   }
 
+  if (isControlRoomRoute) {
+    return (
+      <div className="h-screen overflow-hidden bg-slate-950 text-slate-100">
+        <LiveFeedPublisher enabled={shouldPublishLiveFeed} />
+        <Routes>
+          <Route path="/control-room" element={<ControlRoomRoute />} />
+        </Routes>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-slate-950 text-slate-100">
       <LiveFeedPublisher enabled={shouldPublishLiveFeed} />
@@ -165,12 +176,11 @@ export function AppRoutes() {
           </div>
         </div>
       </header>
-      <main className={`min-h-0 flex-1 p-6 ${isControlRoomRoute ? 'overflow-hidden' : 'overflow-auto'}`}>
+      <main className="min-h-0 flex-1 overflow-auto p-6">
         <Routes>
           <Route path="/" element={<DashboardRoute />} />
           <Route path="/design" element={<DesignRoute />} />
           <Route path="/data-engine" element={<DataEngineRoute />} />
-          <Route path="/control-room" element={<ControlRoomRoute />} />
           <Route path="/output" element={<OutputRoute />} />
           <Route path="/template-feed/:templateId" element={<PublicTemplateRoute />} />
           <Route path="/output-feed" element={<PublicOutputRoute />} />
