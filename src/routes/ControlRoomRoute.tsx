@@ -314,8 +314,8 @@ export function ControlRoomRoute() {
     lockLabel: 'EDITABLE' | 'LOCKED';
     blackout?: boolean;
   }) => (
-    <div className="flex min-h-0 min-w-0 items-center justify-center overflow-hidden">
-      <div className="flex min-h-0 min-w-0 w-full max-w-full flex-col gap-2 overflow-hidden">
+    <div className="min-h-0 min-w-0">
+      <div className="flex min-h-0 min-w-0 flex-col gap-2">
         <div className="flex h-6 items-center justify-between gap-2 px-0.5">
           <h4 className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${options.titleClassName}`}>{options.title}</h4>
           <div className="flex min-w-0 items-center justify-end gap-1.5">
@@ -328,7 +328,7 @@ export function ControlRoomRoute() {
           </div>
         </div>
         <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
-          <div className="w-full max-w-full aspect-video min-h-0 overflow-hidden">
+          <div className="w-full aspect-video min-h-0 overflow-hidden">
             <StageViewportFrame className="relative h-full w-full rounded-md border-slate-700 bg-slate-900 p-3">
               {options.blackout && (
                 <div className="pointer-events-none absolute inset-0 z-10 border border-slate-800 bg-black/95 text-center text-sm font-semibold uppercase tracking-[0.25em] text-white">
@@ -346,7 +346,7 @@ export function ControlRoomRoute() {
   );
 
   return (
-    <section className="flex h-[100vh] min-h-0 flex-col gap-3 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-4">
+    <section className="flex h-screen min-h-0 flex-col gap-3 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-4">
       <div>
         <h2 className="text-lg font-semibold text-slate-100">Control Room</h2>
       </div>
@@ -354,7 +354,7 @@ export function ControlRoomRoute() {
         <aside className="grid h-full grid-rows-[minmax(0,1fr)_auto_auto] gap-3 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-3">
           <div className="min-h-0 rounded-md border border-slate-700 bg-slate-900 p-3">
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Template Library</p>
-            <div className="mt-2 h-full overflow-hidden pr-1">{renderTreeNode(tree)}</div>
+            <div className="mt-2 h-full overflow-auto pr-1">{renderTreeNode(tree)}</div>
           </div>
 
           <div className="space-y-2 rounded-md border border-slate-700 bg-slate-900 p-3">
@@ -394,9 +394,9 @@ export function ControlRoomRoute() {
 
         <section className="h-full min-h-0 min-w-0 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-4">
           <div className="h-full min-h-0 min-w-0 flex flex-col gap-3 overflow-hidden">
-            <div className="relative z-20 flex-1 min-h-0 overflow-hidden">
-              <div className="grid min-h-0 min-w-0 flex-1 grid-cols-2 gap-3 overflow-hidden">
-                <div className="order-1 flex min-h-0 min-w-0 items-center justify-center overflow-hidden">
+            <div className="relative z-20 min-h-0 overflow-hidden">
+              <div className="grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_minmax(220px,260px)_minmax(0,1fr)] gap-3 items-start">
+                <div className="min-h-0 min-w-0 w-full overflow-hidden aspect-video">
                   {renderViewportPanel({
                     title: 'PREVIEW',
                     titleClassName: 'text-blue-200',
@@ -407,7 +407,7 @@ export function ControlRoomRoute() {
                   })}
                 </div>
 
-                <div className="relative z-20 order-3 col-span-2 flex min-h-0 min-w-0 flex-col rounded-md border border-slate-700 bg-slate-900 p-3 pb-4">
+                <div className="relative z-20 flex min-h-0 min-w-0 flex-col rounded-md border border-slate-700 bg-slate-900 p-3 pb-4">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Transitions</p>
                   <div className="h-full flex flex-col">
                     <div className="mt-3 grid grid-cols-2 gap-2">
@@ -476,7 +476,7 @@ export function ControlRoomRoute() {
                   </div>
                 </div>
 
-                <div className="order-2 flex min-h-0 min-w-0 items-center justify-center overflow-hidden">
+                <div className="min-h-0 min-w-0 w-full overflow-hidden aspect-video">
                   {renderViewportPanel({
                     title: 'PROGRAM',
                     titleClassName: 'text-red-300',
@@ -490,13 +490,13 @@ export function ControlRoomRoute() {
               </div>
             </div>
 
-            <div className="relative z-0 flex-none min-h-0 grid grid-rows-2 gap-3 overflow-hidden">
-              <div className="h-[140px] flex-none min-h-0 overflow-x-auto overflow-y-hidden rounded-md border border-slate-700 bg-slate-900 p-2">
+            <div className="relative z-0 min-h-0 grid grid-rows-2 gap-3 overflow-hidden">
+              <div className="h-[140px] min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-2">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">FAVORITES</p>
                 </div>
-                <div className="mt-2 h-[calc(100%-2rem)] min-h-0 overflow-hidden pb-1 no-scrollbar">
-                  <div className="grid h-full auto-cols-max grid-flow-col gap-2 whitespace-nowrap">
+                <div className="mt-2 h-[calc(100%-2rem)] min-h-0 overflow-x-auto overflow-y-hidden pb-1 no-scrollbar">
+                  <div className="grid h-full auto-cols-max grid-flow-col gap-2">
                   {favoriteTemplates.length === 0 ? (
                     <p className="text-sm text-slate-500">Star templates in the library to pin your favorites.</p>
                   ) : favoriteTemplates.map((template) => (
@@ -514,12 +514,12 @@ export function ControlRoomRoute() {
                   </div>
                 </div>
               </div>
-              <div className="h-[140px] flex-none min-h-0 overflow-x-auto overflow-y-hidden rounded-md border border-slate-700 bg-slate-900 p-2">
+              <div className="h-[140px] min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-2">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">QUICK LAUNCH</p>
                 </div>
-                <div className="mt-2 h-[calc(100%-2rem)] min-h-0 overflow-hidden pb-1 no-scrollbar">
-                  <div className="grid h-full auto-cols-max grid-flow-col gap-2 whitespace-nowrap">
+                <div className="mt-2 h-[calc(100%-2rem)] min-h-0 overflow-x-auto overflow-y-hidden pb-1 no-scrollbar">
+                  <div className="grid h-full auto-cols-max grid-flow-col gap-2">
                   {quickLaunchTemplates.length === 0 ? (
                     <p className="text-sm text-slate-500">Add templates with 🚀 in the library for one-tap preloading.</p>
                   ) : quickLaunchTemplates.map((template) => (
