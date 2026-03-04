@@ -5,7 +5,15 @@ const PROGRAM_SNAPSHOT_STORAGE_KEY = 'renderless:program:snapshot';
 
 export type LiveFeedMessage =
   | { type: 'hello'; from: string }
-  | { type: 'state'; from: string; ts: number; activeSport: string; game: any }
+  | {
+    type: 'state';
+    from: string;
+    ts: number;
+    activeSport: string;
+    game: any;
+    programTemplateId: string | null;
+    previewTemplateId: string | null;
+  }
   | { type: 'bye'; from: string };
 
 export type ProgramState = {
@@ -31,6 +39,8 @@ type PublisherState = {
   running: boolean;
   activeSport: string;
   game: unknown;
+  programTemplateId?: string | null;
+  previewTemplateId?: string | null;
 };
 
 const createSourceId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -41,7 +51,7 @@ export function createLiveFeedPublisher(getStateFn: () => PublisherState, interv
   channel?.postMessage({ type: 'hello', from } as LiveFeedMessage);
 
   const timer = setInterval(() => {
-    const { running, activeSport, game } = getStateFn();
+    const { running, activeSport, game, programTemplateId, previewTemplateId } = getStateFn();
     if (!game) return;
 
     const message = {
@@ -50,6 +60,8 @@ export function createLiveFeedPublisher(getStateFn: () => PublisherState, interv
       ts: Date.now(),
       activeSport,
       game,
+      programTemplateId: programTemplateId ?? null,
+      previewTemplateId: previewTemplateId ?? null,
     } as LiveFeedMessage;
 
     // Persist the latest live payload so embed/public output tabs can catch up instantly on refresh.
@@ -86,14 +98,28 @@ export function createLiveFeedPublisher(getStateFn: () => PublisherState, interv
   };
 }
 
-export function createLiveFeedSubscriber(onState: (payload: { activeSport: string; game: any; ts: number }) => void) {
+export function createLiveFeedSubscriber(
+  onState: (payload: {
+    activeSport: string;
+    game: any;
+    ts: number;
+    programTemplateId: string | null;
+    previewTemplateId: string | null;
+  }) => void,
+) {
   let lastSeenTs = 0;
   let sawBroadcastUpdate = false;
   let hasStateUpdate = false;
   let fallbackPollTimer: ReturnType<typeof setInterval> | undefined;
   let fallbackStartTimer: ReturnType<typeof setTimeout> | undefined;
 
-  const maybeEmitState = (state: { activeSport: string; game: any; ts: number }) => {
+  const maybeEmitState = (state: {
+    activeSport: string;
+    game: any;
+    ts: number;
+    programTemplateId: string | null;
+    previewTemplateId: string | null;
+  }) => {
     if (typeof state.ts !== 'number' || state.ts <= lastSeenTs) return;
     lastSeenTs = state.ts;
     hasStateUpdate = true;
@@ -107,7 +133,13 @@ export function createLiveFeedSubscriber(onState: (payload: { activeSport: strin
         const parsed = JSON.parse(raw) as LiveFeedMessage;
         if (parsed && parsed.type === 'state') {
           // Instant catch-up for refreshes before the next BroadcastChannel tick arrives.
-          maybeEmitState({ activeSport: parsed.activeSport, game: parsed.game, ts: parsed.ts });
+          maybeEmitState({
+            activeSport: parsed.activeSport,
+            game: parsed.game,
+            ts: parsed.ts,
+            programTemplateId: parsed.programTemplateId ?? null,
+            previewTemplateId: parsed.previewTemplateId ?? null,
+          });
         }
       }
     } catch {
@@ -128,7 +160,13 @@ export function createLiveFeedSubscriber(onState: (payload: { activeSport: strin
             if (!response.ok) return;
             const message = (await response.json()) as LiveFeedMessage;
             if (!message || message.type !== 'state') return;
-            maybeEmitState({ activeSport: message.activeSport, game: message.game, ts: message.ts });
+            maybeEmitState({
+              activeSport: message.activeSport,
+              game: message.game,
+              ts: message.ts,
+              programTemplateId: message.programTemplateId ?? null,
+              previewTemplateId: message.previewTemplateId ?? null,
+            });
           })
           .catch(() => {
             // Ignore fallback transport errors.
@@ -153,14 +191,24 @@ export function createLiveFeedSubscriber(onState: (payload: { activeSport: strin
     const message = event.data;
     if (!message || message.type !== 'state') return;
     sawBroadcastUpdate = true;
-    maybeEmitState({ activeSport: message.activeSport, game: message.game, ts: message.ts });
+    maybeEmitState({
+      activeSport: message.activeSport,
+      game: message.game,
+      ts: message.ts,
+      programTemplateId: message.programTemplateId ?? null,
+      previewTemplateId: message.previewTemplateId ?? null,
+    });
   };
 
-  fallbackStartTimer = setTimeout(() => {
-    if (!hasStateUpdate && !sawBroadcastUpdate) {
-      startPollingFallback();
-    }
-  }, 750);
+  if (import.meta.env.DEV) {
+    startPollingFallback();
+  } else {
+    fallbackStartTimer = setTimeout(() => {
+      if (!hasStateUpdate && !sawBroadcastUpdate) {
+        startPollingFallback();
+      }
+    }, 750);
+  }
 
   channel.addEventListener('message', onMessage);
   return () => {

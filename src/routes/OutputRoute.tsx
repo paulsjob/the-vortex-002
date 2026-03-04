@@ -16,28 +16,6 @@ import { useDemoSessionStore } from '../store/useDemoSessionStore';
 import { useDataEngineStore, type GameState, type SportKey } from '../store/useDataEngineStore';
 import { getCatalogRegistry, getCatalogRegistryHealth } from '../components/design/dataBindingPaths';
 
-const FOLLOW_PREVIEW_STORAGE_KEY = 'renderless.output.follow.preview.v1';
-const FOLLOW_PROGRAM_STORAGE_KEY = 'renderless.output.follow.program.v1';
-
-type FollowTemplatePointer = {
-  templateId: string;
-  sport?: SportKey | null;
-  sponsor?: string | null;
-  ts: number;
-};
-
-const parseFollowTemplatePointer = (value: string | null): FollowTemplatePointer | null => {
-  if (!value) return null;
-  try {
-    const parsed = JSON.parse(value) as FollowTemplatePointer;
-    if (!parsed || typeof parsed !== 'object') return null;
-    if (typeof parsed.templateId !== 'string' || parsed.templateId.length === 0) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-};
-
 const mapDemoBindingDefaults = (
   keys: string[],
   session: { player: string; stat: string; sponsor: string },
@@ -74,7 +52,7 @@ export function OutputRoute() {
   const embed = searchParams.get('embed') === '1';
   const tpl = searchParams.get('tpl');
   const follow = searchParams.get('follow');
-  const followKey = follow === 'preview' ? FOLLOW_PREVIEW_STORAGE_KEY : follow === 'program' ? FOLLOW_PROGRAM_STORAGE_KEY : null;
+  const followMode = follow === 'preview' || follow === 'program' ? follow : null;
   const templateStore = useTemplateStore();
   const programSnapshot = usePlayoutStore((s) => s.programSnapshot);
   const programTemplate = usePlayoutStore((s) => s.programTemplate);
@@ -156,66 +134,17 @@ export function OutputRoute() {
     if (!embed && !running) start();
   }, [tpl, embed, activateProgramTemplate, templateStore, initializeBindings]);
 
+
   useEffect(() => {
-    if (!embed || !followKey) {
+    if (!followMode) {
       setExternalTemplateId(null);
       setExternalTemplate(null);
-      return;
     }
-
-    const applyPointer = (rawPayload: string | null) => {
-      const pointer = parseFollowTemplatePointer(rawPayload);
-      if (!pointer) {
-        setExternalTemplateId(null);
-        setExternalTemplate(null);
-        return;
-      }
-
-      setExternalTemplateId(pointer.templateId);
-      const pkg = templateStore.getVortexPackage(pointer.templateId);
-      if (pkg) {
-        setExternalTemplate(null);
-        const schema = normalizeBindingSchema(pkg.bindings);
-        initializeBindings(pointer.templateId, schema);
-        return;
-      }
-
-      const storedTemplate = templateStore.getTemplateById(pointer.templateId);
-      if (!storedTemplate) {
-        setExternalTemplate(null);
-        return;
-      }
-
-      setExternalTemplate(storedTemplate);
-      activateProgramTemplate(storedTemplate);
-    };
-
-    const loadPointerFromStorage = () => {
-      try {
-        applyPointer(window.localStorage.getItem(followKey));
-      } catch (error) {
-        console.warn('[output] Failed to read follow pointer from localStorage.', error);
-        setExternalTemplateId(null);
-        setExternalTemplate(null);
-      }
-    };
-
-    loadPointerFromStorage();
-
-    const onStorage = (event: StorageEvent) => {
-      if (event.key !== followKey) return;
-      applyPointer(event.newValue);
-    };
-
-    window.addEventListener('storage', onStorage);
-    return () => {
-      window.removeEventListener('storage', onStorage);
-    };
-  }, [embed, followKey, activateProgramTemplate, templateStore, initializeBindings]);
+  }, [followMode]);
 
   useEffect(() => {
     if (!embed) return;
-    if (!tpl && !followKey) return;
+    if (!tpl && !followMode) return;
 
     const debugProgram = typeof window !== 'undefined' && window.localStorage.getItem('debug_program') === '1';
     const engine = useDataEngineStore.getState();
@@ -224,11 +153,32 @@ export function OutputRoute() {
     engine.clearExternalGame();
     setWaitingForLiveFeed(true);
 
-    const unsubscribe = createLiveFeedSubscriber(({ activeSport, game, ts }) => {
+    const unsubscribe = createLiveFeedSubscriber(({ activeSport, game, ts, programTemplateId, previewTemplateId }) => {
       setWaitingForLiveFeed(false);
       const nextEngine = useDataEngineStore.getState();
       nextEngine.markBroadcastReceived(ts);
       nextEngine.setExternalGame(game as GameState, activeSport as SportKey);
+
+      if (followMode) {
+        const nextTemplateId = followMode === 'program' ? programTemplateId : previewTemplateId;
+        setExternalTemplateId(nextTemplateId);
+        if (!nextTemplateId) {
+          setExternalTemplate(null);
+        } else {
+          const storedTemplate = templateStore.getTemplateById(nextTemplateId);
+          setExternalTemplate(storedTemplate ?? null);
+          if (storedTemplate) {
+            activateProgramTemplate(storedTemplate);
+          }
+
+          const pkg = templateStore.getVortexPackage(nextTemplateId);
+          if (pkg) {
+            const schema = normalizeBindingSchema(pkg.bindings);
+            initializeBindings(nextTemplateId, schema);
+          }
+        }
+      }
+
       if (debugProgram) {
         console.debug('[program] live feed received', {
           ts,
@@ -243,7 +193,7 @@ export function OutputRoute() {
       nextEngine.setExternalMode(false);
       nextEngine.clearExternalGame();
     };
-  }, [embed, tpl, followKey]);
+  }, [embed, tpl, followMode, activateProgramTemplate, initializeBindings, templateStore]);
 
   useEffect(() => {
     if (!vortexRenderState || !('template' in vortexRenderState) || !vortexRenderState.template || !vortexRenderState.schema) return;
@@ -335,9 +285,9 @@ export function OutputRoute() {
         {vortexRenderState?.error ? (
           <div className="grid h-full place-items-center text-sm text-rose-300">{vortexRenderState.error}</div>
         ) : waitingForLiveFeed && embed ? (
-          <div className="grid h-full place-items-center text-sm text-slate-400">Waiting for Program…</div>
+          <div className="grid h-full place-items-center text-sm text-slate-400">Waiting for program...</div>
         ) : !activeTemplate ? (
-          <div className="grid h-full place-items-center text-sm text-slate-500">No template on air.</div>
+          <div className="grid h-full place-items-center text-sm text-slate-500">No template on air</div>
         ) : (
           <div className={`relative grid h-full place-items-center overflow-hidden ${embed ? 'p-0' : 'p-4'}`}>
             {fontGateLoading && vortexRenderState?.template && (
