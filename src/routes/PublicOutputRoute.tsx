@@ -10,6 +10,11 @@ import { getVortexAssetUrl } from '../features/packages/vortexAssetResolver';
 
 type FollowMode = 'program' | 'preview';
 
+const shouldShowDebugWatermark = (): boolean => {
+  if (!import.meta.env.DEV || typeof window === 'undefined') return false;
+  return window.localStorage.getItem('debug_output_watermark') === '1';
+};
+
 export function PublicOutputRoute() {
   const [searchParams] = useSearchParams();
   const templateStore = useTemplateStore();
@@ -88,31 +93,21 @@ export function PublicOutputRoute() {
   }, [effectiveTemplateId, follow, payload?.template, templateStore]);
 
   const template = renderState.template;
-
-  if (waitingForLiveFeed) {
-    return (
-      <main className="grid min-h-screen place-items-center bg-black text-slate-300">
-        <p className="text-sm">Waiting for program...</p>
-      </main>
-    );
-  }
-
-  if (!template) {
-    return (
-      <main className="grid min-h-screen place-items-center bg-black text-slate-300">
-        <div className="text-center">
-          <h1 className="text-lg font-semibold">No template on air</h1>
-          {!follow ? <p className="text-sm text-slate-500">No output template payload was provided.</p> : null}
-        </div>
-      </main>
-    );
-  }
+  const showDebugWatermark = shouldShowDebugWatermark();
 
   return (
-    <main className="grid min-h-screen place-items-center bg-black p-4">
-      <div className="w-full" style={{ maxWidth: '100vw', maxHeight: '100vh', aspectRatio: `${template.canvasWidth} / ${template.canvasHeight}` }}>
-        <TemplateSceneSvg template={template} className="h-full w-full" assetResolver={renderState.assetResolver} debugLiveLabel="output" />
-      </div>
+    <main className="relative min-h-screen overflow-hidden bg-transparent">
+      {template ? (
+        <div className="h-screen w-screen" style={{ aspectRatio: `${template.canvasWidth} / ${template.canvasHeight}` }}>
+          <TemplateSceneSvg template={template} className="h-full w-full" assetResolver={renderState.assetResolver} />
+        </div>
+      ) : null}
+
+      {showDebugWatermark ? (
+        <div className="pointer-events-none absolute bottom-2 right-2 rounded border border-slate-500/70 bg-black/60 px-2 py-1 text-[10px] uppercase tracking-wider text-slate-200">
+          {follow ?? 'template'} · {waitingForLiveFeed ? 'warming' : 'live'}
+        </div>
+      ) : null}
     </main>
   );
 }

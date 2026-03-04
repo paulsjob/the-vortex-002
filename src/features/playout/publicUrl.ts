@@ -101,4 +101,4 @@ export const buildOutputFeedUrl = (
   return `${origin}/output?embed=1&templateId=${encodeURIComponent(payload.template.id)}&tpl=${encoded}`;
 };
 
-export const buildFollowOutputUrl = (origin: string, follow: 'program' | 'preview'): string => `${origin}/output?embed=1&follow=${follow}`;
+export const buildFollowOutputUrl = (origin: string, follow: 'program' | 'preview'): string => `${origin}/output-feed?embed=1&follow=${follow}`;
