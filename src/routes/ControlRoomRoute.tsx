@@ -60,6 +60,8 @@ export function ControlRoomRoute() {
   const [treeOpen, setTreeOpen] = useState<Record<string, boolean>>({ [templateStore.rootId]: true });
   const [blackoutActive, setBlackoutActive] = useState(false);
   const [transitionActive, setTransitionActive] = useState(false);
+  const [favoritesExpanded, setFavoritesExpanded] = useState(false);
+  const [quickLaunchExpanded, setQuickLaunchExpanded] = useState(false);
   const transitionTimeoutRef = useRef<number | null>(null);
   const localStorageWarnedRef = useRef<{ preview: boolean; program: boolean }>({ preview: false, program: false });
 
@@ -328,29 +330,27 @@ export function ControlRoomRoute() {
           </div>
         </div>
         <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
-          <div className="w-full aspect-video min-h-0 overflow-hidden">
-            <StageViewportFrame className="relative h-full w-full rounded-md border-slate-700 bg-slate-900 p-3">
-              {options.blackout && (
-                <div className="pointer-events-none absolute inset-0 z-10 border border-slate-800 bg-black/95 text-center text-sm font-semibold uppercase tracking-[0.25em] text-white">
-                  <div className="flex h-full items-center justify-center">Blackout</div>
-                </div>
-              )}
-              <div className="h-full w-full">
-                <TemplatePreview template={options.template} sponsor={options.sponsor} tone={options.tone} />
-              </div>
-            </StageViewportFrame>
+          <StageViewportFrame className="relative h-full w-auto aspect-video max-w-full rounded-md border-slate-700 bg-slate-900 p-3">
+          {options.blackout && (
+            <div className="pointer-events-none absolute inset-0 z-10 border border-slate-800 bg-black/95 text-center text-sm font-semibold uppercase tracking-[0.25em] text-white">
+              <div className="flex h-full items-center justify-center">Blackout</div>
+            </div>
+          )}
+          <div className="h-full w-full">
+            <TemplatePreview template={options.template} sponsor={options.sponsor} tone={options.tone} />
           </div>
+          </StageViewportFrame>
         </div>
       </div>
     </div>
   );
 
   return (
-    <section className="flex h-screen min-h-0 flex-col gap-3 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-4">
+    <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 p-4">
       <div>
         <h2 className="text-lg font-semibold text-slate-100">Control Room</h2>
       </div>
-      <div className="grid min-h-0 flex-1 gap-4 overflow-hidden xl:grid-cols-[300px_minmax(0,1fr)]">
+      <div className="grid min-h-0 gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="grid h-full grid-rows-[minmax(0,1fr)_auto_auto] gap-3 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-3">
           <div className="min-h-0 rounded-md border border-slate-700 bg-slate-900 p-3">
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Template Library</p>
@@ -392,11 +392,11 @@ export function ControlRoomRoute() {
           </div>
         </aside>
 
-        <section className="h-full min-h-0 min-w-0 overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-4">
-          <div className="h-full min-h-0 min-w-0 flex flex-col gap-3 overflow-hidden">
-            <div className="relative z-20 min-h-0 overflow-hidden">
-              <div className="grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_minmax(220px,260px)_minmax(0,1fr)] gap-3 items-start">
-                <div className="min-h-0 min-w-0 w-full overflow-hidden aspect-video">
+        <section className="h-full min-h-0 min-w-0 rounded-lg border border-slate-700 bg-slate-950 p-4">
+          <div className="h-full min-h-0 min-w-0 flex flex-col gap-3">
+            <div className="relative z-20 min-h-0 flex-1 pb-1">
+              <div className="grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_minmax(220px,260px)_minmax(0,1fr)] gap-3 items-stretch">
+                <div className="min-h-0 min-w-0">
                   {renderViewportPanel({
                     title: 'PREVIEW',
                     titleClassName: 'text-blue-200',
@@ -476,7 +476,7 @@ export function ControlRoomRoute() {
                   </div>
                 </div>
 
-                <div className="min-h-0 min-w-0 w-full overflow-hidden aspect-video">
+                <div className="min-h-0 min-w-0">
                   {renderViewportPanel({
                     title: 'PROGRAM',
                     titleClassName: 'text-red-300',
@@ -490,22 +490,29 @@ export function ControlRoomRoute() {
               </div>
             </div>
 
-            <div className="relative z-0 min-h-0 grid grid-rows-2 gap-3 overflow-hidden">
-              <div className="h-[140px] min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-2">
+            <div className="relative z-0 min-h-0 overflow-hidden grid grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
+              <div className="min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-2">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">FAVORITES</p>
+                  <button
+                    type="button"
+                    className="rounded border border-slate-600 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-200 hover:bg-slate-800"
+                    onClick={() => setFavoritesExpanded((current) => !current)}
+                  >
+                    {favoritesExpanded ? 'Show less' : 'Show more'}
+                  </button>
                 </div>
-                <div className="mt-2 h-[calc(100%-2rem)] min-h-0 overflow-x-auto overflow-y-hidden pb-1 no-scrollbar">
-                  <div className="grid h-full auto-cols-max grid-flow-col gap-2">
+                <div className={`mt-2 h-[calc(100%-2rem)] min-h-0 pb-1 ${favoritesExpanded ? 'overflow-y-auto overflow-x-hidden' : 'overflow-x-auto overflow-y-hidden no-scrollbar'}`}>
+                  <div className={`grid gap-2 ${favoritesExpanded ? 'grid-cols-[repeat(auto-fill,minmax(170px,1fr))] auto-rows-max' : 'h-full auto-cols-max grid-flow-col'}`}>
                   {favoriteTemplates.length === 0 ? (
                     <p className="text-sm text-slate-500">Star templates in the library to pin your favorites.</p>
                   ) : favoriteTemplates.map((template) => (
                     <button
                       key={template.id}
-                      className="group w-[170px] shrink-0 rounded-md border border-slate-700 bg-slate-950 p-2 text-left transition hover:border-amber-400/60 hover:shadow-[0_0_24px_rgba(251,191,36,0.15)]"
+                      className={`group rounded-md border border-slate-700 bg-slate-950 p-2 text-left transition hover:border-amber-400/60 hover:shadow-[0_0_24px_rgba(251,191,36,0.15)] ${favoritesExpanded ? 'w-full' : 'shrink-0'}`}
                       onClick={() => setPreviewTemplate(template)}
                     >
-                      <div className="mb-1 w-full aspect-video overflow-hidden rounded border border-slate-700 bg-slate-900 grid place-items-center text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                      <div className="mb-1 h-[clamp(72px,10vh,110px)] w-auto aspect-video overflow-hidden rounded border border-slate-700 bg-slate-900 grid place-items-center text-[10px] uppercase tracking-[0.2em] text-slate-500">
                         16:9
                       </div>
                       <p className="truncate text-xs font-semibold text-slate-100">{template.name}</p>
@@ -514,16 +521,23 @@ export function ControlRoomRoute() {
                   </div>
                 </div>
               </div>
-              <div className="h-[140px] min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-2">
+              <div className="min-h-0 overflow-hidden rounded-md border border-slate-700 bg-slate-900 p-2">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">QUICK LAUNCH</p>
+                  <button
+                    type="button"
+                    className="rounded border border-slate-600 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-200 hover:bg-slate-800"
+                    onClick={() => setQuickLaunchExpanded((current) => !current)}
+                  >
+                    {quickLaunchExpanded ? 'Show less' : 'Show more'}
+                  </button>
                 </div>
-                <div className="mt-2 h-[calc(100%-2rem)] min-h-0 overflow-x-auto overflow-y-hidden pb-1 no-scrollbar">
-                  <div className="grid h-full auto-cols-max grid-flow-col gap-2">
+                <div className={`mt-2 h-[calc(100%-2rem)] min-h-0 pb-1 ${quickLaunchExpanded ? 'overflow-y-auto overflow-x-hidden' : 'overflow-x-auto overflow-y-hidden no-scrollbar'}`}>
+                  <div className={`grid gap-2 ${quickLaunchExpanded ? 'grid-cols-[repeat(auto-fill,minmax(170px,1fr))] auto-rows-max' : 'h-full auto-cols-max grid-flow-col'}`}>
                   {quickLaunchTemplates.length === 0 ? (
                     <p className="text-sm text-slate-500">Add templates with 🚀 in the library for one-tap preloading.</p>
                   ) : quickLaunchTemplates.map((template) => (
-                    <div key={template.id} className="group relative w-[170px] shrink-0 rounded-md border border-slate-700 bg-slate-950 p-2 transition hover:border-cyan-400/60 hover:shadow-[0_0_24px_rgba(34,211,238,0.15)]">
+                    <div key={template.id} className={`group relative rounded-md border border-slate-700 bg-slate-950 p-2 transition hover:border-cyan-400/60 hover:shadow-[0_0_24px_rgba(34,211,238,0.15)] ${quickLaunchExpanded ? 'w-full' : 'shrink-0'}`}>
                       <button
                         type="button"
                         className="absolute right-2 top-2 rounded px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-800 hover:text-slate-200"
@@ -533,7 +547,7 @@ export function ControlRoomRoute() {
                         ✕
                       </button>
                       <button className="text-left" onClick={() => setPreviewTemplate(template)}>
-                        <div className="mb-1 w-full aspect-video overflow-hidden rounded border border-slate-700 bg-slate-900 grid place-items-center text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                        <div className="mb-1 h-[clamp(72px,10vh,110px)] w-auto aspect-video overflow-hidden rounded border border-slate-700 bg-slate-900 grid place-items-center text-[10px] uppercase tracking-[0.2em] text-slate-500">
                           Quick
                         </div>
                         <p className="truncate text-xs font-semibold text-slate-100">{template.name}</p>
